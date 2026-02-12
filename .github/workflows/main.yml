@@ -42,6 +42,9 @@ jobs:
         # settings named NEXT_PUBLIC_YOUTUBE_API_KEY for the build to succeed.
         NEXT_PUBLIC_YOUTUBE_API_KEY: ${{ secrets.NEXT_PUBLIC_YOUTUBE_API_KEY || 'placeholder_key' }}
         
+    - name: Create .nojekyll file
+      run: touch ./out/.nojekyll
+        
     - name: Setup Pages
       uses: actions/configure-pages@v5
       with:
