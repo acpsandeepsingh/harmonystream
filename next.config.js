@@ -2,7 +2,7 @@
 const nextConfig = {
   output: 'export',
   basePath: '/harmonystream',
-  assetPrefix: '/harmonystream/',
+  //assetPrefix: '/harmonystream/',
   images: {
     unoptimized: true,
   },
