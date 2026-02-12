@@ -1,0 +1,314 @@
+{
+  "entities": {
+    "User": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "User",
+      "type": "object",
+      "description": "Represents a user account in the HarmonyStream application.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the user.",
+          "format": "uuid"
+        },
+        "username": {
+          "type": "string",
+          "description": "The username of the user."
+        },
+        "email": {
+          "type": "string",
+          "description": "The email address of the user.",
+          "format": "email"
+        },
+        "dateJoined": {
+          "type": "string",
+          "description": "The date and time the user joined.",
+          "format": "date-time"
+        },
+        "themePreference": {
+          "type": "string",
+          "description": "The user's preferred theme (e.g., dark, light).",
+          "format": "string"
+        },
+        "usernameIsSet": {
+          "type": "boolean",
+          "description": "True if the user has manually set their username at least once."
+        }
+      },
+      "required": [
+        "id",
+        "username",
+        "email",
+        "dateJoined"
+      ]
+    },
+    "Playlist": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Playlist",
+      "type": "object",
+      "description": "Represents a playlist created by a user.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the playlist."
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the playlist."
+        },
+        "description": {
+          "type": "string",
+          "description": "A description of the playlist."
+        },
+        "userId": {
+          "type": "string",
+          "description": "Reference to User. (Relationship: User 1:N Playlist)"
+        },
+        "songs": {
+          "type": "array",
+          "description": "The songs in the playlist.",
+          "items": {
+            "$ref": "#/backend/entities/Song"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "userId"
+      ]
+    },
+    "Song": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Song",
+      "type": "object",
+      "description": "Represents a song or video.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the song."
+        },
+        "title": {
+          "type": "string",
+          "description": "The title of the song."
+        },
+        "artist": {
+          "type": "string",
+          "description": "The artist of the song."
+        },
+        "youtubeId": {
+          "type": "string",
+          "description": "The YouTube video ID of the song."
+        },
+        "genre": {
+          "type": "string",
+          "description": "The genre of the song."
+        },
+        "album": {
+          "type": "string",
+          "description": "The album the song belongs to."
+        },
+        "year": {
+          "type": "number",
+          "description": "The release year of the song."
+        },
+        "duration": {
+          "type": "number",
+          "description": "The duration of the song in seconds."
+        },
+        "thumbnailUrl": {
+          "type": "string",
+          "description": "URL of the song's thumbnail image.",
+          "format": "uri"
+        },
+        "title_lowercase": {
+          "type": "string",
+          "description": "The lowercase version of the song title, used for case-insensitive searching."
+        },
+        "title_keywords": {
+          "type": "array",
+          "description": "An array of lowercase words from the title for searching.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "search_keywords": {
+          "type": "array",
+          "description": "An array of lowercase words from the title, artist, album, and genre for searching.",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "artist",
+        "youtubeId"
+      ]
+    },
+    "Recommendation": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Recommendation",
+      "type": "object",
+      "description": "Represents a song recommendation for a user.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the recommendation."
+        },
+        "userId": {
+          "type": "string",
+          "description": "Reference to User. (Relationship: User 1:N Recommendation)"
+        },
+        "songId": {
+          "type": "string",
+          "description": "Reference to Song. (Relationship: Recommendation 1:N Song)"
+        },
+        "recommendationDate": {
+          "type": "string",
+          "description": "The date and time the recommendation was generated.",
+          "format": "date-time"
+        },
+        "reason": {
+          "type": "string",
+          "description": "The reason for the song recommendation."
+        }
+      },
+      "required": [
+        "id",
+        "userId",
+        "songId",
+        "recommendationDate"
+      ]
+    },
+    "ApiCacheEntry": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "API Cache Entry",
+      "type": "object",
+      "description": "Represents a cached response from an external API like YouTube.",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "The query this cache entry is for (e.g., genre name or search term)."
+        },
+        "timestamp": {
+          "type": "string",
+          "description": "The ISO 8601 timestamp when the cache was created.",
+          "format": "date-time"
+        },
+        "songs": {
+          "type": "array",
+          "description": "The array of song objects returned by the API.",
+          "items": {
+            "$ref": "#/backend/entities/Song"
+          }
+        }
+      },
+      "required": [
+        "query",
+        "timestamp",
+        "songs"
+      ]
+    }
+  },
+  "auth": {
+    "providers": [
+      "password",
+      "anonymous"
+    ]
+  },
+  "firestore": {
+    "structure": [
+      {
+        "path": "/users/{userId}",
+        "definition": {
+          "entityName": "User",
+          "schema": {
+            "$ref": "#/backend/entities/User"
+          },
+          "description": "Stores user account information. This is private data, accessible only to the user and administrators.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier for the user."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/users/{userId}/playlists/{playlistId}",
+        "definition": {
+          "entityName": "Playlist",
+          "schema": {
+            "$ref": "#/backend/entities/Playlist"
+          },
+          "description": "Stores playlists created by the user. Includes denormalized 'userId' for authorization independence.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier for the user."
+            },
+            {
+              "name": "playlistId",
+              "description": "The unique identifier for the playlist."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/songs/{songId}",
+        "definition": {
+          "entityName": "Song",
+          "schema": {
+            "$ref": "#/backend/entities/Song"
+          },
+          "description": "Stores song information. This collection can be queried globally.",
+          "params": [
+            {
+              "name": "songId",
+              "description": "The unique identifier for the song."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/users/{userId}/recommendations/{recommendationId}",
+        "definition": {
+          "entityName": "Recommendation",
+          "schema": {
+            "$ref": "#/backend/entities/Recommendation"
+          },
+          "description": "Stores song recommendations for each user.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier for the user."
+            },
+            {
+              "name": "recommendationId",
+              "description": "The unique identifier for the recommendation."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/api_cache/{cacheId}",
+        "definition": {
+          "entityName": "ApiCacheEntry",
+          "schema": {
+            "$ref": "#/backend/entities/ApiCacheEntry"
+          },
+          "description": "Stores cached results from the YouTube API to reduce redundant calls.",
+          "params": [
+            {
+              "name": "cacheId",
+              "description": "The unique identifier for the cache entry, usually derived from the query."
+            }
+          ]
+        }
+      }
+    ],
+    "reasoning": "The Firestore structure is designed to ensure authorization independence, clarity, and scalability. User data and playlists are organized under user-specific paths for private data, adhering to path-based ownership. Songs are stored in a global collection, and recommendations are user-specific. This structure supports secure list operations (QAPs) by segregating data based on access needs and eliminates the need for `get()` calls in security rules by denormalizing the user id into the playlist objects."
+  }
+}

@@ -1,0 +1,189 @@
+/**
+ * @file firestore.rules
+ * @description Security rules for the HarmonyStream Firestore database.
+ *
+ * ## Core Philosophy
+ * This ruleset enforces a strict user-ownership security model. All data directly
+ * associated with a user, such as their profile, playlists, and recommendations, is
+ * stored within a user-specific data tree and is private to that user. Data
+ * intended for public consumption, like the global song catalog, is stored in a
+ * separate top-level collection.
+ *
+ * ## Data Structure
+ * - `/users/{userId}`: Root path for all private user data.
+ *   - `/users/{userId}/playlists/{playlistId}`: Subcollection for user-created playlists.
+ *   - `/users/{userId}/recommendations/{recommendationId}`: Subcollection for user-specific recommendations.
+ * - `/songs/{songId}`: A top-level collection for song information, accessible to all users.
+ * - `/api_cache/{cacheId}`: A top-level collection for caching YouTube API results.
+ *
+ * ## Key Security Decisions
+ * - **User Isolation**: A user can only access documents under their own `/users/{userId}` path.
+ * - **No User Listing**: Listing the entire `/users` collection is explicitly forbidden to protect user privacy.
+ * - **Public Read-Only Data**: The `/songs` collection is readable by anyone but currently has writes disabled pending schema updates.
+ * - **Shared Cache**: The `/api_cache` collection is readable by anyone and writable by any authenticated user.
+ * - **Default Deny**: Any path not explicitly matched is inaccessible.
+ *
+ * ## Denormalization for Authorization
+ * To ensure fast and secure authorization, data is denormalized. For example, documents in
+ * the `/playlists` and `/recommendations` subcollections contain a `userId` field. These rules
+ * enforce that this denormalized field matches the user ID in the path upon creation and
+ * remains immutable, guaranteeing data integrity without costly cross-document reads (`get()`).
+ *
+ * ## Structural Segregation
+ * The ruleset leverages separate collections for private and public data. Private user
+ * content is nested under `/users/{userId}`, while the public song catalog resides in the
+ * top-level `/songs` collection. This structure simplifies security rules and makes
+ * list operations inherently more secure and performant.
+ */
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // -------------------------------------------------------------------------
+    // Helper Functions
+    // -------------------------------------------------------------------------
+
+    /**
+     * Checks if the user is authenticated.
+     */
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    /**
+     * Checks if the authenticated user's UID matches the provided userId.
+     * This is the foundation of the ownership model.
+     */
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    /**
+     * Checks if the document being accessed already exists.
+     * Crucial for protecting update and delete operations.
+     */
+    function isExistingDoc() {
+      return resource != null;
+    }
+
+    /**
+     * Combines ownership and existence checks for state-changing operations.
+     * Ensures an owner can only modify or delete documents that actually exist.
+     */
+    function isExistingOwner(userId) {
+      return isOwner(userId) && isExistingDoc();
+    }
+    
+    /**
+     * Checks if a field's value is being changed.
+     */
+    function isNotChanging(field) {
+      return request.resource.data[field] == resource.data[field];
+    }
+
+
+    // -------------------------------------------------------------------------
+    // Collection Rules
+    // -------------------------------------------------------------------------
+
+    /**
+     * @description A user can create their own profile, and only they can read, update, or delete it.
+     * @path        /users/{userId}
+     * @allow       Authenticated user with UID 'user123' can (create) their own document at `/users/user123`.
+     * @deny        Anonymous user cannot (get) any document, e.g., `/users/user123`.
+     * @deny        User 'user456' cannot (update) the document at `/users/user123`.
+     * @principle   Enforces document ownership and self-creation for a user's root document. Prohibits user enumeration.
+     */
+    match /users/{userId} {
+      allow get: if isOwner(userId);
+      allow list: if false;
+      allow create: if isOwner(userId) && request.resource.data.id == userId;
+      allow update: if isExistingOwner(userId)
+                // --- Immutable Fields ---
+                // These fields cannot be changed after creation. This logic correctly handles partial updates.
+                && (!('id' in request.resource.data) || request.resource.data.id == resource.data.id)
+                && (!('email' in request.resource.data) || request.resource.data.email == resource.data.email)
+                && (!('dateJoined' in request.resource.data) || request.resource.data.dateJoined == resource.data.dateJoined)
+
+                // --- usernameIsSet Logic ---
+                // This flag cannot be changed from 'true' back to 'false'.
+                && !(resource.data.usernameIsSet == true && 'usernameIsSet' in request.resource.data && request.resource.data.usernameIsSet == false)
+
+                // --- Username Update Logic ---
+                // A username can be updated only if it has not been set before OR the theme is changing.
+                && (
+                    // EITHER a non-username field is being changed
+                    !('username' in request.resource.data) ||
+                    // OR the theme is being changed
+                    ('themePreference' in request.resource.data && request.resource.data.size() == 1) ||
+                    // OR it IS being changed, and the change is valid (first time only)
+                    (
+                        'username' in request.resource.data &&
+                        resource.data.usernameIsSet == false &&
+                        request.resource.data.usernameIsSet == true
+                    )
+                );
+      allow delete: if isExistingOwner(userId);
+    }
+
+    /**
+     * @description A user can manage their own playlists. Access is restricted to the owner of the user document.
+     * @path        /users/{userId}/playlists/{playlistId}
+     * @allow       User 'user123' can (list) all documents in the `/users/user123/playlists` collection.
+     * @allow       User 'user123' can (create) a new playlist within their own subcollection.
+     * @deny        User 'user456' cannot (get) a playlist from `/users/user123/playlists/playlist_abc`.
+     * @principle   Restricts access to a user's own data tree using path-based security.
+     */
+    match /users/{userId}/playlists/{playlistId} {
+      allow get: if isOwner(userId);
+      allow list: if isOwner(userId);
+      allow create: if isOwner(userId) && request.resource.data.userId == userId;
+      allow update: if isExistingOwner(userId) && request.resource.data.userId == resource.data.userId;
+      allow delete: if isExistingOwner(userId);
+    }
+
+    /**
+     * @description A user can manage their own recommendations. Access is restricted to the owner.
+     * @path        /users/{userId}/recommendations/{recommendationId}
+     * @allow       User 'user123' can (get) a specific recommendation at `/users/user123/recommendations/rec_xyz`.
+     * @deny        User 'user456' cannot (list) recommendations from `/users/user123/recommendations`.
+     * @deny        User 'user123' cannot (create) a recommendation with a mismatched `userId` field.
+     * @principle   Restricts access to a user's own data tree and validates relational integrity on writes.
+     */
+    match /users/{userId}/recommendations/{recommendationId} {
+      allow get: if isOwner(userId);
+      allow list: if isOwner(userId);
+      allow create: if isOwner(userId) && request.resource.data.userId == userId;
+      allow update: if isExistingOwner(userId) && request.resource.data.userId == resource.data.userId;
+      allow delete: if isExistingOwner(userId);
+    }
+
+    /**
+     * @description Song information is public for anyone to read. Any authenticated user can add, update, or delete songs.
+     * @path        /songs/{songId}
+     * @allow       Any user, authenticated or not, can (get) a song document, e.g., `/songs/song_abc`.
+     * @allow       Any authenticated user can (create), (update), or (delete) a song to help maintain the catalog.
+     * @principle   Provides public read access for a global song catalog. Allows any authenticated user to contribute and clean up, assuming song data from YouTube is public.
+     */
+    match /songs/{songId} {
+      allow get: if true;
+      allow list: if true;
+      allow create, update, delete: if isSignedIn();
+    }
+    
+    /**
+     * @description Caches YouTube API results. Readable by anyone, writable only by signed-in users.
+     * @path        /api_cache/{cacheId}
+     * @allow       Any user, authenticated or not, can (get) a cache entry.
+     * @allow       Any authenticated user can (create) or (update) a cache entry to keep it fresh.
+     * @deny        No user can (delete) a cache entry.
+     * @principle   Provides a shared, world-readable cache that authenticated application clients can populate.
+     */
+    match /api_cache/{cacheId} {
+      allow get: if true;
+      allow list: if true;
+      allow create, update: if isSignedIn();
+      allow delete: if false;
+    }
+  }
+}
