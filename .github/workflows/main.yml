@@ -1,22 +1,26 @@
-name: Build and Deploy
+name: Deploy to GitHub Pages
 
 on:
   push:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
 
 jobs:
   build_and_deploy:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write # Required for authentication with Firebase
-
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     strategy:
       matrix:
         node-version: [20.x]
-
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
@@ -37,6 +41,14 @@ jobs:
         # settings named NEXT_PUBLIC_YOUTUBE_API_KEY for the build to succeed.
         NEXT_PUBLIC_YOUTUBE_API_KEY: ${{ secrets.NEXT_PUBLIC_YOUTUBE_API_KEY }}
         
-    - name: Deploy to Firebase App Hosting
-      uses: firebase/firebase-apphosting-deploy@v0
-      if: github.ref == 'refs/heads/main' # Only deploy on a push to the main branch
+    - name: Setup Pages
+      uses: actions/configure-pages@v5
+      
+    - name: Upload artifact
+      uses: actions/upload-pages-artifact@v3
+      with:
+        path: './out'
+        
+    - name: Deploy to GitHub Pages
+      id: deployment
+      uses: actions/deploy-pages@v4
