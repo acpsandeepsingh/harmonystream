@@ -20,6 +20,7 @@ import {
 import { usePlaylists } from '@/contexts/playlist-context';
 import { CreatePlaylistDialog } from './create-playlist-dialog';
 import { cn } from '@/lib/utils';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface SongCardProps {
   song: Song;
@@ -138,7 +139,14 @@ export function SongCard({ song, onPlay, playlistContext }: SongCardProps) {
           <div className="flex items-center justify-between gap-2">
             <p className="text-sm text-muted-foreground truncate">{song.artist}</p>
             {hasBeenPlayed && (
-              <History className="h-3.5 w-3.5 text-muted-foreground shrink-0" title="Played" />
+              <Tooltip>
+                <TooltipTrigger>
+                  <History className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Played</p>
+                </TooltipContent>
+              </Tooltip>
             )}
           </div>
         </div>
