@@ -7,10 +7,11 @@ on:
     branches: [ "main" ]
   workflow_dispatch:
 
+# Grant the GITHUB_TOKEN the permissions required to deploy to GitHub Pages
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write   # Grant write access to repository contents
+  pages: write      # to deploy to Pages
+  id-token: write   # to verify the deployment originates from an authentic source
 
 jobs:
   build_and_deploy:
@@ -39,11 +40,12 @@ jobs:
       env:
         # This is a placeholder. You must create a secret in your GitHub repository
         # settings named NEXT_PUBLIC_YOUTUBE_API_KEY for the build to succeed.
-        NEXT_PUBLIC_YOUTUBE_API_KEY: ${{ secrets.NEXT_PUBLIC_YOUTUBE_API_KEY }}
+        NEXT_PUBLIC_YOUTUBE_API_KEY: ${{ secrets.NEXT_PUBLIC_YOUTUBE_API_KEY || 'placeholder_key' }}
         
     - name: Setup Pages
       uses: actions/configure-pages@v5
       with:
+        # This will programmatically enable Pages if it is not already enabled
         enablement: true
         
     - name: Upload artifact
