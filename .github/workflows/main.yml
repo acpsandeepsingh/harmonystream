@@ -1,4 +1,4 @@
-name: Node.js CI
+name: Build and Deploy
 
 on:
   push:
@@ -7,8 +7,11 @@ on:
     branches: [ "main" ]
 
 jobs:
-  build:
+  build_and_deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # Required for authentication with Firebase
 
     strategy:
       matrix:
@@ -33,3 +36,7 @@ jobs:
         # This is a placeholder. You must create a secret in your GitHub repository
         # settings named NEXT_PUBLIC_YOUTUBE_API_KEY for the build to succeed.
         NEXT_PUBLIC_YOUTUBE_API_KEY: ${{ secrets.NEXT_PUBLIC_YOUTUBE_API_KEY }}
+        
+    - name: Deploy to Firebase App Hosting
+      uses: firebase/firebase-apphosting-deploy@v0
+      if: github.ref == 'refs/heads/main' # Only deploy on a push to the main branch
