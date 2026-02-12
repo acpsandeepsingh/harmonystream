@@ -1,9 +1,11 @@
-module.exports = {
+/** @type {import('next').NextConfig} */
+const nextConfig = {
   output: 'export',
+  basePath: '/harmonystream',
+  assetPrefix: '/harmonystream/',
   images: {
     unoptimized: true,
   },
-  // The basePath is the name of your repository
-  basePath: process.env.NODE_ENV === 'production' ? '/harmonystream' : '',
-  assetPrefix: process.env.NODE_ENV === 'production' ? '/harmonystream/' : '',
 };
+
+module.exports = nextConfig;
