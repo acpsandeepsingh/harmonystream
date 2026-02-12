@@ -36,7 +36,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
-import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { usePathname } from 'next/navigation';
 import { usePrevious } from '@/hooks/use-previous';
 import {
@@ -324,7 +324,14 @@ const SortableSongItem = ({
           <div className="flex items-center justify-between gap-2">
             <p className="text-sm text-muted-foreground truncate">{song.artist}</p>
             {hasBeenPlayed && (
-              <History className="h-3.5 w-3.5 text-muted-foreground shrink-0" title="Played" />
+              <Tooltip>
+                <TooltipTrigger>
+                  <History className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Played</p>
+                </TooltipContent>
+              </Tooltip>
             )}
           </div>
         </div>
@@ -856,137 +863,135 @@ export function MusicPlayer() {
   };
 
   return (
-    <TooltipProvider>
-      <Sheet open={isQueueOpen} onOpenChange={setIsQueueOpen}>
-         <div ref={playerContainerRef} className="relative">
-             {VideoBackground}
-              {playerMode === 'video' && !isPip && (
-                <div className="absolute top-4 right-4 z-20 hidden md:block">
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="text-white bg-black/30 hover:bg-black/50"
-                        onClick={handleToggleZoom}
-                      >
-                        {zoomLevel > 1 ? <Minimize2 className="h-5 w-5" /> : <Maximize2 className="h-5 w-5" />}
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom">
-                      <p>{getZoomTooltipText()}</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </div>
-              )}
-             {playerMode === 'video' && !isPip && (
-                <div
-                    className={cn("absolute inset-0 z-10", showControls ? 'pointer-events-none' : 'pointer-events-auto')}
-                    onClick={showControls ? undefined : resetControlsTimeout}
-                    aria-hidden="true"
-                />
-             )}
-             
-             {isPip && (
-                <div className="fixed bottom-5 right-5 w-64 h-auto bg-black rounded-lg shadow-2xl z-[60] overflow-hidden">
-                    <div className="relative aspect-video">
-                         <YouTube
-                            videoId={currentTrack.videoId}
-                            opts={{ playerVars: { playsinline: 1, controls: 0, modestbranding: 1, rel: 0, iv_load_policy: 3, start: currentTime } }}
-                            onReady={(e) => {
-                                e.target.setVolume(volume);
-                                if (isGlobalPlaying) e.target.playVideo();
-                            }}
-                            className="absolute top-0 left-0 w-full h-full"
-                            iframeClassName="w-full h-full object-cover"
-                        />
-                    </div>
-                    <PipControls />
-                </div>
-             )}
-             
-            <PortraitPlayer {...playerProps} />
-            <LandscapePlayer {...playerProps} />
-
-         </div>
-        <SheetContent 
-          container={container}
-          className={cn("p-4 z-[9999]", "md:w-[400px] md:sm:w-[540px]")}
-          side="right"
-        >
-          <SheetHeader className="flex flex-row justify-between items-center pr-6">
-            <div className="flex items-baseline gap-2">
-              <SheetTitle>Up Next</SheetTitle>
-              {playlist.length > 0 && (
-                <span className="text-sm text-muted-foreground tabular-nums">
-                  {playlist.length} {playlist.length === 1 ? 'song' : 'songs'}
-                </span>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              <Button variant="ghost" size="icon" onClick={shufflePlaylist} disabled={playlist.length <= 1}>
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-shuffle h-5 w-5"><path d="M2 18h1.4c1.3 0 2.5-.6 3.3-1.7l6.1-8.6c.7-1.1 2-1.7 3.3-1.7H22"/><path d="m18 2 4 4-4 4"/><path d="M2 6h1.9c1.5 0 2.9.9 3.6 2.2l.7 1.2c.5.9 1.4 1.5 2.5 1.5H22"/><path d="m18 22 4-4-4-4"/></svg>
-                <span className="sr-only">Shuffle</span>
-              </Button>
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <Button variant="ghost" size="icon" disabled={playlist.length === 0}>
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-trash h-5 w-5"><path d="M5 4h14"/><path d="M5 4a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2"/><path d="M19 4v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
-                    <span className="sr-only">Clear Queue</span>
-                  </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent container={container}>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      This will clear your current playing queue. The current song will continue playing. This action cannot be undone.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleClearQueue}>Clear</AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
-            </div>
-          </SheetHeader>
-          <DndContext
-            sensors={sensors}
-            collisionDetection={closestCenter}
-            onDragEnd={handleDragEnd}
-          >
-            <SortableContext
-              items={playlist.map(s => s.id)}
-              strategy={verticalListSortingStrategy}
-            >
-              <ScrollArea className="h-[calc(100vh-5rem)] mt-4 pr-6">
-                <div className="flex flex-col gap-2">
-                  {playlist.map((song) => {
-                    const isThisSongLiked = isSongLiked(song.id);
-                    const hasThisSongBeenPlayed = history.some(h => h.id === song.id);
-
-                    return (
-                      <SortableSongItem
-                        key={song.id}
-                        song={song}
-                        isCurrent={song.id === currentTrack?.id}
-                        isPlaying={isGlobalPlaying}
-                        isLiked={isThisSongLiked}
-                        hasBeenPlayed={hasThisSongBeenPlayed}
-                        onPlay={() => handleQueueSongClick(song.id)}
-                        onRemove={() => removeSongFromQueue(song.id)}
+    <Sheet open={isQueueOpen} onOpenChange={setIsQueueOpen}>
+       <div ref={playerContainerRef} className="relative">
+           {VideoBackground}
+            {playerMode === 'video' && !isPip && (
+              <div className="absolute top-4 right-4 z-20 hidden md:block">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="text-white bg-black/30 hover:bg-black/50"
+                      onClick={handleToggleZoom}
+                    >
+                      {zoomLevel > 1 ? <Minimize2 className="h-5 w-5" /> : <Maximize2 className="h-5 w-5" />}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    <p>{getZoomTooltipText()}</p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+            )}
+           {playerMode === 'video' && !isPip && (
+              <div
+                  className={cn("absolute inset-0 z-10", showControls ? 'pointer-events-none' : 'pointer-events-auto')}
+                  onClick={showControls ? undefined : resetControlsTimeout}
+                  aria-hidden="true"
+              />
+           )}
+           
+           {isPip && (
+              <div className="fixed bottom-5 right-5 w-64 h-auto bg-black rounded-lg shadow-2xl z-[60] overflow-hidden">
+                  <div className="relative aspect-video">
+                       <YouTube
+                          videoId={currentTrack.videoId}
+                          opts={{ playerVars: { playsinline: 1, controls: 0, modestbranding: 1, rel: 0, iv_load_policy: 3, start: currentTime } }}
+                          onReady={(e) => {
+                              e.target.setVolume(volume);
+                              if (isGlobalPlaying) e.target.playVideo();
+                          }}
+                          className="absolute top-0 left-0 w-full h-full"
+                          iframeClassName="w-full h-full object-cover"
                       />
-                    )
-                  })}
-                  {playlist.length === 0 && (
-                    <p className="text-muted-foreground text-center py-8">The queue is empty.</p>
-                  )}
-                </div>
-              </ScrollArea>
-            </SortableContext>
-          </DndContext>
-        </SheetContent>
-      </Sheet>
-    </TooltipProvider>
+                  </div>
+                  <PipControls />
+              </div>
+           )}
+           
+          <PortraitPlayer {...playerProps} />
+          <LandscapePlayer {...playerProps} />
+
+       </div>
+      <SheetContent 
+        container={container}
+        className={cn("p-4 z-[9999]", "md:w-[400px] md:sm:w-[540px]")}
+        side="right"
+      >
+        <SheetHeader className="flex flex-row justify-between items-center pr-6">
+          <div className="flex items-baseline gap-2">
+            <SheetTitle>Up Next</SheetTitle>
+            {playlist.length > 0 && (
+              <span className="text-sm text-muted-foreground tabular-nums">
+                {playlist.length} {playlist.length === 1 ? 'song' : 'songs'}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="icon" onClick={shufflePlaylist} disabled={playlist.length <= 1}>
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-shuffle h-5 w-5"><path d="M2 18h1.4c1.3 0 2.5-.6 3.3-1.7l6.1-8.6c.7-1.1 2-1.7 3.3-1.7H22"/><path d="m18 2 4 4-4 4"/><path d="M2 6h1.9c1.5 0 2.9.9 3.6 2.2l.7 1.2c.5.9 1.4 1.5 2.5 1.5H22"/><path d="m18 22 4-4-4-4"/></svg>
+              <span className="sr-only">Shuffle</span>
+            </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="ghost" size="icon" disabled={playlist.length === 0}>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-trash h-5 w-5"><path d="M5 4h14"/><path d="M5 4a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2"/><path d="M19 4v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+                  <span className="sr-only">Clear Queue</span>
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent container={container}>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will clear your current playing queue. The current song will continue playing. This action cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleClearQueue}>Clear</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
+        </SheetHeader>
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
+        >
+          <SortableContext
+            items={playlist.map(s => s.id)}
+            strategy={verticalListSortingStrategy}
+          >
+            <ScrollArea className="h-[calc(100vh-5rem)] mt-4 pr-6">
+              <div className="flex flex-col gap-2">
+                {playlist.map((song) => {
+                  const isThisSongLiked = isSongLiked(song.id);
+                  const hasThisSongBeenPlayed = history.some(h => h.id === song.id);
+
+                  return (
+                    <SortableSongItem
+                      key={song.id}
+                      song={song}
+                      isCurrent={song.id === currentTrack?.id}
+                      isPlaying={isGlobalPlaying}
+                      isLiked={isThisSongLiked}
+                      hasBeenPlayed={hasThisSongBeenPlayed}
+                      onPlay={() => handleQueueSongClick(song.id)}
+                      onRemove={() => removeSongFromQueue(song.id)}
+                    />
+                  )
+                })}
+                {playlist.length === 0 && (
+                  <p className="text-muted-foreground text-center py-8">The queue is empty.</p>
+                )}
+              </div>
+            </ScrollArea>
+          </SortableContext>
+        </DndContext>
+      </SheetContent>
+    </Sheet>
   );
 }
