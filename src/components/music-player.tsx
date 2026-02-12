@@ -118,7 +118,7 @@ const PortraitPlayer = React.memo(function PortraitPlayer({
                         <DropdownMenuSeparator />
                         {playlists.map((playlist: any) => (<DropdownMenuItem key={playlist.id} onClick={() => onAddToPlaylist(playlist.id)}><ListMusic className="mr-2 h-4 w-4" /><span>{playlist.name}</span></DropdownMenuItem>))}
                         {playlists.length > 0 && <DropdownMenuSeparator />}
-                        <CreatePlaylistDialog container={container}><DropdownMenuItem onSelect={(e) => e.preventDefault()}><PlusCircle className="mr-2 h-4 w-4" />Create new playlist</DropdownMenuItem></CreatePlaylistDialog>
+                        <CreatePlaylistDialog container={container}><DropdownMenuItem onSelect={(e: Event) => e.preventDefault()}><PlusCircle className="mr-2 h-4 w-4" />Create new playlist</DropdownMenuItem></CreatePlaylistDialog>
                     </DropdownMenuContent>
                 </DropdownMenu>
             </div>
@@ -217,7 +217,7 @@ const LandscapePlayer = React.memo(function LandscapePlayer({
                         <DropdownMenuSeparator />
                         {playlists.map((playlist: any) => (<DropdownMenuItem key={playlist.id} onClick={() => onAddToPlaylist(playlist.id)}><ListMusic className="mr-2 h-4 w-4" /><span>{playlist.name}</span></DropdownMenuItem>))}
                         {playlists.length > 0 && <DropdownMenuSeparator />}
-                        <CreatePlaylistDialog container={container}><DropdownMenuItem onSelect={(e) => e.preventDefault()}><PlusCircle className="mr-2 h-4 w-4" />Create new playlist</DropdownMenuItem></CreatePlaylistDialog>
+                        <CreatePlaylistDialog container={container}><DropdownMenuItem onSelect={(e: Event) => e.preventDefault()}><PlusCircle className="mr-2 h-4 w-4" />Create new playlist</DropdownMenuItem></CreatePlaylistDialog>
                     </DropdownMenuContent>
                 </DropdownMenu>
                 <SheetTrigger asChild>
@@ -696,7 +696,7 @@ export function MusicPlayer() {
     if (prevPathname && prevPathname !== pathname && playerMode === 'video' && !isPip) {
        const iframe = playerRef.current?.getIframe();
        if(iframe && document.pictureInPictureEnabled && !document.pictureInPictureElement) {
-           iframe.requestPictureInPicture().catch(e => console.warn("PiP request failed automatically.", e));
+           iframe.requestPictureInPicture().catch((e: any) => console.warn("PiP request failed automatically.", e));
        }
     }
   }, [pathname, prevPathname, playerMode, isPip]);
@@ -903,7 +903,7 @@ export function MusicPlayer() {
                        <YouTube
                           videoId={currentTrack.videoId}
                           opts={{ playerVars: { playsinline: 1, controls: 0, modestbranding: 1, rel: 0, iv_load_policy: 3, start: currentTime } }}
-                          onReady={(e) => {
+                          onReady={(e: YouTubeEvent) => {
                               e.target.setVolume(volume);
                               if (isGlobalPlaying) e.target.playVideo();
                           }}
