@@ -7,7 +7,7 @@ import { Slider } from '@/components/ui/slider';
 import { Play, Pause, SkipBack, SkipForward, Volume2, Video, Music as MusicIcon, Plus, ListMusic, PlusCircle, Heart, X, Maximize2, Minimize2, History, GripVertical } from 'lucide-react';
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import YouTube from 'react-youtube';
-import type { YouTubePlayer, YouTubeProps } from 'react-youtube';
+import type { YouTubePlayer, YouTubeProps, YouTubeEvent } from 'react-youtube';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { usePlaylists } from '@/contexts/playlist-context';
@@ -324,14 +324,16 @@ const SortableSongItem = ({
           <div className="flex items-center justify-between gap-2">
             <p className="text-sm text-muted-foreground truncate">{song.artist}</p>
             {hasBeenPlayed && (
-              <Tooltip>
-                <TooltipTrigger>
-                  <History className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Played</p>
-                </TooltipContent>
-              </Tooltip>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger>
+                    <History className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Played</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             )}
           </div>
         </div>
@@ -459,12 +461,12 @@ export function MusicPlayer() {
     }, 1000);
   }, [stopProgressInterval]);
 
-  const onReady: YouTubeProps['onReady'] = useCallback((event) => {
+  const onReady: YouTubeProps['onReady'] = useCallback((event: YouTubeEvent) => {
     playerRef.current = event.target;
     playerRef.current.setVolume(volume);
   }, [volume]);
 
-  const onStateChange: YouTubeProps['onStateChange'] = useCallback((event) => {
+  const onStateChange: YouTubeProps['onStateChange'] = useCallback((event: YouTubeEvent<number>) => {
     const playerState = event.data;
     const player = event.target;
 
@@ -499,7 +501,7 @@ export function MusicPlayer() {
     }
   }, [setGlobalIsPlaying, globalPlayNext, startProgressInterval, stopProgressInterval, isGlobalPlaying]);
   
-  const onError: YouTubeProps['onError'] = useCallback((event) => {
+  const onError: YouTubeProps['onError'] = useCallback((event: YouTubeEvent<number>) => {
     const errorCode = event.data;
     stopProgressInterval();
     if (currentTrack) {
