@@ -165,7 +165,7 @@ function SearchPageContent() {
                       ))}
                       {playlists.length > 0 && <DropdownMenuSeparator />}
                       <CreatePlaylistDialog>
-                          <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                          <DropdownMenuItem onSelect={(e: Event) => e.preventDefault()}>
                               <PlusCircle className="mr-2 h-4 w-4" />
                               Create new playlist
                           </DropdownMenuItem>
