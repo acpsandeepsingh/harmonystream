@@ -324,16 +324,14 @@ const SortableSongItem = ({
           <div className="flex items-center justify-between gap-2">
             <p className="text-sm text-muted-foreground truncate">{song.artist}</p>
             {hasBeenPlayed && (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger>
-                    <History className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Played</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger>
+                  <History className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Played</p>
+                </TooltipContent>
+              </Tooltip>
             )}
           </div>
         </div>
