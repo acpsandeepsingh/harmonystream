@@ -36,7 +36,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
 import { usePathname } from 'next/navigation';
 import { usePrevious } from '@/hooks/use-previous';
 import {
@@ -800,35 +800,37 @@ export function MusicPlayer() {
   );
   
   const PipControls = () => (
-    <div className="flex items-center justify-between p-1 bg-black/50">
-      <p className="text-xs text-white truncate flex-1 ml-2">{currentTrack.title}</p>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="text-white hover:bg-white/20 h-7 w-7"
-            onClick={async () => await document.exitPictureInPicture()}
-          >
-            <Maximize2 className="h-4 w-4" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="top"><p>Exit Picture-in-Picture</p></TooltipContent>
-      </Tooltip>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="text-white hover:bg-white/20 h-7 w-7"
-            onClick={() => handleTrackError(currentTrack.id) }
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="top"><p>Close player</p></TooltipContent>
-      </Tooltip>
-    </div>
+    <TooltipProvider>
+      <div className="flex items-center justify-between p-1 bg-black/50">
+        <p className="text-xs text-white truncate flex-1 ml-2">{currentTrack.title}</p>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="text-white hover:bg-white/20 h-7 w-7"
+              onClick={async () => await document.exitPictureInPicture()}
+            >
+              <Maximize2 className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="top"><p>Exit Picture-in-Picture</p></TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="text-white hover:bg-white/20 h-7 w-7"
+              onClick={() => handleTrackError(currentTrack.id) }
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="top"><p>Close player</p></TooltipContent>
+        </Tooltip>
+      </div>
+    </TooltipProvider>
   );
 
   const getZoomTooltipText = () => {
