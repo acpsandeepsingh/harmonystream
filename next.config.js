@@ -1,8 +1,9 @@
-// TEMPORARILY change next.config.js:
+/** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'export',
-  // basePath: '',        // Comment out
-  // assetPrefix: '',     // Comment out  
   images: { unoptimized: true },
   trailingSlash: true,
+  // REMOVED basePath + assetPrefix - GitHub Actions handles subfolder automatically
 };
+
+module.exports = nextConfig;
