@@ -3,7 +3,7 @@ import { Providers } from '@/components/providers';
 import { Toaster } from '@/components/ui/toaster';
 import './globals.css';
 import { FirebaseClientProvider } from '@/firebase/client-provider';
-
+export const dynamic = 'force-dynamic';
 export const metadata: Metadata = {
   title: 'HarmonyStream',
   description: 'Your personal music streaming experience.',

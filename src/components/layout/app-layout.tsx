@@ -9,7 +9,6 @@ import { cn } from '@/lib/utils';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Suspense } from 'react';
 
-
 function AppLayoutContent({ children }: { children: React.ReactNode }) {
   const { isPlayerVisible } = usePlayer();
   const isMobile = useIsMobile();
