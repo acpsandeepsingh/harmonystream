@@ -4,7 +4,8 @@
     <meta charset="utf-8">
     <title>HarmonyStream</title>
     <script type="text/javascript">
-      var pathSegmentsToKeep = 1;
+      // Root-path deployment fallback (not subpath like /harmonystream)
+      var pathSegmentsToKeep = 0;
       var l = window.location;
       l.replace(
         l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') +
