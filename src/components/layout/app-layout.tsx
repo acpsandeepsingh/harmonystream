@@ -7,6 +7,7 @@ import { MusicPlayer } from '../music-player';
 import { usePlayer } from '@/contexts/player-context';
 import { cn } from '@/lib/utils';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { Suspense } from 'react';
 
 
 function AppLayoutContent({ children }: { children: React.ReactNode }) {
@@ -18,7 +19,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
       <div className="flex min-h-screen">
         <AppSidebar />
         <div className="flex-1">
-          <Header />
+          <Suspense fallback={<div className="h-16 border-b bg-background/80" />}><Header /></Suspense>
           <main className={cn(
               "p-4 pt-6 md:p-8 md:pt-6",
               // Add padding to bottom to prevent content from being hidden by the player bar
