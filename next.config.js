@@ -1,14 +1,8 @@
-/**
- * @type {import('next').NextConfig}
- */
+// TEMPORARILY change next.config.js:
 const nextConfig = {
   output: 'export',
-  basePath: '/harmonystream',
-  assetPrefix: '/harmonystream/',
-  images: {
-    unoptimized: true,
-  },
+  // basePath: '',        // Comment out
+  // assetPrefix: '',     // Comment out  
+  images: { unoptimized: true },
   trailingSlash: true,
 };
-
-module.exports = nextConfig;
