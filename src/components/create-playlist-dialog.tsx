@@ -27,8 +27,6 @@ import {
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
-import { generatePlaylistDescription } from '@/ai/flows/generate-playlist-description';
-import { Loader2 } from 'lucide-react';
 
 const formSchema = z.object({
   name: z.string().min(2, {
@@ -44,7 +42,6 @@ interface CreatePlaylistDialogProps {
 
 export function CreatePlaylistDialog({ children, container }: CreatePlaylistDialogProps) {
   const [open, setOpen] = useState(false);
-  const [isGenerating, setIsGenerating] = useState(false);
   const { createPlaylist } = usePlaylists();
   const { toast } = useToast();
 
@@ -55,38 +52,6 @@ export function CreatePlaylistDialog({ children, container }: CreatePlaylistDial
       description: '',
     },
   });
-
-  const handleGenerateDescription = async () => {
-    const playlistTitle = form.getValues('name');
-    if (!playlistTitle) {
-      toast({
-        variant: 'destructive',
-        title: 'Playlist title is missing',
-        description: 'Please enter a title before generating a description.',
-      });
-      return;
-    }
-    setIsGenerating(true);
-    try {
-      const result = await generatePlaylistDescription({ playlistTitle, songTitles: [] });
-      if (result.description) {
-        form.setValue('description', result.description);
-        toast({
-            title: 'Description generated!',
-            description: 'The AI has created a description for your playlist.',
-        });
-      }
-    } catch (error) {
-      console.error('Failed to generate playlist description:', error);
-      toast({
-        variant: 'destructive',
-        title: 'Generation failed',
-        description: 'Could not generate a description at this time.',
-      });
-    } finally {
-      setIsGenerating(false);
-    }
-  };
 
   function onSubmit(values: z.infer<typeof formSchema>) {
     createPlaylist(values.name, values.description || '');
@@ -132,20 +97,6 @@ export function CreatePlaylistDialog({ children, container }: CreatePlaylistDial
                       {...field}
                     />
                   </FormControl>
-                   <Button 
-                      type="button" 
-                      variant="link" 
-                      onClick={handleGenerateDescription} 
-                      disabled={isGenerating}
-                      className="p-0 h-auto text-sm"
-                    >
-                      {isGenerating ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Generating...
-                        </>
-                      ) : 'Generate with AI'}
-                    </Button>
                   <FormMessage />
                 </FormItem>
               )}
