@@ -3,8 +3,8 @@ const nextConfig = {
   output: 'export',
   images: { unoptimized: true },
   trailingSlash: true,
-  basePath: process.env.NODE_ENV === 'production' ? '/harmonystream' : '',
-  assetPrefix: process.env.NODE_ENV === 'production' ? '/harmonystream' : '',
+  basePath: '/harmonystream',
+  assetPrefix: '/harmonystream/',
 };
 
 module.exports = nextConfig;
