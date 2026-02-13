@@ -59,7 +59,7 @@ export function AppSidebar() {
                 <SidebarMenu>
                     {playlists.map((playlist) => (
                     <SidebarMenuItem key={playlist.id}>
-                        <SidebarMenuButton href={`/library/playlist/${playlist.id}`} isActive={pathname === `/library/playlist/${playlist.id}`}>
+                        <SidebarMenuButton href={`/library/playlist?id=${playlist.id}`} isActive={pathname === '/library/playlist'}>
                         {playlist.name}
                         </SidebarMenuButton>
                     </SidebarMenuItem>
