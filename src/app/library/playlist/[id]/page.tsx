@@ -4,3 +4,7 @@ export default function PlaylistPage({ params }: { params: { id:string } }) {
   // The client component will handle rendering the specific playlist content.
   return <PlaylistPageClient id={params.id} />;
 }
+
+export function generateStaticParams() {
+  return [{ id: 'default' }];
+}
