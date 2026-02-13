@@ -9,9 +9,9 @@ on:
 
 # Grant the GITHUB_TOKEN the permissions required to deploy to GitHub Pages
 permissions:
-  contents: write   # Grant write access to repository contents
-  pages: write      # to deploy to Pages
-  id-token: write   # to verify the deployment originates from an authentic source
+  contents: write
+  pages: write
+  id-token: write
 
 jobs:
   build_and_deploy:
@@ -34,13 +34,18 @@ jobs:
         
     - name: Install dependencies
       run: npm install
+
+    - name: Check for YouTube API Key
+      if: secrets.NEXT_PUBLIC_YOUTUBE_API_KEY == ''
+      run: |
+        echo "Error: NEXT_PUBLIC_YOUTUBE_API_KEY is not set."
+        echo "Please go to your repository settings > Secrets and variables > Actions to add it."
+        exit 1
       
     - name: Build project
       run: npm run build
       env:
-        # This is a placeholder. You must create a secret in your GitHub repository
-        # settings named NEXT_PUBLIC_YOUTUBE_API_KEY for the build to succeed.
-        NEXT_PUBLIC_YOUTUBE_API_KEY: ${{ secrets.NEXT_PUBLIC_YOUTUBE_API_KEY || 'placeholder_key' }}
+        NEXT_PUBLIC_YOUTUBE_API_KEY: ${{ secrets.NEXT_PUBLIC_YOUTUBE_API_KEY }}
         
     - name: Create .nojekyll file
       run: touch ./out/.nojekyll
