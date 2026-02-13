@@ -2,11 +2,10 @@
 const nextConfig = {
   output: 'export',
   basePath: '/harmonystream',
-  assetPrefix: '/harmonystream/',
-  trailingSlash: true,
   images: {
     unoptimized: true,
   },
+  trailingSlash: true,
 };
- 
+
 module.exports = nextConfig;
