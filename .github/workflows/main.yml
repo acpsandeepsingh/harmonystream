@@ -1,5 +1,4 @@
 name: Deploy to GitHub Pages
-
 on:
   push:
     branches: [ "main" ]
@@ -39,16 +38,13 @@ jobs:
         NEXT_PUBLIC_YOUTUBE_API_KEY: ${{ secrets.NEXT_PUBLIC_YOUTUBE_API_KEY }}
       run: npm run build
         
-    - name: Create .nojekyll file
-      run: touch ./harmonystream/.nojekyll  # FIXED: matches your basePath
-        
     - name: Setup Pages
       uses: actions/configure-pages@v5
       
     - name: Upload artifact
       uses: actions/upload-pages-artifact@v3
       with:
-        path: './harmonystream'  # FIXED: matches your basePath output
+        path: './out'  # Next.js default export path
         
     - name: Deploy to GitHub Pages
       id: deployment
