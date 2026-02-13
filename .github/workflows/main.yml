@@ -40,7 +40,7 @@ jobs:
       run: npm run build
         
     - name: Create .nojekyll file
-      run: touch ./out/.nojekyll
+      run: touch ./harmonystream/.nojekyll  # FIXED: matches your basePath
         
     - name: Setup Pages
       uses: actions/configure-pages@v5
@@ -48,7 +48,7 @@ jobs:
     - name: Upload artifact
       uses: actions/upload-pages-artifact@v3
       with:
-        path: './out'
+        path: './harmonystream'  # FIXED: matches your basePath output
         
     - name: Deploy to GitHub Pages
       id: deployment
