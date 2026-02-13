@@ -36,7 +36,7 @@ jobs:
       run: npm install
 
     - name: Check for YouTube API Key
-      if: ${{ secrets.NEXT_PUBLIC_YOUTUBE_API_KEY == '' }}
+      if: secrets.NEXT_PUBLIC_YOUTUBE_API_KEY == ''
       run: |
         echo "Error: NEXT_PUBLIC_YOUTUBE_API_KEY is not set."
         echo "Please go to your repository settings > Secrets and variables > Actions to add it."
@@ -63,4 +63,4 @@ jobs:
         
     - name: Deploy to GitHub Pages
       id: deployment
-      uses: a
+      uses: actions/deploy-pages@v4
