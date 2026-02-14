@@ -93,9 +93,9 @@ function SearchPageContent() {
         } finally {
             setLoading(false);
         }
-      } else if (source === 'youtube') {
+      } else if (source === 'youtube' || source === 'youtube-all') {
         try {
-          const fetchedSongs = await searchYoutube(q, '');
+          const fetchedSongs = await searchYoutube(q, '', { musicCategoryOnly: source === 'youtube' });
           setSongs(fetchedSongs);
 
           // Persist to global songs collection to enrich database
@@ -128,7 +128,8 @@ function SearchPageContent() {
   
   const sourceNameMap: { [key: string]: string } = {
     database: 'in Database',
-    youtube: 'on YouTube',
+    youtube: 'on YouTube (Music)',
+    'youtube-all': 'on YouTube (All)',
   };
 
   return (
