@@ -35,25 +35,16 @@ const formSchema = z.object({
   description: z.string().optional(),
 });
 
-interface CreatePlaylistDialogProps {
-  children?: React.ReactNode;
-  container?: HTMLElement | null;
-  open?: boolean;
-  onOpenChange?: (open: boolean) => void;
-}
-
 export function CreatePlaylistDialog({
   children,
   container,
-  open: controlledOpen,
-  onOpenChange: controlledOnOpenChange,
-}: CreatePlaylistDialogProps) {
-  const [internalOpen, setInternalOpen] = useState(false);
+}: {
+  children?: React.ReactNode;
+  container?: HTMLElement | null;
+}) {
+  const [open, setOpen] = useState(false);
   const { createPlaylist } = usePlaylists();
   const { toast } = useToast();
-
-  const open = controlledOpen ?? internalOpen;
-  const setOpen = controlledOnOpenChange ?? setInternalOpen;
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
