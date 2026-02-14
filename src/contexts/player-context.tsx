@@ -1,36 +1,95 @@
 'use client';
 
 import type { Song } from '@/lib/types';
-import { createContext, useContext, useState, type ReactNode, useCallback, useEffect } from 'react';
+import { createContext, useContext, useState, type ReactNode, useCallback, useEffect, Suspense } from 'react';
 import { useToast } from '@/hooks/use-toast';
+import { getSongByVideoId } from '@/lib/youtube';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 
 interface PlayerContextType {
   currentTrack: Song | null;
   isPlaying: boolean;
   playlist: Song[];
   history: Song[];
+  playerMode: 'audio' | 'video';
+  isMounted: boolean;
+  initialLoadIsVideoShare: boolean;
+  setInitialLoadIsVideoShare: (value: boolean) => void;
   playTrack: (track: Song) => void;
   playPlaylist: (playlist: Song[], startingTrackId?: string) => void;
   togglePlayPause: () => void;
   playNext: () => void;
   playPrev: () => void;
   setIsPlaying: (isPlaying: boolean) => void;
+  setPlayerMode: (mode: 'audio' | 'video') => void;
   isPlayerVisible: boolean;
   shufflePlaylist: () => void;
   handleTrackError: (songId: string) => void;
   clearQueue: () => void;
   removeSongFromQueue: (songId: string) => void;
   reorderPlaylist: (oldIndex: number, newIndex: number) => void;
+  toast: ({...props}: any) => void;
 }
 
 const PlayerContext = createContext<PlayerContextType | undefined>(undefined);
+
+function PlayerInitializer() {
+    const context = useContext(PlayerContext);
+    if (!context) return null; // Should not happen if used correctly
+
+    const { playTrack, setPlayerMode, isMounted, toast, setInitialLoadIsVideoShare } = context;
+    const router = useRouter();
+    const pathname = usePathname();
+    const searchParams = useSearchParams();
+
+    useEffect(() => {
+        if (!isMounted) return;
+
+        const shareId = searchParams.get('share_id');
+        const shareMode = searchParams.get('mode');
+
+        if (shareId) {
+            const handleSharedSong = async () => {
+                toast({ title: 'Loading shared song...' });
+                try {
+                    const song = await getSongByVideoId(shareId);
+                    if (song) {
+                        playTrack(song);
+                        if (shareMode === 'video') {
+                            setPlayerMode('video');
+                            setInitialLoadIsVideoShare(true);
+                        }
+                    } else {
+                        toast({ variant: 'destructive', title: 'Song not found', description: 'The shared song could not be loaded.' });
+                    }
+                } catch (error: any) {
+                    toast({ variant: 'destructive', title: 'Error loading song', description: error.message });
+                } finally {
+                    // Clean up URL to prevent re-triggering.
+                    const newParams = new URLSearchParams(searchParams.toString());
+                    newParams.delete('share_id');
+                    newParams.delete('mode');
+                    router.replace(`${pathname}?${newParams.toString()}`, { scroll: false });
+                }
+            };
+            handleSharedSong();
+        }
+    // Only re-run if searchParams changes. Other deps are stable or setters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [searchParams, isMounted]);
+
+    return null; // This component just runs logic, it doesn't render anything
+}
+
 
 export function PlayerProvider({ children }: { children: ReactNode }) {
   const [currentTrack, setCurrentTrack] = useState<Song | null>(null);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [playlist, setPlaylist] = useState<Song[]>([]);
   const [history, setHistory] = useState<Song[]>([]);
+  const [playerMode, setPlayerMode] = useState<'audio' | 'video'>('audio');
   const [isMounted, setIsMounted] = useState(false);
+  const [initialLoadIsVideoShare, setInitialLoadIsVideoShare] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -268,21 +327,34 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     isPlaying,
     playlist,
     history,
+    playerMode,
+    isMounted,
+    initialLoadIsVideoShare,
+    setInitialLoadIsVideoShare,
     playTrack,
     playPlaylist,
     togglePlayPause,
     playNext,
     playPrev,
     setIsPlaying,
+    setPlayerMode,
     isPlayerVisible: isMounted && !!currentTrack,
     shufflePlaylist,
     handleTrackError,
     clearQueue,
     removeSongFromQueue,
     reorderPlaylist,
+    toast,
   };
 
-  return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>;
+  return (
+    <PlayerContext.Provider value={value}>
+      {children}
+      <Suspense fallback={null}>
+        <PlayerInitializer />
+      </Suspense>
+    </PlayerContext.Provider>
+  );
 }
 
 export const usePlayer = (): PlayerContextType => {
