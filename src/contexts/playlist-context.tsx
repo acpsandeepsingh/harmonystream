@@ -300,7 +300,7 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
 
   const value = {
     playlists,
-    isPlaylistsLoading,
+    isPlaylistsLoading: isUserLoading || (!!user && firestoreLoading),
     createPlaylist,
     addSongToPlaylist,
     addSongsToPlaylist,
