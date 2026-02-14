@@ -26,7 +26,6 @@ import {
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { useToast } from '@/hooks/use-toast';
 
 const formSchema = z.object({
   name: z.string().min(2, {
@@ -37,14 +36,21 @@ const formSchema = z.object({
 
 export function CreatePlaylistDialog({
   children,
+  open: controlledOpen,
+  onOpenChange: setControlledOpen,
   container,
 }: {
   children?: React.ReactNode;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
   container?: HTMLElement | null;
 }) {
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
   const { createPlaylist } = usePlaylists();
-  const { toast } = useToast();
+
+  const isControlled = controlledOpen !== undefined && setControlledOpen !== undefined;
+  const open = isControlled ? controlledOpen : internalOpen;
+  const setOpen = isControlled ? setControlledOpen : setInternalOpen;
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -63,7 +69,13 @@ export function CreatePlaylistDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       {children && <DialogTrigger asChild>{children}</DialogTrigger>}
-      <DialogContent container={container} className="sm:max-w-[425px]">
+      <DialogContent container={container} className="sm:max-w-[425px]" onInteractOutside={(e) => {
+        // Prevent closing when interacting with toast messages
+        const target = e.target as HTMLElement;
+        if (target.closest('[data-radix-toast-provider]')) {
+          e.preventDefault();
+        }
+      }}>
         <DialogHeader>
           <DialogTitle>Create Playlist</DialogTitle>
           <DialogDescription>
