@@ -9,6 +9,10 @@ import { usePlaylists } from '@/contexts/playlist-context';
 import { usePlayer } from '@/contexts/player-context';
 import { LIKED_SONGS_PLAYLIST_ID } from '@/lib/constants';
 import { SongCard } from '@/components/song-card';
+import { Button } from '@/components/ui/button';
+import { Play, Trash2, Heart } from 'lucide-react';
+import { useMemo } from 'react';
+import Image from 'next/image';
 import { DeletePlaylistDialog } from '@/components/delete-playlist-dialog';
 import { Button } from '@/components/ui/button';
 
@@ -38,6 +42,29 @@ export default function PlaylistPageClient({ id }: PlaylistPageClientProps) {
         description: 'Your favorite tracks.',
         songs: [],
       };
+
+    if (!foundPlaylist && id === LIKED_SONGS_PLAYLIST_ID) {
+      return {
+        id: LIKED_SONGS_PLAYLIST_ID,
+        name: 'Liked Songs',
+        description: 'Your favorite tracks.',
+        songs: [],
+      };
+    }
+
+  useEffect(() => {
+    if (!id || playlist || id === LIKED_SONGS_PLAYLIST_ID) {
+      return;
+    }
+
+    // Avoid redirecting during initial data hydration on refresh.
+    if (playlists.length === 0) {
+      return;
+    }
+
+    const stillExists = playlists.some((p) => p.id === id);
+    if (!stillExists) {
+      router.replace('/library');
     }
 
     return null;
@@ -46,6 +73,9 @@ export default function PlaylistPageClient({ id }: PlaylistPageClientProps) {
   if (!id) {
     return (
       <div className="py-16 text-center">
+  if (!id) {
+    return (
+      <div className="text-center py-16">
         <h1 className="text-2xl font-bold">Playlist link is invalid.</h1>
         <p className="text-muted-foreground">Please open a playlist again from Your Library.</p>
       </div>
@@ -56,6 +86,15 @@ export default function PlaylistPageClient({ id }: PlaylistPageClientProps) {
     return (
       <div className="py-16 text-center">
         <h1 className="text-2xl font-bold">Loading playlist...</h1>
+      </div>
+    );
+  }
+
+  if (!playlist) {
+    return (
+      <div className="text-center py-16 space-y-2">
+        <h1 className="text-2xl font-bold">Playlist not found.</h1>
+        <p className="text-muted-foreground">This playlist may have been deleted or is not available in this account.</p>
       </div>
     );
   }

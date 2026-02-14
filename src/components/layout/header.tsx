@@ -56,12 +56,13 @@ export function Header() {
                 />
             </div>
             <Select value={searchSource} onValueChange={setSearchSource}>
-                <SelectTrigger className="w-[120px] rounded-l-none border-l-0 bg-secondary">
+                <SelectTrigger className="w-[140px] rounded-l-none border-l-0 bg-secondary">
                     <SelectValue placeholder="Source" />
                 </SelectTrigger>
                 <SelectContent>
                     <SelectItem value="database">Database</SelectItem>
-                    <SelectItem value="youtube">YouTube</SelectItem>
+                    <SelectItem value="youtube">YouTube (Music)</SelectItem>
+                    <SelectItem value="youtube-all">YouTube (All)</SelectItem>
                 </SelectContent>
             </Select>
         </form>

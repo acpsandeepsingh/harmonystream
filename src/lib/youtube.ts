@@ -42,28 +42,36 @@ function parseISO8601Duration(duration: string): number {
 export async function searchYoutube(
     query: string, 
     genreForMetadata: string = '',
-    orderBy?: 'viewCount' | 'relevance' | 'date'
+    options: {
+        orderBy?: 'viewCount' | 'relevance' | 'date';
+        musicCategoryOnly?: boolean;
+    } = {}
 ): Promise<Song[]> {
     const apiKey = process.env.NEXT_PUBLIC_YOUTUBE_API_KEY;
     if (!apiKey || apiKey === 'YOUR_YOUTUBE_API_KEY_HERE') {
       throw new Error('YouTube API key is not set on the client. Please add it to your .env file.');
     }
 
+    const { orderBy, musicCategoryOnly = true } = options;
+
     // Step 1: Use the Search API to get a list of video IDs.
-    const searchParams = new URLSearchParams({
+    const searchParamsData: { [key: string]: string } = {
         part: 'snippet',
         maxResults: '50',
         q: query,
         type: 'video',
-        videoCategoryId: '10', // Music Category
         key: apiKey,
-    });
+    };
+
+    if (musicCategoryOnly) {
+        searchParamsData.videoCategoryId = '10'; // Music Category
+    }
 
     if (orderBy) {
-        searchParams.set('order', orderBy);
+        searchParamsData.order = orderBy;
     }
     
-    const searchResponse = await fetch(`${YOUTUBE_SEARCH_API_URL}?${searchParams.toString()}`);
+    const searchResponse = await fetch(`${YOUTUBE_SEARCH_API_URL}?${new URLSearchParams(searchParamsData).toString()}`);
     
     if (!searchResponse.ok) {
         const errorData = await searchResponse.json().catch(() => ({ message: searchResponse.statusText }));
@@ -107,23 +115,25 @@ export async function searchYoutube(
         .map((item: VideoDetailsResult) => {
             const originalTitle = item.snippet.title || 'Untitled';
             
-            // Attempt to parse "Artist - Title" from the video title for better metadata
             let artist = item.snippet.channelTitle || 'Unknown Artist';
             let title = originalTitle;
             
-            const titleParts = originalTitle.split(' - ');
-            if (titleParts.length === 2) {
-                artist = titleParts[0].trim();
-                title = titleParts[1].trim();
-            } else {
-                // Fallback for titles that don't match the pattern
-                // Often the artist is in parentheses or brackets
-                const artistMatch = originalTitle.match(/\((.*?)\)|\[(.*?)\]/);
-                if(artistMatch) {
-                    const potentialArtist = artistMatch[1] || artistMatch[2];
-                    if(potentialArtist && potentialArtist.length < 30) { // Avoid long descriptions
-                        artist = potentialArtist.trim();
-                        title = originalTitle.replace(artistMatch[0], '').trim();
+            // Attempt to parse "Artist - Title" from the video title for better metadata, only for music
+            if (musicCategoryOnly) {
+                const titleParts = originalTitle.split(' - ');
+                if (titleParts.length === 2) {
+                    artist = titleParts[0].trim();
+                    title = titleParts[1].trim();
+                } else {
+                    // Fallback for titles that don't match the pattern
+                    // Often the artist is in parentheses or brackets
+                    const artistMatch = originalTitle.match(/\((.*?)\)|\[(.*?)\]/);
+                    if(artistMatch) {
+                        const potentialArtist = artistMatch[1] || artistMatch[2];
+                        if(potentialArtist && potentialArtist.length < 30) { // Avoid long descriptions
+                            artist = potentialArtist.trim();
+                            title = originalTitle.replace(artistMatch[0], '').trim();
+                        }
                     }
                 }
             }
@@ -163,15 +173,15 @@ export async function searchYoutube(
               thumbnailUrl: item.snippet.thumbnails.high.url,
               album: '',
               duration: parseISO8601Duration(item.contentDetails.duration),
-              genre: genreForMetadata,
+              genre: musicCategoryOnly ? (genreForMetadata || 'Music') : 'Video',
               year: item.snippet.publishedAt ? new Date(item.snippet.publishedAt).getFullYear() : new Date().getFullYear(),
               title_lowercase: titleLower,
               title_keywords: keywords,
               search_keywords: Array.from(searchKeywords),
             }
         }).filter((song: Song) => {
-            // Filter out songs shorter than 90 seconds
-            if (song.duration < 90) {
+            // Filter out videos shorter than 90 seconds if searching only music
+            if (musicCategoryOnly && song.duration < 90) {
               return false;
             }
             // Filter out songs with Malayalam characters in the title.
