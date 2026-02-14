@@ -192,3 +192,98 @@ export async function searchYoutube(
     }
     return fetchedSongs;
 }
+
+export async function getSongByVideoId(videoId: string): Promise<Song | null> {
+    const apiKey = process.env.NEXT_PUBLIC_YOUTUBE_API_KEY;
+    if (!apiKey || apiKey === 'YOUR_YOUTUBE_API_KEY_HERE') {
+      throw new Error('YouTube API key is not set on the client. Please add it to your .env file.');
+    }
+
+    const videoParams = new URLSearchParams({
+        part: 'snippet,contentDetails',
+        id: videoId,
+        key: apiKey,
+    });
+
+    const videoResponse = await fetch(`${YOUTUBE_VIDEOS_API_URL}?${videoParams.toString()}`);
+    
+    if (!videoResponse.ok) {
+        const errorData = await videoResponse.json().catch(() => ({ message: videoResponse.statusText }));
+        const errorMessage = errorData.error?.message || `HTTP error! status: ${videoResponse.status}`;
+        throw new Error(errorMessage);
+    }
+    
+    const videoData = await videoResponse.json();
+
+    if (!videoData.items || videoData.items.length === 0) {
+        return null;
+    }
+    
+    const item: VideoDetailsResult = videoData.items[0];
+    
+    const originalTitle = item.snippet.title || 'Untitled';
+    const isMusicCategory = item.snippet.categoryId === '10';
+            
+    let artist = item.snippet.channelTitle || 'Unknown Artist';
+    let title = originalTitle;
+    
+    if (isMusicCategory) {
+        const titleParts = originalTitle.split(' - ');
+        if (titleParts.length === 2) {
+            artist = titleParts[0].trim();
+            title = titleParts[1].trim();
+        } else {
+            const artistMatch = originalTitle.match(/\((.*?)\)|\[(.*?)\]/);
+            if(artistMatch) {
+                const potentialArtist = artistMatch[1] || artistMatch[2];
+                if(potentialArtist && potentialArtist.length < 30) {
+                    artist = potentialArtist.trim();
+                    title = originalTitle.replace(artistMatch[0], '').trim();
+                }
+            }
+        }
+    }
+
+    const titleLower = title.toLowerCase();
+    const keywords = titleLower.split(' ').filter(w => w);
+
+    const searchKeywords = new Set<string>();
+    const createSearchKeywords = (text: string) => {
+        if (!text) return;
+        const words = text.toLowerCase().replace(/[^a-z0-9\s]/gi, '').split(/\s+/).filter(w => w.length > 0);
+        words.forEach(word => {
+            searchKeywords.add(word);
+            if (word.length > 2) {
+                for (let i = 2; i < word.length; i++) {
+                    searchKeywords.add(word.substring(0, i));
+                }
+            }
+        });
+    };
+
+    createSearchKeywords(title);
+    createSearchKeywords(artist);
+
+    const song: Song = {
+      id: item.id,
+      videoId: item.id,
+      title: title,
+      artist: artist,
+      thumbnailUrl: item.snippet.thumbnails.high.url,
+      album: '',
+      duration: parseISO8601Duration(item.contentDetails.duration),
+      genre: isMusicCategory ? 'Music' : 'Video',
+      year: item.snippet.publishedAt ? new Date(item.snippet.publishedAt).getFullYear() : new Date().getFullYear(),
+      title_lowercase: titleLower,
+      title_keywords: keywords,
+      search_keywords: Array.from(searchKeywords),
+    };
+    
+    // Filter out Malayalam songs
+    const malayalamRegex = /[\u0D00-\u0D7F]/;
+    if (malayalamRegex.test(song.title)) {
+        return null;
+    }
+
+    return song;
+}
