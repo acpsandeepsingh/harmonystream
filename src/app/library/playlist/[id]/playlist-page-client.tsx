@@ -40,12 +40,18 @@ export default function PlaylistPageClient({ id }: PlaylistPageClientProps) {
   }, [id, playlists, router]);
 
   useEffect(() => {
-    // If the playlist is deleted (e.g. from another tab), it will become null
-    if (!playlist && id) {
-        const stillExists = playlists.some(p => p.id === id);
-        if (!stillExists) {
-            router.replace('/library');
-        }
+    if (!id || playlist || id === LIKED_SONGS_PLAYLIST_ID) {
+      return;
+    }
+
+    // Avoid redirecting during initial data hydration on refresh.
+    if (playlists.length === 0) {
+      return;
+    }
+
+    const stillExists = playlists.some((p) => p.id === id);
+    if (!stillExists) {
+      router.replace('/library');
     }
   }, [playlists, id, playlist, router]);
 
