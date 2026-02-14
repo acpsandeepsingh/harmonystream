@@ -35,7 +35,6 @@ function SearchPageContent() {
   const { playlists, addSongsToPlaylist } = usePlaylists();
   const firestore = useFirestore();
   const { isUserLoading } = useUser();
-  const [isCreatePlaylistOpen, setCreatePlaylistOpen] = useState(false);
 
   useEffect(() => {
     if (isUserLoading || !firestore) {
@@ -167,18 +166,18 @@ function SearchPageContent() {
                       </DropdownMenuItem>
                       ))}
                       {playlists.length > 0 && <DropdownMenuSeparator />}
-                      <DropdownMenuItem onSelect={() => setCreatePlaylistOpen(true)}>
-                          <PlusCircle className="mr-2 h-4 w-4" />
-                          Create new playlist
-                      </DropdownMenuItem>
+                      <CreatePlaylistDialog>
+                        <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                            <PlusCircle className="mr-2 h-4 w-4" />
+                            Create new playlist
+                        </DropdownMenuItem>
+                      </CreatePlaylistDialog>
                   </DropdownMenuContent>
               </DropdownMenuPortal>
           </DropdownMenu>
         </div>
       </div>
       
-      <CreatePlaylistDialog open={isCreatePlaylistOpen} onOpenChange={setCreatePlaylistOpen} />
-
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
         {loading ? (
           Array.from({ length: 18 }).map((_, index) => (
