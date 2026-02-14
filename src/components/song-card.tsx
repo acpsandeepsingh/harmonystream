@@ -1,6 +1,7 @@
 'use client';
 
 import Image from 'next/image';
+import { useState } from 'react';
 import type { Song } from '@/lib/types';
 import { usePlayer } from '@/contexts/player-context';
 import { Button } from '@/components/ui/button';
@@ -41,6 +42,7 @@ const formatDuration = (seconds: number) => {
 export function SongCard({ song, onPlay, playlistContext }: SongCardProps) {
   const { currentTrack, isPlaying, playTrack, history } = usePlayer();
   const { playlists, addSongToPlaylist, removeSongFromPlaylist, isSongLiked } = usePlaylists();
+  const [isCreatePlaylistDialogOpen, setIsCreatePlaylistDialogOpen] = useState(false);
   const isActive = currentTrack?.id === song.id && isPlaying;
 
   const hasBeenPlayed = history.some((playedSong) => playedSong.id === song.id);
@@ -89,13 +91,11 @@ export function SongCard({ song, onPlay, playlistContext }: SongCardProps) {
                 <span>{playlist.name}</span>
               </DropdownMenuItem>
             ))}
-            <DropdownMenuSeparator />
-            <CreatePlaylistDialog>
-                <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-                    <PlusCircle className="mr-2 h-4 w-4" />
-                    Create new playlist
-                </DropdownMenuItem>
-            </CreatePlaylistDialog>
+            {playlists.length > 0 && <DropdownMenuSeparator />}
+            <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setIsCreatePlaylistDialogOpen(true); }}>
+                <PlusCircle className="mr-2 h-4 w-4" />
+                Create new playlist
+            </DropdownMenuItem>
           </DropdownMenuSubContent>
         </DropdownMenuPortal>
       </DropdownMenuSub>
@@ -104,6 +104,10 @@ export function SongCard({ song, onPlay, playlistContext }: SongCardProps) {
 
   return (
     <Card className="group relative overflow-hidden rounded-lg shadow-md transition-all hover:shadow-xl">
+       <CreatePlaylistDialog
+        open={isCreatePlaylistDialogOpen}
+        onOpenChange={setIsCreatePlaylistDialogOpen}
+      />
       <CardContent className="p-0">
         <div className="aspect-square relative cursor-pointer" onClick={handlePlay}>
           <Image
