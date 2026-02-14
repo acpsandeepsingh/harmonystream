@@ -6,8 +6,7 @@ import { usePlayer } from '@/contexts/player-context';
 import { SongCard } from '@/components/song-card';
 import { Button } from '@/components/ui/button';
 import { Play, Trash2, Heart } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import type { Playlist } from '@/lib/types';
+import { useMemo } from 'react';
 import Image from 'next/image';
 import { DeletePlaylistDialog } from '@/components/delete-playlist-dialog';
 import { LIKED_SONGS_PLAYLIST_ID } from '@/lib/constants';
@@ -18,42 +17,50 @@ interface PlaylistPageClientProps {
 
 export default function PlaylistPageClient({ id }: PlaylistPageClientProps) {
   const router = useRouter();
-  const { playlists, deletePlaylist } = usePlaylists();
+  const { playlists, deletePlaylist, isPlaylistsLoading } = usePlaylists();
   const { playPlaylist } = usePlayer();
-  const [playlist, setPlaylist] = useState<Playlist | null>(null);
 
-  useEffect(() => {
+  const playlist = useMemo(() => {
     if (!id) {
-      router.replace('/library');
-      return;
+      return null;
     }
-    
+
     const foundPlaylist = playlists.find((p) => p.id === id);
-    
+
     if (!foundPlaylist && id === LIKED_SONGS_PLAYLIST_ID) {
-      // This handles the case where Liked Songs is empty and not yet in the main `playlists` array from context
-      const likedSongsPlaylist = playlists.find(p => p.id === LIKED_SONGS_PLAYLIST_ID);
-       setPlaylist(likedSongsPlaylist || { id: LIKED_SONGS_PLAYLIST_ID, name: 'Liked Songs', description: 'Your favorite tracks.', songs: [] });
-    } else {
-      setPlaylist(foundPlaylist || null);
+      return {
+        id: LIKED_SONGS_PLAYLIST_ID,
+        name: 'Liked Songs',
+        description: 'Your favorite tracks.',
+        songs: [],
+      };
     }
-  }, [id, playlists, router]);
 
-  useEffect(() => {
-    // If the playlist is deleted (e.g. from another tab), it will become null
-    if (!playlist && id) {
-        const stillExists = playlists.some(p => p.id === id);
-        if (!stillExists) {
-            router.replace('/library');
-        }
-    }
-  }, [playlists, id, playlist, router]);
+    return foundPlaylist || null;
+  }, [id, playlists]);
 
-  if (!playlist) {
+  if (!id) {
+    return (
+      <div className="text-center py-16">
+        <h1 className="text-2xl font-bold">Playlist link is invalid.</h1>
+        <p className="text-muted-foreground">Please open a playlist again from Your Library.</p>
+      </div>
+    );
+  }
+
+  if (isPlaylistsLoading) {
     return (
       <div className="text-center py-16">
         <h1 className="text-2xl font-bold">Loading playlist...</h1>
-        <p className="text-muted-foreground">This playlist might have been deleted or the link is incorrect.</p>
+      </div>
+    );
+  }
+
+  if (!playlist) {
+    return (
+      <div className="text-center py-16 space-y-2">
+        <h1 className="text-2xl font-bold">Playlist not found.</h1>
+        <p className="text-muted-foreground">This playlist may have been deleted or is not available in this account.</p>
       </div>
     );
   }
@@ -65,10 +72,8 @@ export default function PlaylistPageClient({ id }: PlaylistPageClientProps) {
   };
 
   const handleDelete = () => {
-    if (playlist) {
-      deletePlaylist(playlist.id);
-      router.push('/library');
-    }
+    deletePlaylist(playlist.id);
+    router.push('/library');
   };
 
   const isLikedSongsPlaylist = playlist.id === LIKED_SONGS_PLAYLIST_ID;

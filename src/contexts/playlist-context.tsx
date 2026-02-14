@@ -19,6 +19,7 @@ import { LIKED_SONGS_PLAYLIST_ID } from '@/lib/constants';
 
 interface PlaylistContextType {
   playlists: Playlist[];
+  isPlaylistsLoading: boolean;
   createPlaylist: (name: string, description: string) => void;
   addSongToPlaylist: (playlistId: string, song: Song) => void;
   addSongsToPlaylist: (playlistId: string, songs: Song[]) => void;
@@ -32,11 +33,12 @@ interface PlaylistContextType {
 const PlaylistContext = createContext<PlaylistContextType | undefined>(undefined);
 
 export function PlaylistProvider({ children }: { children: ReactNode }) {
-  const { user } = useUser();
+  const { user, isUserLoading } = useUser();
   const firestore = useFirestore();
   const { toast } = useToast();
   
   const [localPlaylists, setLocalPlaylists] = useState<Playlist[]>([]);
+  const [localPlaylistsLoaded, setLocalPlaylistsLoaded] = useState(false);
   
   // --- Firestore Data ---
   const playlistsCollectionRef = useMemoFirebase(() => 
@@ -55,10 +57,15 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
           parsedPlaylists.unshift({ id: LIKED_SONGS_PLAYLIST_ID, name: 'Liked Songs', description: 'Your favorite tracks.', songs: [] });
         }
         setLocalPlaylists(parsedPlaylists);
+        setLocalPlaylistsLoaded(true);
       } catch (error) {
         console.error('Failed to load playlists from localStorage', error);
         setLocalPlaylists([{ id: LIKED_SONGS_PLAYLIST_ID, name: 'Liked Songs', description: 'Your favorite tracks.', songs: [] }]);
+        setLocalPlaylistsLoaded(true);
       }
+    }
+    if (user) {
+      setLocalPlaylistsLoaded(true);
     }
   }, [user]);
 
@@ -82,6 +89,9 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
     }
     return localPlaylists;
   }, [user, firestorePlaylists, firestoreLoading, localPlaylists]);
+
+  const isPlaylistsLoading = user ? (isUserLoading || firestoreLoading) : !localPlaylistsLoaded;
+
 
 
   // --- CRUD Operations ---
@@ -290,6 +300,7 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
 
   const value = {
     playlists,
+    isPlaylistsLoading,
     createPlaylist,
     addSongToPlaylist,
     addSongsToPlaylist,
