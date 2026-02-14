@@ -77,17 +77,16 @@ const PortraitPlayer = React.memo(function PortraitPlayer({
   onSeekCommit,
   onAddToPlaylist,
   onShare,
+  onOpenCreatePlaylistDialog,
   container,
 }: any) {
   return (
-    <div className={cn("md:hidden flex flex-col fixed bottom-0 left-0 right-0 z-50 transition-colors",
-      playerMode === 'video' ? "bg-gradient-to-t from-black/70 via-black/50 to-transparent text-white" : "bg-background border-t text-foreground"
-    )}>
+    <div className={cn("md:hidden flex flex-col fixed bottom-0 left-0 right-0 z-50 transition-colors", "bg-background border-t text-foreground")}>
         {/* Row 1: Progress Bar */}
         <div className="w-full flex items-center gap-2 px-2 pt-2">
-            <span className={cn("text-xs w-10 text-right", playerMode === 'video' ? "text-gray-300" : "text-muted-foreground")}>{formatDuration(currentTime)}</span>
+            <span className={cn("text-xs w-10 text-right", "text-muted-foreground")}>{formatDuration(currentTime)}</span>
             <Slider value={[progress]} max={100} step={1} onValueChange={onSeekChange} onValueCommit={onSeekCommit} className="w-full [&>span:first-of-type]:h-4 [&_.h-2]:h-3" />
-            <span className={cn("text-xs w-10", playerMode === 'video' ? "text-gray-300" : "text-muted-foreground")}>{formatDuration(duration)}</span>
+            <span className={cn("text-xs w-10", "text-muted-foreground")}>{formatDuration(duration)}</span>
         </div>
         
         <div className="w-full flex items-center p-2">
@@ -98,31 +97,31 @@ const PortraitPlayer = React.memo(function PortraitPlayer({
                 </Avatar>
                 <div className='min-w-0'>
                     <p className="font-bold truncate text-base">{currentTrack.title}</p>
-                    <p className={cn("truncate text-sm", playerMode === 'video' ? "text-gray-300" : "text-muted-foreground")}>{currentTrack.artist}</p>
+                    <p className={cn("truncate text-sm", "text-muted-foreground")}>{currentTrack.artist}</p>
                 </div>
             </div>
             <div className="flex items-center shrink-0">
-                <Button variant="ghost" size="icon" onClick={onToggleLike} className={cn("h-8 w-8", playerMode === 'video' ? "text-white hover:bg-white/10" : "")}>
+                <Button variant="ghost" size="icon" onClick={onToggleLike} className="h-8 w-8">
                     <Heart className={cn("h-5 w-5", isLiked && "fill-red-500 text-red-500")} />
                 </Button>
                 <SheetTrigger asChild>
-                    <Button variant="ghost" size="icon" className={cn("h-8 w-8", playerMode === 'video' ? "text-white hover:bg-white/10" : "")}>
+                    <Button variant="ghost" size="icon" className="h-8 w-8">
                         <ListMusic className="h-5 w-5" />
                     </Button>
                 </SheetTrigger>
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className={cn("h-8 w-8", playerMode === 'video' ? "text-white hover:bg-white/10" : "")}><Plus className="h-5 w-5" /><span className="sr-only">Add to playlist</span></Button>
+                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={(e) => e.stopPropagation()}><Plus className="h-5 w-5" /><span className="sr-only">Add to playlist</span></Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent container={container} align="end" forceMount>
                         <DropdownMenuLabel>Add to Playlist</DropdownMenuLabel>
                         <DropdownMenuSeparator />
                         {playlists.map((playlist: any) => (<DropdownMenuItem key={playlist.id} onClick={() => onAddToPlaylist(playlist.id)}><ListMusic className="mr-2 h-4 w-4" /><span>{playlist.name}</span></DropdownMenuItem>))}
                         {playlists.length > 0 && <DropdownMenuSeparator />}
-                        <CreatePlaylistDialog container={container}><DropdownMenuItem onSelect={(e: Event) => e.preventDefault()}><PlusCircle className="mr-2 h-4 w-4" />Create new playlist</DropdownMenuItem></CreatePlaylistDialog>
+                        <DropdownMenuItem onSelect={() => onOpenCreatePlaylistDialog(true)}><PlusCircle className="mr-2 h-4 w-4" />Create new playlist</DropdownMenuItem>
                     </DropdownMenuContent>
                 </DropdownMenu>
-                <Button variant="ghost" size="icon" onClick={onShare} className={cn("h-8 w-8", playerMode === 'video' ? "text-white hover:bg-white/10" : "")}>
+                <Button variant="ghost" size="icon" onClick={onShare} className="h-8 w-8">
                     <Share2 className="h-5 w-5" />
                     <span className="sr-only">Share song</span>
                 </Button>
@@ -131,19 +130,19 @@ const PortraitPlayer = React.memo(function PortraitPlayer({
 
         <div className="w-full flex items-center justify-between px-2 pb-2">
             <div className="w-20">
-                <Button variant="ghost" size="icon" onClick={onTogglePlayerMode} className={cn("h-8 w-8", playerMode === 'video' ? "text-white hover:bg-white/10" : "")}>
+                <Button variant="ghost" size="icon" onClick={onTogglePlayerMode} className="h-8 w-8">
                     {playerMode === 'audio' ? <Video className="h-5 w-5" /> : <MusicIcon className="h-5 w-5" />}
                 </Button>
             </div>
             <div className="flex items-center">
-                <Button variant="ghost" size="icon" onClick={onPlayPrev} className={cn(playerMode === 'video' ? "text-white hover:bg-white/10" : "")}><SkipBack className="h-6 w-6" /></Button>
-                <Button variant='ghost' size="icon" className={cn("h-14 w-14", playerMode === 'video' ? "text-white hover:bg-white/10" : "")} onClick={onTogglePlayPause}>
+                <Button variant="ghost" size="icon" onClick={onPlayPrev}><SkipBack className="h-6 w-6" /></Button>
+                <Button variant='ghost' size="icon" className="h-14 w-14" onClick={onTogglePlayPause}>
                     {isPlaying ? <Pause className="h-10 w-10" /> : <Play className="h-10 w-10 ml-1" />}
                 </Button>
-                <Button variant="ghost" size="icon" onClick={onPlayNext} className={cn(playerMode === 'video' ? "text-white hover:bg-white/10" : "")}><SkipForward className="h-6 w-6" /></Button>
+                <Button variant="ghost" size="icon" onClick={onPlayNext}><SkipForward className="h-6 w-6" /></Button>
             </div>
             <div className="flex items-center gap-1 w-20">
-                <Volume2 className={cn("h-5 w-5", playerMode === 'video' ? "text-gray-300" : "text-muted-foreground")} />
+                <Volume2 className={cn("h-5 w-5", "text-muted-foreground")} />
                 <Slider defaultValue={[volume]} max={100} step={1} className="w-full" onValueChange={(value) => onVolumeChange(value[0])} />
             </div>
         </div>
@@ -172,16 +171,21 @@ const LandscapePlayer = React.memo(function LandscapePlayer({
   onSeekCommit,
   onAddToPlaylist,
   onShare,
+  onOpenCreatePlaylistDialog,
   isPip,
   showControls,
   onResetControlsTimeout,
   container,
 }: any) {
   // In video mode, this component is part of the fullscreen container. We don't use the outer fixed div.
-  const PlayerContainer = playerMode === 'video' ? 'div' : 'div';
-  const containerProps = playerMode === 'video' 
-      ? {} 
-      : { className: cn("hidden md:block w-full h-auto fixed bottom-0 left-0 right-0 z-[60]", isPip ? "opacity-0 pointer-events-none" : "opacity-100") };
+  const PlayerContainer = 'div';
+  const containerProps = {
+    className: cn(
+      'hidden md:block', // This is the key: always hide on mobile
+      playerMode === 'audio' && 'w-full h-auto fixed bottom-0 left-0 right-0 z-[60]',
+      playerMode === 'audio' && (isPip ? 'opacity-0 pointer-events-none' : 'opacity-100')
+    ),
+  };
 
   return (
     <PlayerContainer {...containerProps}>
@@ -226,14 +230,14 @@ const LandscapePlayer = React.memo(function LandscapePlayer({
                 </Button>
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon"><Plus className="h-5 w-5" /><span className="sr-only">Add to playlist</span></Button>
+                    <Button variant="ghost" size="icon" onClick={(e) => e.stopPropagation()}><Plus className="h-5 w-5" /><span className="sr-only">Add to playlist</span></Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent container={container} align="end">
                         <DropdownMenuLabel>Add to Playlist</DropdownMenuLabel>
                         <DropdownMenuSeparator />
                         {playlists.map((playlist: any) => (<DropdownMenuItem key={playlist.id} onClick={() => onAddToPlaylist(playlist.id)}><ListMusic className="mr-2 h-4 w-4" /><span>{playlist.name}</span></DropdownMenuItem>))}
                         {playlists.length > 0 && <DropdownMenuSeparator />}
-                        <CreatePlaylistDialog container={container}><DropdownMenuItem onSelect={(e: Event) => e.preventDefault()}><PlusCircle className="mr-2 h-4 w-4" />Create new playlist</DropdownMenuItem></CreatePlaylistDialog>
+                        <DropdownMenuItem onSelect={() => onOpenCreatePlaylistDialog(true)}><PlusCircle className="mr-2 h-4 w-4" />Create new playlist</DropdownMenuItem>
                     </DropdownMenuContent>
                 </DropdownMenu>
                 <SheetTrigger asChild>
@@ -407,6 +411,7 @@ export function MusicPlayer() {
   const [isQueueOpen, setIsQueueOpen] = useState(false);
   const [isPip, setIsPip] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(1.25); // 1, 1.25, 1.5
+  const [isCreatePlaylistDialogOpen, setIsCreatePlaylistDialogOpen] = useState(false);
   
   // Local state for rapidly updating progress values, managed internally
   const [progress, setProgress] = useState(0);
@@ -909,6 +914,7 @@ export function MusicPlayer() {
     onSeekCommit: handleSeekCommit,
     onAddToPlaylist: handleAddToPlaylist,
     onShare: handleShare,
+    onOpenCreatePlaylistDialog: setIsCreatePlaylistDialogOpen,
     isPip,
     showControls,
     onResetControlsTimeout: resetControlsTimeout,
@@ -917,6 +923,11 @@ export function MusicPlayer() {
 
   return (
     <>
+      <CreatePlaylistDialog
+        open={isCreatePlaylistDialogOpen}
+        onOpenChange={setIsCreatePlaylistDialogOpen}
+        container={container}
+      />
       <Sheet open={isQueueOpen} onOpenChange={setIsQueueOpen}>
         <div 
           ref={playerAndVideoContainerRef}
