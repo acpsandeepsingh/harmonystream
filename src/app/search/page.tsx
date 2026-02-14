@@ -35,6 +35,8 @@ function SearchPageContent() {
   const { playlists, addSongsToPlaylist } = usePlaylists();
   const firestore = useFirestore();
   const { isUserLoading } = useUser();
+  const [isCreatePlaylistDialogOpen, setIsCreatePlaylistDialogOpen] = useState(false);
+
 
   useEffect(() => {
     if (isUserLoading || !firestore) {
@@ -135,6 +137,10 @@ function SearchPageContent() {
 
   return (
     <div className="space-y-8">
+      <CreatePlaylistDialog
+        open={isCreatePlaylistDialogOpen}
+        onOpenChange={setIsCreatePlaylistDialogOpen}
+      />
       <div className="flex flex-wrap items-center justify-between gap-4">
         <h1 className="text-4xl font-headline font-bold text-foreground">
           Search Results for "{q}"
@@ -166,12 +172,10 @@ function SearchPageContent() {
                       </DropdownMenuItem>
                       ))}
                       {playlists.length > 0 && <DropdownMenuSeparator />}
-                      <CreatePlaylistDialog>
-                        <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-                            <PlusCircle className="mr-2 h-4 w-4" />
-                            Create new playlist
-                        </DropdownMenuItem>
-                      </CreatePlaylistDialog>
+                      <DropdownMenuItem onSelect={() => setIsCreatePlaylistDialogOpen(true)}>
+                          <PlusCircle className="mr-2 h-4 w-4" />
+                          Create new playlist
+                      </DropdownMenuItem>
                   </DropdownMenuContent>
               </DropdownMenuPortal>
           </DropdownMenu>
