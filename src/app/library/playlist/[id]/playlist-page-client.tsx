@@ -73,10 +73,7 @@ export default function PlaylistPageClient({ id }: PlaylistPageClientProps) {
   if (!id) {
     return (
       <div className="py-16 text-center">
-  if (!id) {
-    return (
-      <div className="text-center py-16">
-        <h1 className="text-2xl font-bold">Playlist link is invalid.</h1>
+         <h1 className="text-2xl font-bold">Playlist link is invalid.</h1>
         <p className="text-muted-foreground">Please open a playlist again from Your Library.</p>
       </div>
     );
