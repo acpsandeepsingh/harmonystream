@@ -36,14 +36,24 @@ const formSchema = z.object({
 });
 
 interface CreatePlaylistDialogProps {
-  children: React.ReactNode;
+  children?: React.ReactNode;
   container?: HTMLElement | null;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
-export function CreatePlaylistDialog({ children, container }: CreatePlaylistDialogProps) {
-  const [open, setOpen] = useState(false);
+export function CreatePlaylistDialog({
+  children,
+  container,
+  open: controlledOpen,
+  onOpenChange: controlledOnOpenChange,
+}: CreatePlaylistDialogProps) {
+  const [internalOpen, setInternalOpen] = useState(false);
   const { createPlaylist } = usePlaylists();
   const { toast } = useToast();
+
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = controlledOnOpenChange ?? setInternalOpen;
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -61,7 +71,7 @@ export function CreatePlaylistDialog({ children, container }: CreatePlaylistDial
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>{children}</DialogTrigger>
+      {children && <DialogTrigger asChild>{children}</DialogTrigger>}
       <DialogContent container={container} className="sm:max-w-[425px]">
         <DialogHeader>
           <DialogTitle>Create Playlist</DialogTitle>
