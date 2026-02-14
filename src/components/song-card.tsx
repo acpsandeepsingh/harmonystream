@@ -30,6 +30,14 @@ interface SongCardProps {
   };
 }
 
+// Helper to format duration from seconds to mm:ss
+const formatDuration = (seconds: number) => {
+  if (isNaN(seconds) || seconds < 0) return '0:00';
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = Math.floor(seconds % 60);
+  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+};
+
 export function SongCard({ song, onPlay, playlistContext }: SongCardProps) {
   const { currentTrack, isPlaying, playTrack, history } = usePlayer();
   const { playlists, addSongToPlaylist, removeSongFromPlaylist, isSongLiked } = usePlaylists();
@@ -115,6 +123,10 @@ export function SongCard({ song, onPlay, playlistContext }: SongCardProps) {
           >
             <Play className={`h-6 w-6 ${!isActive && 'ml-1'}`} />
           </Button>
+
+          <div className="absolute bottom-1.5 right-1.5 bg-black/70 text-white text-xs px-1.5 py-0.5 rounded-sm pointer-events-none z-10">
+            {formatDuration(song.duration)}
+          </div>
           
           <div className="absolute top-2 right-2 z-10" onClick={handleOptionsClick}>
             <DropdownMenu>
