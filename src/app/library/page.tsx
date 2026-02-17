@@ -20,7 +20,7 @@ export default function LibraryPage() {
       {playlists.length > 0 ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
           {playlists.map((playlist) => (
-            <Link key={playlist.id} href={`/library/playlist/${playlist.id}`}>
+            <Link key={playlist.id} href={`/library/playlist?id=${playlist.id}`}>
               <Card className="hover:bg-muted/50 transition-colors h-full cursor-pointer">
                 <CardHeader>
                   <CardTitle className="truncate">{playlist.name}</CardTitle>
