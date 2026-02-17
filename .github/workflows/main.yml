@@ -24,6 +24,7 @@ jobs:
 
       - name: Build website
         env:
+          BUILD_TARGET: gh-pages
           NEXT_PUBLIC_YOUTUBE_API_KEY: ${{ secrets.NEXT_PUBLIC_YOUTUBE_API_KEY }}
         run: npm run build
 
@@ -66,6 +67,7 @@ jobs:
 
       - name: Build web output
         env:
+          BUILD_TARGET: android
           NEXT_PUBLIC_YOUTUBE_API_KEY: ${{ secrets.NEXT_PUBLIC_YOUTUBE_API_KEY }}
         run: npm run build
 
