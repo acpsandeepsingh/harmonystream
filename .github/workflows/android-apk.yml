@@ -18,9 +18,6 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -29,9 +26,6 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
-
-      - name: Install Capacitor Android toolchain
-        run: npm install --no-save @capacitor/core @capacitor/android @capacitor/cli
 
       - name: Build static web assets
         env:
@@ -47,10 +41,10 @@ jobs:
           fi
 
           if [ ! -d "android" ]; then
-            npx cap add android
+            npx --yes @capacitor/cli@latest add android
           fi
 
-          npx cap sync android
+          npx --yes @capacitor/cli@latest sync android
 
       - name: Prepare Gradle wrapper
         run: |

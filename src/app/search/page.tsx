@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { CreatePlaylistDialog } from '@/components/create-playlist-dialog';
 import { searchYoutube } from '@/lib/youtube';
+import { Card, CardContent } from '@/components/ui/card';
 
 function SearchPageContent() {
   const searchParams = useSearchParams();
@@ -34,6 +35,7 @@ function SearchPageContent() {
   const { playlists, addSongsToPlaylist } = usePlaylists();
   const firestore = useFirestore();
   const { isUserLoading } = useUser();
+
 
   useEffect(() => {
     if (isUserLoading || !firestore) {
@@ -93,9 +95,9 @@ function SearchPageContent() {
         } finally {
             setLoading(false);
         }
-      } else if (source === 'youtube') {
+      } else if (source === 'youtube' || source === 'youtube-all') {
         try {
-          const fetchedSongs = await searchYoutube(q, '');
+          const fetchedSongs = await searchYoutube(q, '', { musicCategoryOnly: source === 'youtube' });
           setSongs(fetchedSongs);
 
           // Persist to global songs collection to enrich database
@@ -128,7 +130,8 @@ function SearchPageContent() {
   
   const sourceNameMap: { [key: string]: string } = {
     database: 'in Database',
-    youtube: 'on YouTube',
+    youtube: 'on YouTube (Music)',
+    'youtube-all': 'on YouTube (All)',
   };
 
   return (
@@ -164,37 +167,43 @@ function SearchPageContent() {
                       </DropdownMenuItem>
                       ))}
                       {playlists.length > 0 && <DropdownMenuSeparator />}
-                      <CreatePlaylistDialog>
-                          <DropdownMenuItem onSelect={(e: Event) => e.preventDefault()}>
-                              <PlusCircle className="mr-2 h-4 w-4" />
-                              Create new playlist
-                          </DropdownMenuItem>
+                     <CreatePlaylistDialog>
+                        <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                            <PlusCircle className="mr-2 h-4 w-4" />
+                            Create new playlist
+                        </DropdownMenuItem>
                       </CreatePlaylistDialog>
+
+                    
                   </DropdownMenuContent>
               </DropdownMenuPortal>
           </DropdownMenu>
         </div>
       </div>
-
-      {loading ? (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-          {Array.from({ length: 50 }).map((_, index) => (
-             <div key={index} className="space-y-2">
+      
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+        {loading ? (
+          Array.from({ length: 18 }).map((_, index) => (
+            <Card key={index}>
+              <CardContent className="p-0">
                 <Skeleton className="aspect-square w-full" />
-                <Skeleton className="h-4 w-3/4" />
-                <Skeleton className="h-4 w-1/2" />
-            </div>
-          ))}
-        </div>
-      ) : error ? (
-        <div className="text-destructive bg-destructive/10 p-4 rounded-lg">{error}</div>
-      ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-          {songs.length > 0 ? songs.map((song) => (
+                <div className="p-3 space-y-2">
+                  <Skeleton className="h-5 w-4/5" />
+                  <Skeleton className="h-4 w-3/5" />
+                </div>
+              </CardContent>
+            </Card>
+          ))
+        ) : error ? (
+          <div className="col-span-full text-destructive bg-destructive/10 p-4 rounded-lg">{error}</div>
+        ) : songs.length > 0 ? (
+          songs.map((song) => (
             <SongCard key={song.id} song={song} />
-          )) : <p>No songs found for your search.</p>}
-        </div>
-      )}
+          ))
+        ) : (
+          <p className="col-span-full text-center text-muted-foreground py-10">No songs found for your search.</p>
+        )}
+      </div>
     </div>
   );
 }
