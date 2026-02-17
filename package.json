@@ -7,7 +7,10 @@
     "build": "NODE_ENV=production next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "cap:add:android": "npx --yes @capacitor/cli@latest add android",
+    "cap:sync:android": "npx --yes @capacitor/cli@latest sync android",
+    "apk:debug": "npm run build && (test -d android || npm run cap:add:android) && npm run cap:sync:android && ./android/gradlew -p android assembleDebug"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.1.0",
