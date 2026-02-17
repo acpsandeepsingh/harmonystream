@@ -1,6 +1,7 @@
 'use client';
 
 import Image from 'next/image';
+import { useState } from 'react';
 import type { Song } from '@/lib/types';
 import { usePlayer } from '@/contexts/player-context';
 import { Button } from '@/components/ui/button';
@@ -30,9 +31,18 @@ interface SongCardProps {
   };
 }
 
+// Helper to format duration from seconds to mm:ss
+const formatDuration = (seconds: number) => {
+  if (isNaN(seconds) || seconds < 0) return '0:00';
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = Math.floor(seconds % 60);
+  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+};
+
 export function SongCard({ song, onPlay, playlistContext }: SongCardProps) {
   const { currentTrack, isPlaying, playTrack, history } = usePlayer();
   const { playlists, addSongToPlaylist, removeSongFromPlaylist, isSongLiked } = usePlaylists();
+  const [isCreatePlaylistDialogOpen, setIsCreatePlaylistDialogOpen] = useState(false);
   const isActive = currentTrack?.id === song.id && isPlaying;
 
   const hasBeenPlayed = history.some((playedSong) => playedSong.id === song.id);
@@ -81,13 +91,11 @@ export function SongCard({ song, onPlay, playlistContext }: SongCardProps) {
                 <span>{playlist.name}</span>
               </DropdownMenuItem>
             ))}
-            <DropdownMenuSeparator />
-            <CreatePlaylistDialog>
-                <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-                    <PlusCircle className="mr-2 h-4 w-4" />
-                    Create new playlist
-                </DropdownMenuItem>
-            </CreatePlaylistDialog>
+            {playlists.length > 0 && <DropdownMenuSeparator />}
+            <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setIsCreatePlaylistDialogOpen(true); }}>
+                <PlusCircle className="mr-2 h-4 w-4" />
+                Create new playlist
+            </DropdownMenuItem>
           </DropdownMenuSubContent>
         </DropdownMenuPortal>
       </DropdownMenuSub>
@@ -96,6 +104,10 @@ export function SongCard({ song, onPlay, playlistContext }: SongCardProps) {
 
   return (
     <Card className="group relative overflow-hidden rounded-lg shadow-md transition-all hover:shadow-xl">
+       <CreatePlaylistDialog
+        open={isCreatePlaylistDialogOpen}
+        onOpenChange={setIsCreatePlaylistDialogOpen}
+      />
       <CardContent className="p-0">
         <div className="aspect-square relative cursor-pointer" onClick={handlePlay}>
           <Image
@@ -115,6 +127,10 @@ export function SongCard({ song, onPlay, playlistContext }: SongCardProps) {
           >
             <Play className={`h-6 w-6 ${!isActive && 'ml-1'}`} />
           </Button>
+
+          <div className="absolute bottom-1.5 right-1.5 bg-black/70 text-white text-xs px-1.5 py-0.5 rounded-sm pointer-events-none z-10">
+            {formatDuration(song.duration)}
+          </div>
           
           <div className="absolute top-2 right-2 z-10" onClick={handleOptionsClick}>
             <DropdownMenu>

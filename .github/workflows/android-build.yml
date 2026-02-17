@@ -1,0 +1,46 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Prepare Android project from android.zip
+        run: |
+          set -e
+          if [ -f "android.zip" ]; then
+            unzip -o android.zip >/dev/null
+          fi
+
+          if [ ! -f "android/gradlew" ]; then
+            echo "android/gradlew not found. Ensure android.zip contains the android/ folder at repo root."
+            exit 1
+          fi
+
+          # Normalize line endings to avoid errors like:
+          # "cygpath: not found", "it: not found", "Bad substitution"
+          sed -i 's/\r$//' android/gradlew
+          chmod +x android/gradlew
+
+      - name: Build debug APK
+        shell: bash
+        run: ./android/gradlew -p android assembleDebug
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk

@@ -1,41 +1,44 @@
-# Firebase Studio
+# HarmonyStream
 
-This is a NextJS starter in Firebase Studio.
+This is a NextJS starter app for a music streaming service, built in Firebase Studio.
 
-To get started, take a look at src/app/page.tsx.
+To get started, take a look at `src/app/page.tsx`.
 
-## APK build help
+## Your Development Workflow
 
-This repository now includes Capacitor configuration so CI can generate the Android project automatically and build an APK.
+Developing and releasing your app is fully automated. Here’s the step-by-step process:
 
-### Local APK build
+1.  **Make Your Changes:** Edit the code in the `src` directory to add features, fix bugs, or change the style of your app.
 
-```bash
-npm run apk:debug
-```
+2.  **Push to GitHub:** Commit your changes and push them to the `main` branch of your repository.
 
-That command will:
+3.  **Automation Takes Over:** Pushing to `main` automatically triggers two processes in your repository's "Actions" tab:
+    *   **Website Deployment:** Your Next.js app is built and deployed to GitHub Pages.
+    *   **Android App Build:** A native Android `.apk` file is built, bundling your website inside it.
 
-1. Build the static Next.js output (`out/`)
-2. Create the Android project if missing
-3. Sync web assets to Android
-4. Build a debug APK
+4.  **Get Your Updates:**
+    *   **Live Website:** Your changes will be live at the URL below within a few minutes.
+    *   **Android App:** You can download the updated `.apk` file from the build artifacts, as described in the "Android TV App" section.
 
-APK output (debug):
 
-`android/app/build/outputs/apk/debug/app-debug.apk`
+## Deployment
 
-### GitHub Actions APK workflow
+This project is automatically deployed to GitHub Pages when changes are pushed to the `main` branch.
 
-This repository includes `.github/workflows/android-apk.yml`.
+**Live URL:** https://acpsandeepsingh.github.io/harmonystream/
 
-- Installs Node + Java + Android SDK dependencies
-- Accepts Android SDK licenses in CI
-- Installs Capacitor Android toolchain packages for CI
-- Builds static web assets
-- Auto-generates `android/` via Capacitor when missing
-- Syncs assets (`npx cap sync android`)
-- Normalizes `android/gradlew` for compatibility
-- Writes `android/local.properties` with CI SDK path when needed
-- Uses Gradle directly in CI (`gradle -p android assembleDebug`) to avoid wrapper-script shell/line-ending issues
-- Uploads the APK as `app-debug-apk`
+## Android TV App
+
+This project includes a native Android wrapper app that provides a better experience on Smart TVs by enabling smooth D-pad navigation. This app is self-contained and does not require an internet connection to run, as it bundles the website files directly into the APK.
+
+### How to Get the Android App (APK)
+
+This project is set up to automatically build the Android app for you. You do **not** need Android Studio or any other developer tools installed.
+
+1.  **Push Changes:** Make any changes you want to the app and push them to the `main` branch of your GitHub repository. This is the only step you need to do.
+
+2.  **Wait for the Build:** Pushing to `main` will automatically trigger a build process. You can monitor its progress in the **"Actions"** tab of your GitHub repository. Look for the "Build Android APK" workflow.
+
+3.  **Download the APK:** Once the workflow is complete (it will have a green checkmark), click on it. On the summary page, you will find an "Artifact" named **HarmonyStream-Android-App**. Click it to download the `app-debug.apk` file.
+
+4.  **Install the App:** Transfer the downloaded `app-debug.apk` file to your Android TV and install it. You may need to enable "Install from unknown sources" in your TV's settings.
