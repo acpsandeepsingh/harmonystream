@@ -23,6 +23,20 @@ jobs:
 
     - name: Build web app for static export
       run: npm run build
+    - name: Install Prepare Android project from android.zip
+      run: |
+          set -e
+          if [ -f "android.zip" ]; then
+            unzip -o android.zip >/dev/null
+          fi
+
+          if [ ! -f "android/gradlew" ]; then
+            echo "android/gradlew not found. Ensure android.zip contains the android/ folder at repo root."
+            exit 1
+          fi
+
+          chmod +x android/gradlew
+
 
     - name: Create Android assets directory
       run: mkdir -p android/app/src/main/assets
