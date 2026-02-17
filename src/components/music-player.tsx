@@ -4,7 +4,7 @@ import { usePlayer } from '@/contexts/player-context';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Slider } from '@/components/ui/slider';
-import { Play, Pause, SkipBack, SkipForward, Volume2, Video, Music as MusicIcon, Plus, ListMusic, PlusCircle, Heart, X, Maximize2, Minimize2, History, GripVertical } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Volume2, Video, Music as MusicIcon, Plus, ListMusic, PlusCircle, Heart, X, Maximize2, Minimize2, History, GripVertical, Share2 } from 'lucide-react';
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import YouTube from 'react-youtube';
 import type { YouTubePlayer, YouTubeProps, YouTubeEvent } from 'react-youtube';
@@ -76,17 +76,17 @@ const PortraitPlayer = React.memo(function PortraitPlayer({
   onSeekChange,
   onSeekCommit,
   onAddToPlaylist,
+  onShare,
+  onOpenCreatePlaylistDialog,
   container,
 }: any) {
   return (
-    <div className={cn("md:hidden flex flex-col fixed bottom-0 left-0 right-0 z-50 transition-colors",
-      playerMode === 'video' ? "bg-gradient-to-t from-black/70 via-black/50 to-transparent text-white" : "bg-background border-t text-foreground"
-    )}>
+    <div className={cn("md:hidden flex flex-col fixed bottom-0 left-0 right-0 z-50 transition-colors", "bg-background border-t text-foreground")}>
         {/* Row 1: Progress Bar */}
         <div className="w-full flex items-center gap-2 px-2 pt-2">
-            <span className={cn("text-xs w-10 text-right", playerMode === 'video' ? "text-gray-300" : "text-muted-foreground")}>{formatDuration(currentTime)}</span>
+            <span className={cn("text-xs w-10 text-right", "text-muted-foreground")}>{formatDuration(currentTime)}</span>
             <Slider value={[progress]} max={100} step={1} onValueChange={onSeekChange} onValueCommit={onSeekCommit} className="w-full [&>span:first-of-type]:h-4 [&_.h-2]:h-3" />
-            <span className={cn("text-xs w-10", playerMode === 'video' ? "text-gray-300" : "text-muted-foreground")}>{formatDuration(duration)}</span>
+            <span className={cn("text-xs w-10", "text-muted-foreground")}>{formatDuration(duration)}</span>
         </div>
         
         <div className="w-full flex items-center p-2">
@@ -97,48 +97,52 @@ const PortraitPlayer = React.memo(function PortraitPlayer({
                 </Avatar>
                 <div className='min-w-0'>
                     <p className="font-bold truncate text-base">{currentTrack.title}</p>
-                    <p className={cn("truncate text-sm", playerMode === 'video' ? "text-gray-300" : "text-muted-foreground")}>{currentTrack.artist}</p>
+                    <p className={cn("truncate text-sm", "text-muted-foreground")}>{currentTrack.artist}</p>
                 </div>
             </div>
             <div className="flex items-center shrink-0">
-                <Button variant="ghost" size="icon" onClick={onToggleLike} className={cn("h-8 w-8", playerMode === 'video' ? "text-white hover:bg-white/10" : "")}>
+                <Button variant="ghost" size="icon" onClick={onToggleLike} className="h-8 w-8">
                     <Heart className={cn("h-5 w-5", isLiked && "fill-red-500 text-red-500")} />
                 </Button>
                 <SheetTrigger asChild>
-                    <Button variant="ghost" size="icon" className={cn("h-8 w-8", playerMode === 'video' ? "text-white hover:bg-white/10" : "")}>
+                    <Button variant="ghost" size="icon" className="h-8 w-8">
                         <ListMusic className="h-5 w-5" />
                     </Button>
                 </SheetTrigger>
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className={cn("h-8 w-8", playerMode === 'video' ? "text-white hover:bg-white/10" : "")}><Plus className="h-5 w-5" /><span className="sr-only">Add to playlist</span></Button>
+                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={(e) => e.stopPropagation()}><Plus className="h-5 w-5" /><span className="sr-only">Add to playlist</span></Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent container={container} align="end" forceMount>
                         <DropdownMenuLabel>Add to Playlist</DropdownMenuLabel>
                         <DropdownMenuSeparator />
                         {playlists.map((playlist: any) => (<DropdownMenuItem key={playlist.id} onClick={() => onAddToPlaylist(playlist.id)}><ListMusic className="mr-2 h-4 w-4" /><span>{playlist.name}</span></DropdownMenuItem>))}
                         {playlists.length > 0 && <DropdownMenuSeparator />}
-                        <CreatePlaylistDialog container={container}><DropdownMenuItem onSelect={(e: Event) => e.preventDefault()}><PlusCircle className="mr-2 h-4 w-4" />Create new playlist</DropdownMenuItem></CreatePlaylistDialog>
+                        <DropdownMenuItem onSelect={() => onOpenCreatePlaylistDialog(true)}><PlusCircle className="mr-2 h-4 w-4" />Create new playlist</DropdownMenuItem>
                     </DropdownMenuContent>
                 </DropdownMenu>
+                <Button variant="ghost" size="icon" onClick={onShare} className="h-8 w-8">
+                    <Share2 className="h-5 w-5" />
+                    <span className="sr-only">Share song</span>
+                </Button>
             </div>
         </div>
 
         <div className="w-full flex items-center justify-between px-2 pb-2">
             <div className="w-20">
-                <Button variant="ghost" size="icon" onClick={onTogglePlayerMode} className={cn("h-8 w-8", playerMode === 'video' ? "text-white hover:bg-white/10" : "")}>
+                <Button variant="ghost" size="icon" onClick={onTogglePlayerMode} className="h-8 w-8">
                     {playerMode === 'audio' ? <Video className="h-5 w-5" /> : <MusicIcon className="h-5 w-5" />}
                 </Button>
             </div>
             <div className="flex items-center">
-                <Button variant="ghost" size="icon" onClick={onPlayPrev} className={cn(playerMode === 'video' ? "text-white hover:bg-white/10" : "")}><SkipBack className="h-6 w-6" /></Button>
-                <Button variant='ghost' size="icon" className={cn("h-14 w-14", playerMode === 'video' ? "text-white hover:bg-white/10" : "")} onClick={onTogglePlayPause}>
+                <Button variant="ghost" size="icon" onClick={onPlayPrev}><SkipBack className="h-6 w-6" /></Button>
+                <Button variant='ghost' size="icon" className="h-14 w-14" onClick={onTogglePlayPause}>
                     {isPlaying ? <Pause className="h-10 w-10" /> : <Play className="h-10 w-10 ml-1" />}
                 </Button>
-                <Button variant="ghost" size="icon" onClick={onPlayNext} className={cn(playerMode === 'video' ? "text-white hover:bg-white/10" : "")}><SkipForward className="h-6 w-6" /></Button>
+                <Button variant="ghost" size="icon" onClick={onPlayNext}><SkipForward className="h-6 w-6" /></Button>
             </div>
             <div className="flex items-center gap-1 w-20">
-                <Volume2 className={cn("h-5 w-5", playerMode === 'video' ? "text-gray-300" : "text-muted-foreground")} />
+                <Volume2 className={cn("h-5 w-5", "text-muted-foreground")} />
                 <Slider defaultValue={[volume]} max={100} step={1} className="w-full" onValueChange={(value) => onVolumeChange(value[0])} />
             </div>
         </div>
@@ -166,18 +170,30 @@ const LandscapePlayer = React.memo(function LandscapePlayer({
   onSeekChange,
   onSeekCommit,
   onAddToPlaylist,
+  onShare,
+  onOpenCreatePlaylistDialog,
   isPip,
   showControls,
   onResetControlsTimeout,
   container,
 }: any) {
+  // In video mode, this component is part of the fullscreen container. We don't use the outer fixed div.
+  const PlayerContainer = 'div';
+  const containerProps = {
+    className: cn(
+      'hidden md:block', // This is the key: always hide on mobile
+      playerMode === 'audio' && 'w-full h-auto fixed bottom-0 left-0 right-0 z-[60]',
+      playerMode === 'audio' && (isPip ? 'opacity-0 pointer-events-none' : 'opacity-100')
+    ),
+  };
+
   return (
-    <div className={cn("hidden md:block w-full h-auto fixed bottom-0 left-0 right-0 z-[60]", isPip ? "opacity-0 pointer-events-none" : "opacity-100")}>
+    <PlayerContainer {...containerProps}>
       <div 
         className={cn(
-           "w-full h-full flex flex-col p-2 gap-1 transition-all duration-300",
+           "w-full flex flex-col p-2 gap-1 transition-all duration-300",
            playerMode === 'video'
-               ? "bg-gradient-to-t from-black/80 to-transparent text-white"
+               ? "bg-gradient-to-t from-black/80 to-transparent text-white fixed bottom-0 left-0 right-0 z-[60]"
                : "border-t bg-card/95 backdrop-blur-xl text-foreground"
        )}
        onMouseMove={onResetControlsTimeout}
@@ -208,16 +224,20 @@ const LandscapePlayer = React.memo(function LandscapePlayer({
                 <Button variant="ghost" size="icon" onClick={onPlayNext}><SkipForward className="h-5 w-5" /></Button>
             </div>
             <div className="flex items-center gap-2 w-1/3 justify-end">
+                <Button variant="ghost" size="icon" onClick={onShare}>
+                    <Share2 className="h-5 w-5" />
+                    <span className="sr-only">Share</span>
+                </Button>
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon"><Plus className="h-5 w-5" /><span className="sr-only">Add to playlist</span></Button>
+                    <Button variant="ghost" size="icon" onClick={(e) => e.stopPropagation()}><Plus className="h-5 w-5" /><span className="sr-only">Add to playlist</span></Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent container={container} align="end">
                         <DropdownMenuLabel>Add to Playlist</DropdownMenuLabel>
                         <DropdownMenuSeparator />
                         {playlists.map((playlist: any) => (<DropdownMenuItem key={playlist.id} onClick={() => onAddToPlaylist(playlist.id)}><ListMusic className="mr-2 h-4 w-4" /><span>{playlist.name}</span></DropdownMenuItem>))}
                         {playlists.length > 0 && <DropdownMenuSeparator />}
-                        <CreatePlaylistDialog container={container}><DropdownMenuItem onSelect={(e: Event) => e.preventDefault()}><PlusCircle className="mr-2 h-4 w-4" />Create new playlist</DropdownMenuItem></CreatePlaylistDialog>
+                        <DropdownMenuItem onSelect={() => onOpenCreatePlaylistDialog(true)}><PlusCircle className="mr-2 h-4 w-4" />Create new playlist</DropdownMenuItem>
                     </DropdownMenuContent>
                 </DropdownMenu>
                 <SheetTrigger asChild>
@@ -233,7 +253,7 @@ const LandscapePlayer = React.memo(function LandscapePlayer({
             </div>
          </div>
       </div>
-    </div>
+    </PlayerContainer>
   );
 });
 LandscapePlayer.displayName = 'LandscapePlayer';
@@ -367,6 +387,10 @@ export function MusicPlayer() {
     shufflePlaylist,
     removeSongFromQueue,
     reorderPlaylist,
+    playerMode,
+    setPlayerMode,
+    initialLoadIsVideoShare,
+    setInitialLoadIsVideoShare,
   } = usePlayer();
 
   const { playlists, addSongToPlaylist, toggleLikeSong, isSongLiked, removeSongFromDatabase } = usePlaylists();
@@ -375,7 +399,7 @@ export function MusicPlayer() {
   const prevPathname = usePrevious(pathname);
   
   const playerRef = useRef<YouTubePlayer | null>(null);
-  const playerContainerRef = useRef<HTMLDivElement | null>(null);
+  const playerAndVideoContainerRef = useRef<HTMLDivElement | null>(null);
   
   const isSeekingRef = useRef(false);
   const isChangingTrackRef = useRef(false);
@@ -385,9 +409,9 @@ export function MusicPlayer() {
   const [container, setContainer] = useState<HTMLElement | null>(null);
   const [volume, setVolume] = useState(100);
   const [isQueueOpen, setIsQueueOpen] = useState(false);
-  const [playerMode, setPlayerMode] = useState<'audio' | 'video'>('audio');
   const [isPip, setIsPip] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(1.25); // 1, 1.25, 1.5
+  const [isCreatePlaylistDialogOpen, setIsCreatePlaylistDialogOpen] = useState(false);
   
   // Local state for rapidly updating progress values, managed internally
   const [progress, setProgress] = useState(0);
@@ -409,8 +433,8 @@ export function MusicPlayer() {
 
   useEffect(() => {
     // This makes the container available for portals after the initial render.
-    if (playerContainerRef.current) {
-      setContainer(playerContainerRef.current);
+    if (playerAndVideoContainerRef.current) {
+      setContainer(playerAndVideoContainerRef.current);
     }
   }, []);
 
@@ -558,10 +582,30 @@ export function MusicPlayer() {
   // --- UI Handlers ---
 
   const handleTogglePlayPause = useCallback(() => {
-    if(currentTrack) {
-      setGlobalIsPlaying(!isGlobalPlaying);
+    if (!currentTrack || !playerRef.current) return;
+    const player = playerRef.current;
+
+    // If it's the first interaction for a shared video, GUARANTEE playback and fullscreen.
+    if (initialLoadIsVideoShare && playerMode === 'video') {
+        const fsContainer = playerAndVideoContainerRef.current;
+        if (fsContainer && !document.fullscreenElement) {
+            fsContainer.requestFullscreen().catch(err => {
+                console.warn("Fullscreen request failed on play:", err);
+            });
+        }
+        player.playVideo(); // Directly command PLAY
+        setInitialLoadIsVideoShare(false); // Consume the flag
+        // The onStateChange event will handle setting the global state to true
+    } else {
+        // For all subsequent clicks, toggle based on current player state.
+        const state = player.getPlayerState();
+        if (state === 1) { // is playing
+            player.pauseVideo();
+        } else {
+            player.playVideo();
+        }
     }
-  }, [currentTrack, isGlobalPlaying, setGlobalIsPlaying]);
+  }, [currentTrack, initialLoadIsVideoShare, playerMode, setInitialLoadIsVideoShare]);
 
   const handleSeekChange = useCallback((value: number[]) => {
     isSeekingRef.current = true;
@@ -610,9 +654,10 @@ export function MusicPlayer() {
     if (isPip) {
       try { await document.exitPictureInPicture(); } catch (error) { console.warn('Could not exit PiP:', error); }
     }
+    setInitialLoadIsVideoShare(false);
     
     const newMode = playerMode === 'audio' ? 'video' : 'audio';
-    const fsContainer = playerContainerRef.current;
+    const fsContainer = playerAndVideoContainerRef.current;
 
     try {
       if (newMode === 'video' && fsContainer && !document.fullscreenElement) {
@@ -625,7 +670,7 @@ export function MusicPlayer() {
     }
 
     setPlayerMode(newMode);
-  }, [isPip, playerMode]);
+  }, [isPip, playerMode, setPlayerMode, setInitialLoadIsVideoShare]);
   
   const handleToggleLike = useCallback(() => {
     if (currentTrack) {
@@ -646,6 +691,35 @@ export function MusicPlayer() {
         return 1; // from 1.5 back to 1
     });
   };
+
+  const handleShare = useCallback(async () => {
+    if (!currentTrack) return;
+    const shareUrl = `${window.location.origin}/harmonystream/?share_id=${currentTrack.videoId}&mode=${playerMode}`;
+    const shareData = {
+      title: currentTrack.title,
+      text: `Listen to "${currentTrack.title}" by ${currentTrack.artist} on HarmonyStream`,
+      url: shareUrl,
+    };
+    
+    try {
+        if (navigator.share) {
+            await navigator.share(shareData);
+            toast({ title: 'Song shared!' });
+        } else {
+            await navigator.clipboard.writeText(shareUrl);
+            toast({ title: 'Link Copied!', description: 'Shareable link copied to your clipboard.' });
+        }
+    } catch (error) {
+        console.error('Error sharing:', error);
+        // Fallback for browsers that might fail clipboard write in some contexts
+        try {
+          await navigator.clipboard.writeText(shareUrl);
+          toast({ title: 'Link Copied!', description: 'Shareable link copied to your clipboard.' });
+        } catch (copyError) {
+          toast({ variant: 'destructive', title: 'Could not share', description: 'Your browser may not support this feature.' });
+        }
+    }
+  }, [currentTrack, playerMode, toast]);
 
   // --- Drag and Drop ---
   const sensors = useSensors(
@@ -686,11 +760,14 @@ export function MusicPlayer() {
 
   useEffect(() => {
     const handleFullscreenChange = () => {
-        if (!document.fullscreenElement && playerMode === 'video') setPlayerMode('audio');
+        if (!document.fullscreenElement) {
+            if (playerMode === 'video') setPlayerMode('audio');
+            setInitialLoadIsVideoShare(false);
+        }
     };
     document.addEventListener('fullscreenchange', handleFullscreenChange);
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
-  }, [playerMode]);
+  }, [playerMode, setPlayerMode, setInitialLoadIsVideoShare]);
 
   useEffect(() => {
     if (prevPathname && prevPathname !== pathname && playerMode === 'video' && !isPip) {
@@ -777,30 +854,6 @@ export function MusicPlayer() {
   
   const isCurrentlyLiked = currentTrack ? isSongLiked(currentTrack.id) : false;
   
-  const VideoBackground = (
-    <div 
-        className={cn(
-            "absolute inset-0 bg-black transition-opacity pointer-events-none overflow-hidden",
-            playerMode === 'video' ? "opacity-100 z-0" : "opacity-0"
-        )}
-     >
-        <div 
-          className="w-full h-full transition-transform duration-300 ease-in-out"
-          style={{ transform: `scale(${zoomLevel})` }}
-        >
-          <YouTube
-              videoId={currentTrack.videoId}
-              opts={{ playerVars: { playsinline: 1, controls: 0, modestbranding: 1, rel: 0, iv_load_policy: 3, objectFit: 'cover' } }}
-              onReady={onReady}
-              onStateChange={onStateChange}
-              onError={onError}
-              className="absolute top-0 left-0 w-full h-full"
-              iframeClassName="w-full h-full"
-            />
-        </div>
-    </div>
-  );
-  
   const PipControls = () => (
     <TooltipProvider>
       <div className="flex items-center justify-between p-1 bg-black/50">
@@ -860,6 +913,8 @@ export function MusicPlayer() {
     onSeekChange: handleSeekChange,
     onSeekCommit: handleSeekCommit,
     onAddToPlaylist: handleAddToPlaylist,
+    onShare: handleShare,
+    onOpenCreatePlaylistDialog: setIsCreatePlaylistDialogOpen,
     isPip,
     showControls,
     onResetControlsTimeout: resetControlsTimeout,
@@ -867,60 +922,68 @@ export function MusicPlayer() {
   };
 
   return (
-    <Sheet open={isQueueOpen} onOpenChange={setIsQueueOpen}>
-       <div ref={playerContainerRef} className="relative">
-           {VideoBackground}
-            {playerMode === 'video' && !isPip && (
-              <div className="absolute top-4 right-4 z-20 hidden md:block">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="text-white bg-black/30 hover:bg-black/50"
-                      onClick={handleToggleZoom}
-                    >
-                      {zoomLevel > 1 ? <Minimize2 className="h-5 w-5" /> : <Maximize2 className="h-5 w-5" />}
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">
-                    <p>{getZoomTooltipText()}</p>
-                  </TooltipContent>
-                </Tooltip>
-              </div>
-            )}
-           {playerMode === 'video' && !isPip && (
-              <div
-                  className={cn("absolute inset-0 z-10", showControls ? 'pointer-events-none' : 'pointer-events-auto')}
-                  onClick={showControls ? undefined : resetControlsTimeout}
-                  aria-hidden="true"
-              />
-           )}
+    <>
+      <CreatePlaylistDialog
+        open={isCreatePlaylistDialogOpen}
+        onOpenChange={setIsCreatePlaylistDialogOpen}
+        container={container}
+      />
+      <Sheet open={isQueueOpen} onOpenChange={setIsQueueOpen}>
+        <div 
+          ref={playerAndVideoContainerRef}
+          className={cn(
+            playerMode === 'video' ? "fixed inset-0 bg-black z-50" : "relative"
+          )}
+        >
+            <div className={cn(
+                "absolute inset-0 w-full h-full transition-all duration-300 ease-in-out pointer-events-none",
+                playerMode === 'video' ? 'opacity-100' : 'opacity-0'
+              )}
+              style={{ transform: `scale(${zoomLevel})` }}
+            >
+              <YouTube
+                  videoId={currentTrack.videoId}
+                  opts={{ playerVars: { playsinline: 1, controls: 0, modestbranding: 1, rel: 0, iv_load_policy: 3, objectFit: 'cover', autoplay: 1 } }}
+                  onReady={onReady}
+                  onStateChange={onStateChange}
+                  onError={onError}
+                  className="absolute top-0 left-0 w-full h-full"
+                  iframeClassName="w-full h-full"
+                />
+            </div>
            
-           {isPip && (
-              <div className="fixed bottom-5 right-5 w-64 h-auto bg-black rounded-lg shadow-2xl z-[60] overflow-hidden">
-                  <div className="relative aspect-video">
-                       <YouTube
-                          videoId={currentTrack.videoId}
-                          opts={{ playerVars: { playsinline: 1, controls: 0, modestbranding: 1, rel: 0, iv_load_policy: 3, start: currentTime } }}
-                          onReady={(e: YouTubeEvent) => {
-                              e.target.setVolume(volume);
-                              if (isGlobalPlaying) e.target.playVideo();
-                          }}
-                          className="absolute top-0 left-0 w-full h-full"
-                          iframeClassName="w-full h-full object-cover"
-                      />
-                  </div>
-                  <PipControls />
-              </div>
-           )}
-           
-          <PortraitPlayer {...playerProps} />
-          <LandscapePlayer {...playerProps} />
+           <PortraitPlayer {...playerProps} />
+           <LandscapePlayer {...playerProps} />
 
+           {playerMode === 'video' && !isPip && (
+              <>
+                <div className="absolute top-4 right-4 z-[70] hidden md:block">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="text-white bg-black/30 hover:bg-black/50"
+                        onClick={handleToggleZoom}
+                      >
+                        {zoomLevel > 1 ? <Minimize2 className="h-5 w-5" /> : <Maximize2 className="h-5 w-5" />}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">
+                      <p>{getZoomTooltipText()}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
+                <div
+                    className={cn("absolute inset-0 z-[55]", showControls ? 'pointer-events-none' : 'pointer-events-auto')}
+                    onClick={showControls ? undefined : resetControlsTimeout}
+                    aria-hidden="true"
+                />
+              </>
+           )}
        </div>
       <SheetContent 
-        container={container}
+        container={playerAndVideoContainerRef.current}
         className={cn("p-4 z-[9999]", "md:w-[400px] md:sm:w-[540px]")}
         side="right"
       >
@@ -997,5 +1060,23 @@ export function MusicPlayer() {
         </DndContext>
       </SheetContent>
     </Sheet>
+    {isPip && (
+      <div className="fixed bottom-5 right-5 w-64 h-auto bg-black rounded-lg shadow-2xl z-[60] overflow-hidden">
+          <div className="relative aspect-video">
+                <YouTube
+                  videoId={currentTrack.videoId}
+                  opts={{ playerVars: { playsinline: 1, controls: 0, modestbranding: 1, rel: 0, iv_load_policy: 3, start: currentTime, autoplay: 1 } }}
+                  onReady={(e: YouTubeEvent) => {
+                      e.target.setVolume(volume);
+                      if (isGlobalPlaying) e.target.playVideo();
+                  }}
+                  className="absolute top-0 left-0 w-full h-full"
+                  iframeClassName="w-full h-full object-cover"
+              />
+          </div>
+          <PipControls />
+      </div>
+    )}
+    </>
   );
 }

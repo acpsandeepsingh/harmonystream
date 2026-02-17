@@ -1,0 +1,49 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20.x
+        cache: 'npm'
+
+    - name: Install web dependencies
+      run: npm install
+
+    - name: Build web app for static export
+      run: npm run build
+
+    - name: Create Android assets directory
+      run: mkdir -p android/app/src/main/assets
+
+    - name: Copy web assets to Android project
+      run: cp -r out/* android/app/src/main/assets/
+
+    - name: Setup Java (JDK)
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+
+    - name: Make Gradle wrapper executable
+      run: chmod +x ./android/gradlew
+
+    - name: Build Android App (Debug)
+      run: ./android/gradlew -p android assembleDebug
+
+    - name: Upload APK as artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: HarmonyStream-Android-App
+        path: android/app/build/outputs/apk/debug/app-debug.apk
