@@ -23,7 +23,10 @@ export default function PlaylistPageClient({ id }: PlaylistPageClientProps) {
   const [playlist, setPlaylist] = useState<Playlist | null>(null);
 
   useEffect(() => {
-    if (typeof id !== 'string') return;
+    if (!id) {
+      router.replace('/library');
+      return;
+    }
     
     const foundPlaylist = playlists.find((p) => p.id === id);
     

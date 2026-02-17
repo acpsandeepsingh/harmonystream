@@ -1,0 +1,107 @@
+name: Build Website and Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
+
+jobs:
+  website:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: 'npm'
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Build website
+        env:
+          BUILD_TARGET: gh-pages
+          NEXT_PUBLIC_YOUTUBE_API_KEY: ${{ secrets.NEXT_PUBLIC_YOUTUBE_API_KEY }}
+        run: npm run build
+
+      - name: Upload website build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: website-out
+          path: out
+
+  apk:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Accept Android SDK licenses
+        run: yes | sdkmanager --licenses
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: 'npm'
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Install Capacitor packages for Android build
+        run: npm install --no-save @capacitor/core @capacitor/android @capacitor/cli
+
+      - name: Build web output
+        env:
+          BUILD_TARGET: android
+          NEXT_PUBLIC_YOUTUBE_API_KEY: ${{ secrets.NEXT_PUBLIC_YOUTUBE_API_KEY }}
+        run: npm run build
+
+      - name: Generate and sync Android project
+        run: |
+          set -e
+          test -f capacitor.config.json || (echo "capacitor.config.json is missing" && exit 1)
+          if [ ! -d android ]; then
+            npx cap add android
+          fi
+          npx cap sync android
+
+      - name: Configure Android SDK path
+        run: |
+          set -e
+          if [ -n "${ANDROID_SDK_ROOT}" ]; then
+            echo "sdk.dir=${ANDROID_SDK_ROOT}" > android/local.properties
+          elif [ -n "${ANDROID_HOME}" ]; then
+            echo "sdk.dir=${ANDROID_HOME}" > android/local.properties
+          else
+            echo "ANDROID_SDK_ROOT/ANDROID_HOME is not set" && exit 1
+          fi
+
+      - name: Normalize and enable Gradle wrapper
+        run: |
+          set -e
+          sed -i 's/\r$//' android/gradlew
+          chmod +x android/gradlew
+
+      - name: Build debug APK
+        run: cd android && ./gradlew assembleDebug
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
