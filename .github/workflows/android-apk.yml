@@ -1,0 +1,73 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Capacitor Android toolchain
+        run: npm install --no-save @capacitor/core @capacitor/android @capacitor/cli
+
+      - name: Build static web assets
+        env:
+          NEXT_PUBLIC_YOUTUBE_API_KEY: ${{ secrets.NEXT_PUBLIC_YOUTUBE_API_KEY }}
+        run: npm run build
+
+      - name: Generate Android project (if missing)
+        run: |
+          set -e
+          if [ ! -f "capacitor.config.json" ] && [ ! -f "capacitor.config.ts" ] && [ ! -f "capacitor.config.js" ]; then
+            echo "Missing Capacitor config file."
+            exit 1
+          fi
+
+          if [ ! -d "android" ]; then
+            npx cap add android
+          fi
+
+          npx cap sync android
+
+      - name: Prepare Gradle wrapper
+        run: |
+          set -e
+          if [ ! -f "android/gradlew" ]; then
+            echo "android/gradlew not found after Android generation step."
+            exit 1
+          fi
+          sed -i 's/\r$//' android/gradlew
+          chmod +x android/gradlew
+
+      - name: Build debug APK
+        shell: bash
+        run: ./android/gradlew -p android assembleDebug
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
