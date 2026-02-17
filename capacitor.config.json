@@ -1,0 +1,9 @@
+{
+  "appId": "com.harmonystream.app",
+  "appName": "HarmonyStream",
+  "webDir": "out",
+  "bundledWebRuntime": false,
+  "server": {
+    "androidScheme": "https"
+  }
+}
