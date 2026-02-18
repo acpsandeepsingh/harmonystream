@@ -45,7 +45,7 @@ Use this lightweight process whenever native Android work lands so the README st
 
 ### Current delivery checkpoint (where coding stands now)
 - **Reached milestone:** **Phase 3 foundation is now delivered** with local playlist/library operations integrated into the native Android flow.
-- **Partially present from future phases:** basic native player controls (`previous / play-pause / next`) and playback notification sync are already wired.
+- **Partially present from future phases:** basic native player controls (`previous / play-pause / next`), playback notification sync, and local resume-session restore are now wired.
 - **Not started yet:** auth/profile/settings parity and release hardening pipeline tasks.
 
 ### Phase-by-phase plan with definition of done
@@ -92,7 +92,7 @@ Use this lightweight process whenever native Android work lands so the README st
 - Basic queue stepping (`previous`/`next`) and native playback notification controls are available.
 
 **Remaining scope**
-- Robust queue management and resume position.
+- Robust queue management (beyond single active session restore).
 - Improved TV remote / D-pad focus navigation.
 - Full-screen player + richer artwork handling.
 - Background playback lifecycle hardening.
