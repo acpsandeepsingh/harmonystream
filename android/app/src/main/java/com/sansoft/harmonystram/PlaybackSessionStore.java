@@ -4,6 +4,7 @@ import android.content.Context;
 import android.content.SharedPreferences;
 
 import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
@@ -36,13 +37,16 @@ public class PlaybackSessionStore {
         JSONArray tracksArray = new JSONArray();
         for (Song song : tracks) {
             JSONObject songJson = new JSONObject();
-            songJson.put("id", safeValue(song.getId()));
-            songJson.put("title", safeValue(song.getTitle()));
-            songJson.put("artist", safeValue(song.getArtist()));
-            songJson.put("mediaUrl", safeValue(song.getMediaUrl()));
-            songJson.put("thumbnailUrl", safeValue(song.getThumbnailUrl()));
-            songJson.put("durationMs", Math.max(0L, song.getDurationMs()));
-            tracksArray.put(songJson);
+            try {
+                songJson.put("id", safeValue(song.getId()));
+                songJson.put("title", safeValue(song.getTitle()));
+                songJson.put("artist", safeValue(song.getArtist()));
+                songJson.put("mediaUrl", safeValue(song.getMediaUrl()));
+                songJson.put("thumbnailUrl", safeValue(song.getThumbnailUrl()));
+                songJson.put("durationMs", Math.max(0L, song.getDurationMs()));
+                tracksArray.put(songJson);
+            } catch (JSONException ignored) {
+            }
         }
 
         JSONArray queueIndexesArray = new JSONArray();
