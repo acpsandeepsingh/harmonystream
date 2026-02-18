@@ -120,6 +120,7 @@ Use this lightweight process whenever native Android work lands so the README st
 **What is implemented now**
 - APK CI workflow now reads optional Android Maven mirror secrets (`ANDROID_GOOGLE_MAVEN_MIRROR`, `ANDROID_MAVEN_CENTRAL_MIRROR`) to support restricted build environments.
 - APK CI now maps native `YOUTUBE_API_KEY` from repository secrets and validates generated native BuildConfig wiring during CI.
+- Local Android debug builds now run a preflight SDK resolver (`npm run android:sdk:prepare`) that auto-writes `android/local.properties` when a valid SDK is detected.
 - Next.js production builds now avoid Firebase App Hosting auto-init warnings during SSR/static generation by using explicit config on server renders.
 
 **Remaining scope**
@@ -173,7 +174,8 @@ This project is set up to automatically build the Android app for you. You do **
 If the Android app shell opens but the actual app content is blank or never loads, the cause is usually one of these:
 
 1. **Android SDK is not configured in the local shell**
-   - If Gradle fails with `SDK location not found`, set Android SDK path in either `ANDROID_HOME` or `android/local.properties` (`sdk.dir=/path/to/Android/Sdk`).
+   - Run `npm run android:sdk:prepare` to auto-detect a local SDK and write `android/local.properties` for you.
+   - If auto-detection fails, set Android SDK path in either `ANDROID_HOME` / `ANDROID_SDK_ROOT` or `android/local.properties` manually (`sdk.dir=/path/to/Android/Sdk`).
    - Then rerun: `npm run apk:debug`.
 
 2. **Missing YouTube API key at build time**
