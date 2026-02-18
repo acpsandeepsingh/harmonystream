@@ -14,6 +14,15 @@ if [ ! -f "$CLASSPATH" ]; then
   exit 1
 fi
 
+resolve_java_major_version() {
+  version_output="$1"
+  major=$(echo "$version_output" | sed -n '1s/.*version "\([0-9][0-9]*\).*/\1/p')
+  if [ -z "$major" ]; then
+    major=$(echo "$version_output" | sed -n '1s/.* \([0-9][0-9]*\)\(\.[0-9].*\)\{0,1\}.*/\1/p')
+  fi
+  echo "$major"
+}
+
 if [ -n "$JAVA_HOME" ]; then
   JAVACMD="$JAVA_HOME/bin/java"
   if [ ! -x "$JAVACMD" ]; then
@@ -22,6 +31,26 @@ if [ -n "$JAVA_HOME" ]; then
   fi
 else
   JAVACMD=java
+fi
+
+java_version_output=$($JAVACMD -version 2>&1 || true)
+java_major_version=$(resolve_java_major_version "$java_version_output")
+
+# Gradle 8.2 cannot run on very new Java runtimes (e.g. Java 25).
+# Prefer a compatible JDK if available locally (mise SDK installs).
+if [ -n "$java_major_version" ] && [ "$java_major_version" -ge 24 ]; then
+  for candidate in \
+    "$HOME/.local/share/mise/installs/java/21/bin/java" \
+    "$HOME/.local/share/mise/installs/java/17/bin/java" \
+    "$HOME/.local/share/mise/installs/java/21.0.2/bin/java" \
+    "$HOME/.local/share/mise/installs/java/17.0.2/bin/java"; do
+    if [ -x "$candidate" ]; then
+      JAVACMD="$candidate"
+      JAVA_HOME=$(cd "$(dirname "$candidate")/.." && pwd -P)
+      export JAVA_HOME
+      break
+    fi
+  done
 fi
 
 exec "$JAVACMD" \
