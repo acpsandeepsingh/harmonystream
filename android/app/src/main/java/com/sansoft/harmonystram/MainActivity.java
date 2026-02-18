@@ -40,7 +40,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
     private TrackAdapter trackAdapter;
     private int currentIndex = -1;
 
-    private final SongRepository songRepository = new YouTubeRepository();
+    private final HomeCatalogRepository homeCatalogRepository = new YouTubeHomeCatalogRepository();
     private ExecutorService backgroundExecutor;
 
     private final Handler stateSyncHandler = new Handler(Looper.getMainLooper());
@@ -129,18 +129,14 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
             registerReceiver(mediaActionReceiver, mediaFilter);
         }
 
-        loadInitialSongsFromYouTube();
+        loadHomeCatalog();
         stateSyncHandler.post(stateSyncRunnable);
     }
 
-    private void loadInitialSongsFromYouTube() {
+    private void loadHomeCatalog() {
         backgroundExecutor.execute(() -> {
             try {
-                List<SearchResult> fetchedResults = songRepository.search("trending music", 25);
-                List<Song> fetchedSongs = new ArrayList<>();
-                for (SearchResult result : fetchedResults) {
-                    fetchedSongs.add(result.getSong());
-                }
+                List<Song> fetchedSongs = homeCatalogRepository.loadHomeCatalog(25);
                 if (fetchedSongs.isEmpty()) return;
 
                 runOnUiThread(() -> {
@@ -148,7 +144,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
                     tracks.addAll(fetchedSongs);
                     trackAdapter.setTracks(tracks);
                     currentIndex = -1;
-                    nowPlayingText.setText("YouTube list loaded. Select a track.");
+                    nowPlayingText.setText("Home catalog loaded. Select a track.");
                     if (player != null) {
                         player.stop();
                         playPauseButton.setText("Play");
@@ -161,7 +157,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
             } catch (Exception error) {
                 runOnUiThread(() -> Toast.makeText(
                         MainActivity.this,
-                        "Failed to load YouTube tracks: " + error.getMessage(),
+                        "Failed to load home catalog: " + error.getMessage(),
                         Toast.LENGTH_LONG
                 ).show());
             }

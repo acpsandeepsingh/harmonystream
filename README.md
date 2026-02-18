@@ -7,6 +7,19 @@ To get started, take a look at `src/app/page.tsx`.
 
 ## Native Android Rewrite Status
 
+### Android YouTube API key setup (native)
+
+The native Android app now reads `YOUTUBE_API_KEY` from one of these sources (highest priority first):
+
+1. Gradle property `-PYOUTUBE_API_KEY=...`
+2. `android/secrets.properties` (gitignored)
+3. Environment variable `YOUTUBE_API_KEY`
+
+Quick setup:
+
+- Copy `android/secrets.properties.example` to `android/secrets.properties`.
+- Add your key: `YOUTUBE_API_KEY=...`.
+
 The Android module now runs as a fully native screen (RecyclerView + Media3/ExoPlayer player) instead of loading the web app through a WebView. The current native build includes:
 
 - Native track list UI and native playback controls (Previous/Play-Pause/Next).
@@ -19,9 +32,10 @@ The Android module now runs as a fully native screen (RecyclerView + Media3/ExoP
 ## Native Migration Roadmap (Step-by-Step)
 
 ### Phase 1 (Implemented)
-- Added Android-native `Song` model and `YouTubeRepository` data layer for YouTube search API fetches.
-- Added Android `YOUTUBE_API_KEY` configuration via Gradle `buildConfigField` from `YOUTUBE_API_KEY` env/property.
-- Main screen now tries loading a YouTube song list first; if it fails, app safely falls back to local demo streams.
+- Added Android-native models (`Song`, `Playlist`, `SearchResult`) and repository interfaces for clean UI consumption.
+- Added native YouTube data layer (`YouTubeApiClient`, `YouTubeRepository`, `YouTubeHomeCatalogRepository`) for search + details + home catalog fetches.
+- Added Android `YOUTUBE_API_KEY` config via Gradle `buildConfigField` using property/secrets/env sources (no hardcoded key).
+- Main screen home catalog now loads from repository-backed YouTube fetches.
 
 ### Next phases
 - **Phase 2:** Native search screen + filters + loading/error states.
