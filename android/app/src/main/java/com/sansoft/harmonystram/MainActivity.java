@@ -97,7 +97,7 @@ public class MainActivity extends AppCompatActivity {
         webSettings.setNeedInitialFocus(true);
 
         final WebViewAssetLoader assetLoader = new WebViewAssetLoader.Builder()
-                .addPathHandler("/", new WebViewAssetLoader.AssetsPathHandler(this))
+                .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
                 .build();
 
         webView.addJavascriptInterface(new NativeBridge(), "HarmonyAndroidBridge");
@@ -113,7 +113,7 @@ public class MainActivity extends AppCompatActivity {
             }
         });
         webView.setWebChromeClient(new WebChromeClient());
-        webView.loadUrl("https://appassets.androidplatform.net/index.html");
+        webView.loadUrl("https://appassets.androidplatform.net/assets/index.html");
 
         IntentFilter mediaFilter = new IntentFilter(PlaybackService.ACTION_MEDIA_CONTROL);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
