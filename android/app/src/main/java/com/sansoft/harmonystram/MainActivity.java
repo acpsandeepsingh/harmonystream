@@ -25,6 +25,7 @@ import androidx.webkit.WebViewAssetLoader;
 public class MainActivity extends AppCompatActivity {
 
     private WebView webView;
+    private boolean attemptedFileSchemeFallback = false;
 
     private final BroadcastReceiver mediaActionReceiver = new BroadcastReceiver() {
         @Override
@@ -97,6 +98,10 @@ public class MainActivity extends AppCompatActivity {
         webSettings.setNeedInitialFocus(true);
 
         final WebViewAssetLoader assetLoader = new WebViewAssetLoader.Builder()
+                // Serve bundled web build files from the app asset root.
+                // This supports routes like /, /search/, /_next/* and keeps client-side navigation working.
+                .addPathHandler("/", new WebViewAssetLoader.AssetsPathHandler(this))
+                // Keep legacy /assets/* requests working for older builds.
                 .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
                 .build();
 
@@ -111,9 +116,22 @@ public class MainActivity extends AppCompatActivity {
             public WebResourceResponse shouldInterceptRequest(WebView view, String url) {
                 return assetLoader.shouldInterceptRequest(android.net.Uri.parse(url));
             }
+
+            @Override
+            public void onReceivedError(WebView view, WebResourceRequest request, android.webkit.WebResourceError error) {
+                super.onReceivedError(view, request, error);
+                if (request == null || !request.isForMainFrame() || attemptedFileSchemeFallback) {
+                    return;
+                }
+
+                if (error != null && error.getErrorCode() == WebViewClient.ERROR_HOST_LOOKUP) {
+                    attemptedFileSchemeFallback = true;
+                    view.loadUrl("file:///android_asset/index.html");
+                }
+            }
         });
         webView.setWebChromeClient(new WebChromeClient());
-        webView.loadUrl("https://appassets.androidplatform.net/assets/index.html");
+        webView.loadUrl("https://appassets.androidplatform.net/index.html");
 
         IntentFilter mediaFilter = new IntentFilter(PlaybackService.ACTION_MEDIA_CONTROL);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
