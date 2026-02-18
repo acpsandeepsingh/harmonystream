@@ -19,6 +19,13 @@
         android:paddingBottom="4dp"
         android:text="Playlists" />
 
+    <TextView
+        android:id="@+id/library_sync_state"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingBottom="8dp"
+        android:text="Sync: local-only" />
+
     <ListView
         android:id="@+id/library_playlists_list"
         android:layout_width="match_parent"

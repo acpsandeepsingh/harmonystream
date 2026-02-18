@@ -20,10 +20,12 @@ public class LibraryActivity extends AppCompatActivity {
     public static final String EXTRA_SONG_INDEX = "extra_song_index";
 
     private PlaylistStorageRepository playlistStorageRepository;
+    private PlaylistSyncManager playlistSyncManager;
 
     private ListView playlistsList;
     private ListView songsList;
     private TextView selectedPlaylistTitle;
+    private TextView syncStateText;
     private TextView emptySongsState;
     private Button playAllButton;
     private Button removeTrackButton;
@@ -39,10 +41,12 @@ public class LibraryActivity extends AppCompatActivity {
         setContentView(R.layout.activity_library);
 
         playlistStorageRepository = new PlaylistStorageRepository(this);
+        playlistSyncManager = new PlaylistSyncManager(this);
 
         playlistsList = findViewById(R.id.library_playlists_list);
         songsList = findViewById(R.id.library_songs_list);
         selectedPlaylistTitle = findViewById(R.id.library_selected_playlist_title);
+        syncStateText = findViewById(R.id.library_sync_state);
         emptySongsState = findViewById(R.id.library_empty_songs_state);
         playAllButton = findViewById(R.id.btn_library_play_all);
         removeTrackButton = findViewById(R.id.btn_library_remove_track);
@@ -77,6 +81,7 @@ public class LibraryActivity extends AppCompatActivity {
             Song selectedSong = songs.get(selectedSongIndex);
             playlistStorageRepository.removeSongFromPlaylist(selectedPlaylist.getId(), selectedSong);
             Toast.makeText(this, "Track removed", Toast.LENGTH_SHORT).show();
+            runSync();
             reloadPlaylists(selectedPlaylist.getId());
         });
 
@@ -89,12 +94,19 @@ public class LibraryActivity extends AppCompatActivity {
 
             playlistStorageRepository.deletePlaylist(selectedPlaylist.getId());
             Toast.makeText(this, "Playlist deleted", Toast.LENGTH_SHORT).show();
+            runSync();
             reloadPlaylists(null);
         });
 
         closeButton.setOnClickListener(v -> finish());
 
+        runSync();
         reloadPlaylists(null);
+    }
+
+    private void runSync() {
+        PlaylistSyncModels.SyncStatus status = playlistSyncManager.syncNow();
+        syncStateText.setText("Sync: " + status.state + " · " + status.detail);
     }
 
     private void reloadPlaylists(String preferredPlaylistId) {
