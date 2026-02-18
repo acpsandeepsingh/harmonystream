@@ -15,11 +15,16 @@ import java.util.UUID;
 public class PlaylistStorageRepository {
     private static final String PREFS_NAME = "harmonystream_playlists";
     private static final String KEY_PLAYLISTS = "playlists";
+    private static final String KEY_PLAYLISTS_BY_ACCOUNT = "playlists_by_account";
+    private static final String KEY_LEGACY_MIGRATED = "legacy_playlists_migrated";
+    private static final String ACCOUNT_GUEST = "guest";
 
     private final SharedPreferences prefs;
+    private final NativeUserSessionStore userSessionStore;
 
     public PlaylistStorageRepository(Context context) {
         this.prefs = context.getApplicationContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        this.userSessionStore = new NativeUserSessionStore(context.getApplicationContext());
     }
 
     public synchronized List<Playlist> getPlaylists() {
@@ -120,7 +125,14 @@ public class PlaylistStorageRepository {
     }
 
     private List<Playlist> readPlaylists() {
-        String raw = prefs.getString(KEY_PLAYLISTS, "[]");
+        migrateLegacyPlaylistsIfNeeded();
+        JSONObject playlistsByAccount = readPlaylistsByAccountObject();
+        String raw = "[]";
+        JSONArray scopeArray = playlistsByAccount.optJSONArray(getCurrentAccountKey());
+        if (scopeArray != null) {
+            raw = scopeArray.toString();
+        }
+
         List<Playlist> result = new ArrayList<>();
         try {
             JSONArray array = new JSONArray(raw);
@@ -158,6 +170,7 @@ public class PlaylistStorageRepository {
     }
 
     private void writePlaylists(List<Playlist> playlists) {
+        migrateLegacyPlaylistsIfNeeded();
         JSONArray playlistArray = new JSONArray();
 
         for (Playlist playlist : playlists) {
@@ -185,6 +198,53 @@ public class PlaylistStorageRepository {
             }
         }
 
-        prefs.edit().putString(KEY_PLAYLISTS, playlistArray.toString()).apply();
+        JSONObject playlistsByAccount = readPlaylistsByAccountObject();
+        try {
+            playlistsByAccount.put(getCurrentAccountKey(), playlistArray);
+        } catch (JSONException ignored) {
+        }
+
+        prefs.edit().putString(KEY_PLAYLISTS_BY_ACCOUNT, playlistsByAccount.toString()).apply();
+    }
+
+    private JSONObject readPlaylistsByAccountObject() {
+        String raw = prefs.getString(KEY_PLAYLISTS_BY_ACCOUNT, "{}");
+        try {
+            return new JSONObject(raw);
+        } catch (JSONException ignored) {
+            return new JSONObject();
+        }
+    }
+
+    private String getCurrentAccountKey() {
+        NativeUserSessionStore.UserSession session = userSessionStore.getSession();
+        if (session == null || !session.isSignedIn()) {
+            return ACCOUNT_GUEST;
+        }
+
+        String email = safe(session.getEmail());
+        return email.isEmpty() ? ACCOUNT_GUEST : "user:" + email;
+    }
+
+    private void migrateLegacyPlaylistsIfNeeded() {
+        boolean alreadyMigrated = prefs.getBoolean(KEY_LEGACY_MIGRATED, false);
+        if (alreadyMigrated) {
+            return;
+        }
+
+        String legacyRaw = prefs.getString(KEY_PLAYLISTS, null);
+        JSONObject playlistsByAccount = readPlaylistsByAccountObject();
+        if (legacyRaw != null) {
+            try {
+                playlistsByAccount.put(getCurrentAccountKey(), new JSONArray(legacyRaw));
+            } catch (JSONException ignored) {
+            }
+        }
+
+        prefs.edit()
+                .putString(KEY_PLAYLISTS_BY_ACCOUNT, playlistsByAccount.toString())
+                .putBoolean(KEY_LEGACY_MIGRATED, true)
+                .remove(KEY_PLAYLISTS)
+                .apply();
     }
 }

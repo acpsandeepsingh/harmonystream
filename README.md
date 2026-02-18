@@ -74,14 +74,15 @@ Use this lightweight process whenever native Android work lands so the README st
 **Exit criteria outcome**
 - Core behavior now matches web search intent for source selection and results rendering.
 
-#### Phase 3 — Native playlists & library 🟠 In progress (local-first foundation shipped)
+#### Phase 3 — Native playlists & library 🟠 In progress (account-aware local foundation shipped)
 **What is implemented now**
 - Local-first playlist storage layer backed by native SharedPreferences persistence.
+- Playlist persistence is now account-scoped locally (guest vs signed-in profile identity) with legacy migration support.
 - Native create playlist, add selected track to playlist, remove track, delete playlist, and play-all flow.
 - Dedicated native library screen/navigation from the main Android flow with playlist and per-track actions (play, remove, delete).
 
 **Remaining scope**
-- Firestore-backed sync and account-aware playlist reconciliation.
+- Firestore-backed sync and cross-device playlist reconciliation.
 
 **Exit criteria**
 - Feature parity with the web playlist workflow.
