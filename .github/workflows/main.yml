@@ -67,6 +67,9 @@ jobs:
           distribution: temurin
           java-version: '21'
 
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v3
+
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
@@ -130,7 +133,14 @@ jobs:
           chmod +x android/gradlew
 
       - name: Build debug APK
-        run: cd android && ./gradlew assembleDebug --stacktrace
+        run: |
+          set -e
+          cd android
+          if [ -f gradle/wrapper/gradle-wrapper.jar ]; then
+            ./gradlew assembleDebug --stacktrace
+          else
+            gradle assembleDebug --stacktrace
+          fi
 
       - name: Verify APK was created
         run: |
