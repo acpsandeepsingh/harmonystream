@@ -7,6 +7,8 @@ To get started, take a look at `src/app/page.tsx`.
 
 ## Native Android Rewrite Status
 
+For a clear website-to-native parity plan, see `docs/native-android-website-parity.md`.
+
 ### Android YouTube API key setup (native)
 
 The native Android app now reads `YOUTUBE_API_KEY` from one of these sources (highest priority first):
