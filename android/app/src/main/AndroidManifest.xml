@@ -35,6 +35,12 @@
             </intent-filter>
 
         </activity>
+        <activity
+            android:name=".LibraryActivity"
+            android:label="Library"
+            android:exported="false"
+            android:theme="@style/AppTheme.NoActionBarLaunch" />
+
         <service
             android:name=".PlaybackService"
             android:enabled="true"

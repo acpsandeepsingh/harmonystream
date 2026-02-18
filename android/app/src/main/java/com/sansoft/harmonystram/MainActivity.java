@@ -35,6 +35,8 @@ import java.util.concurrent.Executors;
 
 public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTrackClickListener {
 
+    private static final int REQUEST_LIBRARY = 6001;
+
     private static final String SOURCE_YOUTUBE = "youtube";
     private static final String SOURCE_YOUTUBE_ALL = "youtube-all";
     private static final int DEFAULT_SEARCH_MAX_RESULTS = 25;
@@ -163,7 +165,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         nextButton.setOnClickListener(v -> playNext());
         createPlaylistButton.setOnClickListener(v -> showCreatePlaylistDialog());
         addToPlaylistButton.setOnClickListener(v -> showAddToPlaylistDialog());
-        libraryButton.setOnClickListener(v -> showLibraryDialog());
+        libraryButton.setOnClickListener(v -> openLibraryScreen());
         profileButton.setOnClickListener(v -> showProfileDialog());
 
         IntentFilter mediaFilter = new IntentFilter(PlaybackService.ACTION_MEDIA_CONTROL);
@@ -378,6 +380,12 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
                     ).show();
                 })
                 .show();
+    }
+
+
+    private void openLibraryScreen() {
+        Intent intent = new Intent(this, LibraryActivity.class);
+        startActivityForResult(intent, REQUEST_LIBRARY);
     }
 
     private void showLibraryDialog() {
@@ -597,6 +605,41 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
                 });
             }
         });
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != REQUEST_LIBRARY || resultCode != RESULT_OK || data == null) {
+            return;
+        }
+
+        String playlistId = data.getStringExtra(LibraryActivity.EXTRA_PLAYLIST_ID);
+        int songIndex = data.getIntExtra(LibraryActivity.EXTRA_SONG_INDEX, -1);
+        if (playlistId == null || playlistId.isEmpty()) {
+            return;
+        }
+
+        Playlist playlist = findPlaylistById(playlistId);
+        if (playlist == null) {
+            Toast.makeText(this, "Playlist no longer exists", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        playPlaylist(playlist);
+        if (songIndex >= 0) {
+            playTrack(songIndex);
+        }
+    }
+
+    private Playlist findPlaylistById(String playlistId) {
+        List<Playlist> playlists = playlistStorageRepository.getPlaylists();
+        for (Playlist playlist : playlists) {
+            if (playlist.getId().equals(playlistId)) {
+                return playlist;
+            }
+        }
+        return null;
     }
 
     @Override
