@@ -2,7 +2,12 @@ import type { Metadata } from 'next';
 import { Providers } from '@/components/providers';
 import { Toaster } from '@/components/ui/toaster';
 import './globals.css';
-import { FirebaseClientProvider } from '@/firebase/client-provider';
+import dynamic from 'next/dynamic';
+
+const FirebaseClientProvider = dynamic(
+  () => import('@/firebase/client-provider').then((mod) => mod.FirebaseClientProvider),
+  { ssr: false }
+);
 
 export const metadata: Metadata = {
   title: 'HarmonyStream',
