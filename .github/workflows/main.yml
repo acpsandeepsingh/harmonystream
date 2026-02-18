@@ -126,7 +126,7 @@ jobs:
           set -e
           if [ ! -f android/gradle/wrapper/gradle-wrapper.jar ]; then
             echo "gradle-wrapper.jar missing, generating it with local Gradle"
-            gradle -p android wrapper --gradle-version 8.2 --distribution-type bin --no-daemon
+            gradle -p android wrapper --gradle-version 8.2 --distribution-type bin
           fi
 
       - name: Normalize and enable Gradle wrapper
