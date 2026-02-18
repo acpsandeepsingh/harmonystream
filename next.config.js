@@ -7,6 +7,10 @@ const nextConfig = {
   output: 'export',
   images: { unoptimized: true },
   trailingSlash: true,
+  // Relative assets are required for the standalone Android WebView build.
+  ...(isAndroidBuild && {
+    assetPrefix: './',
+  }),
   
   // Only use basePath for web builds (GitHub Pages)
   // NOT for Android builds
