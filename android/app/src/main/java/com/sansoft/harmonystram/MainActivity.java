@@ -56,6 +56,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
     private final HomeCatalogRepository homeCatalogRepository = new YouTubeHomeCatalogRepository();
     private final SongRepository searchRepository = new YouTubeRepository();
     private PlaylistStorageRepository playlistStorageRepository;
+    private PlaybackSessionStore playbackSessionStore;
     private ExecutorService backgroundExecutor;
 
     private final Handler stateSyncHandler = new Handler(Looper.getMainLooper());
@@ -100,6 +101,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
 
         backgroundExecutor = Executors.newSingleThreadExecutor();
         playlistStorageRepository = new PlaylistStorageRepository(this);
+        playbackSessionStore = new PlaybackSessionStore(this);
 
         nowPlayingText = findViewById(R.id.now_playing);
         trackListStatus = findViewById(R.id.track_list_status);
@@ -163,8 +165,50 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
             registerReceiver(mediaActionReceiver, mediaFilter);
         }
 
-        loadHomeCatalog();
+        boolean restoredSession = restorePlaybackSession();
+        if (!restoredSession) {
+            loadHomeCatalog();
+        }
         stateSyncHandler.post(stateSyncRunnable);
+    }
+
+    private boolean restorePlaybackSession() {
+        PlaybackSessionStore.PlaybackSession session = playbackSessionStore.load();
+        if (!session.hasTracks()) {
+            return false;
+        }
+
+        tracks.clear();
+        tracks.addAll(session.getTracks());
+        trackAdapter.setTracks(tracks);
+
+        currentIndex = sanitizeIndex(session.getCurrentIndex(), tracks.size());
+        selectedTrackIndex = sanitizeIndex(session.getSelectedIndex(), tracks.size());
+
+        if (currentIndex >= 0) {
+            Song currentSong = tracks.get(currentIndex);
+            MediaItem mediaItem = new MediaItem.Builder()
+                    .setUri(currentSong.getMediaUrl())
+                    .setMediaId(String.valueOf(currentIndex))
+                    .build();
+            player.setMediaItem(mediaItem);
+            player.prepare();
+            long positionMs = Math.max(0L, session.getPositionMs());
+            if (positionMs > 0) {
+                player.seekTo(positionMs);
+            }
+            nowPlayingText.setText("Ready to resume: " + currentSong.getTitle() + " • " + currentSong.getArtist());
+        } else {
+            nowPlayingText.setText("Session restored. Select a track.");
+        }
+
+        trackListStatus.setVisibility(View.GONE);
+        playPauseButton.setText("Play");
+        return true;
+    }
+
+    private int sanitizeIndex(int index, int size) {
+        return (index >= 0 && index < size) ? index : -1;
     }
 
     private void setupSourceSpinner() {
@@ -476,6 +520,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         player.play();
         updateNowPlayingText();
         syncPlaybackStateToNotification();
+        persistPlaybackSession();
     }
 
     private void openYouTubeVideo(String videoUrl) {
@@ -518,6 +563,16 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
             player.play();
         }
         syncPlaybackStateToNotification();
+        persistPlaybackSession();
+    }
+
+    private void persistPlaybackSession() {
+        if (playbackSessionStore == null) return;
+        long positionMs = 0L;
+        if (player != null && currentIndex >= 0 && currentIndex < tracks.size()) {
+            positionMs = Math.max(0L, player.getCurrentPosition());
+        }
+        playbackSessionStore.save(tracks, currentIndex, selectedTrackIndex, positionMs);
     }
 
     private void updateNowPlayingText() {
@@ -560,6 +615,8 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         if (backgroundExecutor != null) {
             backgroundExecutor.shutdownNow();
         }
+
+        persistPlaybackSession();
 
         if (player != null) {
             player.release();
