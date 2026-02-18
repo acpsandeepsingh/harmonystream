@@ -65,6 +65,14 @@ android {
                         ?: ""
         )
         buildConfigField "String", "YOUTUBE_API_KEY", "\"${ytKey}\""
+        def playlistSyncEnabledValue = (
+                project.findProperty("PLAYLIST_SYNC_ENABLED")
+                        ?: System.getenv("PLAYLIST_SYNC_ENABLED")
+                        ?: "true"
+        ).toString().toLowerCase()
+        def playlistSyncEnabled = playlistSyncEnabledValue == "true" || playlistSyncEnabledValue == "1" || playlistSyncEnabledValue == "yes"
+        buildConfigField "boolean", "PLAYLIST_SYNC_ENABLED", String.valueOf(playlistSyncEnabled)
+
     }
 
     buildTypes {

@@ -66,6 +66,7 @@ public class ProfileActivity extends AppCompatActivity {
         findViewById(R.id.btn_profile_signup_submit).setOnClickListener(v -> signupFromForm());
         findViewById(R.id.btn_profile_update_display_name).setOnClickListener(v -> updateDisplayName());
         findViewById(R.id.btn_profile_sign_out).setOnClickListener(v -> signOut());
+        findViewById(R.id.btn_profile_sync_now).setOnClickListener(v -> runManualSync());
 
         refreshUi();
     }
@@ -139,6 +140,12 @@ public class ProfileActivity extends AppCompatActivity {
         Toast.makeText(this, "Signed out", Toast.LENGTH_SHORT).show();
         refreshUi();
         showSection(loginSection);
+    }
+
+    private void runManualSync() {
+        PlaylistSyncModels.SyncStatus status = playlistSyncManager.syncNow();
+        syncStateText.setText("Sync: " + status.state + " · " + status.detail);
+        Toast.makeText(this, "Sync status: " + status.state, Toast.LENGTH_SHORT).show();
     }
 
     private void refreshUi() {
