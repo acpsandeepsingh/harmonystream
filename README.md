@@ -31,16 +31,76 @@ The Android module now runs as a fully native screen (RecyclerView + Media3/ExoP
 
 ## Native Migration Roadmap (Step-by-Step)
 
-### Phase 1 (Implemented)
-- Added Android-native models (`Song`, `Playlist`, `SearchResult`) and repository interfaces for clean UI consumption.
-- Added native YouTube data layer (`YouTubeApiClient`, `YouTubeRepository`, `YouTubeHomeCatalogRepository`) for search + details + home catalog fetches.
-- Added Android `YOUTUBE_API_KEY` config via Gradle `buildConfigField` using property/secrets/env sources (no hardcoded key).
-- Main screen home catalog now loads from repository-backed YouTube fetches.
+### Current delivery checkpoint (where coding stands now)
+- **Reached milestone:** **Phase 1 is complete** and integrated into the native Android flow.
+- **Partially present from future phases:** basic native player controls (`previous / play-pause / next`) and playback notification sync are already wired.
+- **Not started yet:** full native search page, playlist/library parity, auth/profile/settings parity, and release hardening pipeline tasks.
 
-### Next phases
-- **Phase 2:** Native search screen + filters + loading/error states.
-- **Phase 3:** Native playlist/library management with Firebase sync.
-- **Phase 4:** Full native YouTube playback/session handling and TV polish.
+### Phase-by-phase plan with definition of done
+
+#### Phase 1 — Native data layer (YouTube + models) ✅ Complete
+**What was required**
+- Android data models (`Song`, `Playlist`, `SearchResult`).
+- YouTube API client (search + video details).
+- API key through Android build config/secrets (not hardcoded).
+- Repository classes/interfaces for UI consumption.
+- Replace `seedNativeTrackCatalog()` with fetched data.
+
+**What is implemented now**
+- Models and repository interfaces are in place and used by the native app.
+- `YouTubeApiClient` supports search and video details endpoints.
+- `YOUTUBE_API_KEY` is injected via Gradle property / `android/secrets.properties` / env var.
+- Home catalog load is repository-backed using YouTube query results.
+
+#### Phase 2 — Native search screen 🟡 Pending
+**Scope to implement**
+- Native search UI: query input + source selector (`youtube` / `youtube-all`).
+- Call repository search methods from UI.
+- Render loading/error/empty/success states.
+- On search result tap: play through ExoPlayer and sync playback notification.
+
+**Exit criteria**
+- Behavior matches current web search flow first, even if visual polish comes later.
+
+#### Phase 3 — Native playlists & library 🟡 Pending
+**Scope to implement**
+- Playlist storage layer (Firestore or local-first with sync).
+- Add to playlist, create/delete playlist, play all.
+- Native library page with playlist details + track operations.
+
+**Exit criteria**
+- Feature parity with the web playlist workflow.
+
+#### Phase 4 — Player parity + TV polish 🟠 In progress (foundation only)
+**Already available (foundation)**
+- Basic queue stepping (`previous`/`next`) and native playback notification controls are available.
+
+**Remaining scope**
+- Robust queue management and resume position.
+- Improved TV remote / D-pad focus navigation.
+- Full-screen player + richer artwork handling.
+- Background playback lifecycle hardening.
+
+**Exit criteria**
+- Stable TV-first UX under long sessions and app lifecycle changes.
+
+#### Phase 5 — Auth/profile/settings parity 🟡 Pending
+**Scope to implement**
+- Native login/signup/profile/settings screens.
+- Firebase auth/session integration.
+- User-specific sync rules migration.
+
+**Exit criteria**
+- Fully native end-to-end authenticated flow.
+
+#### Phase 6 — Build/release reliability 🟡 Pending
+**Scope to implement**
+- Final Gradle/repository mirror setup for target environment.
+- CI for signed APK/AAB release builds.
+- Crash reporting, analytics, and regression checklist.
+
+**Exit criteria**
+- Production-ready delivery pipeline with repeatable releases.
 
 ## Your Development Workflow
 
