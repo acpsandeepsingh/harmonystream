@@ -6,13 +6,19 @@ public class Song {
     private final String artist;
     private final String mediaUrl;
     private final String thumbnailUrl;
+    private final long durationMs;
 
     public Song(String id, String title, String artist, String mediaUrl, String thumbnailUrl) {
+        this(id, title, artist, mediaUrl, thumbnailUrl, 0L);
+    }
+
+    public Song(String id, String title, String artist, String mediaUrl, String thumbnailUrl, long durationMs) {
         this.id = id;
         this.title = title;
         this.artist = artist;
         this.mediaUrl = mediaUrl;
         this.thumbnailUrl = thumbnailUrl;
+        this.durationMs = durationMs;
     }
 
     public String getId() {
@@ -33,5 +39,9 @@ public class Song {
 
     public String getThumbnailUrl() {
         return thumbnailUrl;
+    }
+
+    public long getDurationMs() {
+        return durationMs;
     }
 }

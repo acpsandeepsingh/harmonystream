@@ -3,65 +3,35 @@ package com.sansoft.harmonystram;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import java.io.BufferedReader;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
-public class YouTubeRepository {
+public class YouTubeRepository implements SongRepository {
 
-    private static final String YOUTUBE_SEARCH_API_URL = "https://www.googleapis.com/youtube/v3/search";
+    private final YouTubeApiClient apiClient;
 
-    public interface SongFetchCallback {
-        void onSuccess(List<Song> songs);
-        void onError(String message);
+    public YouTubeRepository() {
+        this(new YouTubeApiClient());
     }
 
-    public List<Song> searchSongs(String query, int maxResults) throws Exception {
-        String apiKey = BuildConfig.YOUTUBE_API_KEY;
-        if (apiKey == null || apiKey.isEmpty() || "YOUR_YOUTUBE_API_KEY_HERE".equals(apiKey)) {
-            throw new IllegalStateException("Missing YouTube API key. Set YOUTUBE_API_KEY in local.properties or env.");
-        }
+    public YouTubeRepository(YouTubeApiClient apiClient) {
+        this.apiClient = apiClient;
+    }
 
-        StringBuilder urlBuilder = new StringBuilder(YOUTUBE_SEARCH_API_URL)
-                .append("?part=snippet")
-                .append("&maxResults=").append(Math.max(1, Math.min(maxResults, 50)))
-                .append("&q=").append(URLEncoder.encode(query, StandardCharsets.UTF_8.name()))
-                .append("&type=video")
-                .append("&videoCategoryId=10")
-                .append("&key=").append(URLEncoder.encode(apiKey, StandardCharsets.UTF_8.name()));
-
-        HttpURLConnection connection = (HttpURLConnection) new URL(urlBuilder.toString()).openConnection();
-        connection.setRequestMethod("GET");
-        connection.setConnectTimeout(15000);
-        connection.setReadTimeout(15000);
-
-        int responseCode = connection.getResponseCode();
-        InputStream stream = responseCode >= 200 && responseCode < 300
-                ? connection.getInputStream()
-                : connection.getErrorStream();
-
-        String responseBody = readStream(stream);
-
-        if (responseCode < 200 || responseCode >= 300) {
-            throw new IllegalStateException("YouTube API error (" + responseCode + "): " + responseBody);
-        }
-
-        JSONObject json = new JSONObject(responseBody);
+    @Override
+    public List<SearchResult> search(String query, int maxResults) throws Exception {
+        JSONObject json = apiClient.searchVideos(query, maxResults);
         JSONArray items = json.optJSONArray("items");
-        List<Song> songs = new ArrayList<>();
+        List<SearchResult> results = new ArrayList<>();
 
         if (items == null) {
-            return songs;
+            return results;
         }
 
         for (int i = 0; i < items.length(); i++) {
-            JSONObject item = items.getJSONObject(i);
+            JSONObject item = items.optJSONObject(i);
+            if (item == null) continue;
+
             JSONObject idObj = item.optJSONObject("id");
             JSONObject snippet = item.optJSONObject("snippet");
             if (idObj == null || snippet == null) continue;
@@ -71,36 +41,101 @@ public class YouTubeRepository {
 
             String title = snippet.optString("title", "Untitled");
             String artist = snippet.optString("channelTitle", "Unknown Artist");
+            String thumbnailUrl = extractThumbnailUrl(snippet.optJSONObject("thumbnails"));
 
-            JSONObject thumbnails = snippet.optJSONObject("thumbnails");
-            String thumbnailUrl = "";
-            if (thumbnails != null) {
-                JSONObject high = thumbnails.optJSONObject("high");
-                if (high != null) {
-                    thumbnailUrl = high.optString("url", "");
-                }
-            }
-
-            // For Phase 1 we keep a valid playable URL field placeholder.
-            // Full official YouTube-native playback handling is implemented in later phases.
-            String mediaUrl = "https://www.youtube.com/watch?v=" + videoId;
-            songs.add(new Song(videoId, title, artist, mediaUrl, thumbnailUrl));
+            Song song = new Song(
+                    videoId,
+                    title,
+                    artist,
+                    "https://www.youtube.com/watch?v=" + videoId,
+                    thumbnailUrl,
+                    0L
+            );
+            results.add(new SearchResult(song, "youtube"));
         }
 
-        return songs;
+        return results;
     }
 
-    private String readStream(InputStream inputStream) throws Exception {
-        if (inputStream == null) {
-            return "";
+    @Override
+    public Song getVideoDetails(String videoId) throws Exception {
+        JSONObject json = apiClient.getVideoDetails(videoId);
+        JSONArray items = json.optJSONArray("items");
+        if (items == null || items.length() == 0) {
+            throw new IllegalStateException("No video details found for id: " + videoId);
         }
-        BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8));
-        StringBuilder builder = new StringBuilder();
-        String line;
-        while ((line = reader.readLine()) != null) {
-            builder.append(line);
+
+        JSONObject video = items.getJSONObject(0);
+        JSONObject snippet = video.optJSONObject("snippet");
+        JSONObject contentDetails = video.optJSONObject("contentDetails");
+
+        String title = snippet != null ? snippet.optString("title", "Untitled") : "Untitled";
+        String artist = snippet != null ? snippet.optString("channelTitle", "Unknown Artist") : "Unknown Artist";
+        String thumbnailUrl = snippet != null ? extractThumbnailUrl(snippet.optJSONObject("thumbnails")) : "";
+        long durationMs = parseDurationMs(contentDetails != null ? contentDetails.optString("duration", "") : "");
+
+        return new Song(
+                videoId,
+                title,
+                artist,
+                "https://www.youtube.com/watch?v=" + videoId,
+                thumbnailUrl,
+                durationMs
+        );
+    }
+
+    private String extractThumbnailUrl(JSONObject thumbnails) {
+        if (thumbnails == null) return "";
+
+        JSONObject maxres = thumbnails.optJSONObject("maxres");
+        if (maxres != null && !maxres.optString("url", "").isEmpty()) {
+            return maxres.optString("url", "");
         }
-        reader.close();
-        return builder.toString();
+
+        JSONObject high = thumbnails.optJSONObject("high");
+        if (high != null && !high.optString("url", "").isEmpty()) {
+            return high.optString("url", "");
+        }
+
+        JSONObject medium = thumbnails.optJSONObject("medium");
+        if (medium != null && !medium.optString("url", "").isEmpty()) {
+            return medium.optString("url", "");
+        }
+
+        JSONObject def = thumbnails.optJSONObject("default");
+        return def != null ? def.optString("url", "") : "";
+    }
+
+    private long parseDurationMs(String isoDuration) {
+        if (isoDuration == null || isoDuration.isEmpty() || !isoDuration.startsWith("PT")) {
+            return 0L;
+        }
+
+        long hours = 0L;
+        long minutes = 0L;
+        long seconds = 0L;
+
+        String value = isoDuration.substring(2);
+        StringBuilder number = new StringBuilder();
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (Character.isDigit(c)) {
+                number.append(c);
+                continue;
+            }
+            if (number.length() == 0) continue;
+
+            long parsed = Long.parseLong(number.toString());
+            if (c == 'H') {
+                hours = parsed;
+            } else if (c == 'M') {
+                minutes = parsed;
+            } else if (c == 'S') {
+                seconds = parsed;
+            }
+            number.setLength(0);
+        }
+
+        return ((hours * 60L + minutes) * 60L + seconds) * 1000L;
     }
 }
