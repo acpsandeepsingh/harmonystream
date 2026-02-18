@@ -1,0 +1,7 @@
+# Copy to android/signing.properties and fill values for local signed release builds.
+# This file is intentionally not tracked with secrets.
+
+ANDROID_RELEASE_STORE_FILE=/absolute/path/to/release.keystore
+ANDROID_RELEASE_STORE_PASSWORD=change-me
+ANDROID_RELEASE_KEY_ALIAS=release
+ANDROID_RELEASE_KEY_PASSWORD=change-me
