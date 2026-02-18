@@ -45,7 +45,7 @@ Use this lightweight process whenever native Android work lands so the README st
 
 ### Current delivery checkpoint (where coding stands now)
 - **Reached milestone:** **Phase 3 foundation is now delivered** with local playlist/library operations integrated into the native Android flow.
-- **Partially present from future phases:** native player controls now include queue-aware playback for native media sources (`previous / play-pause / next`), playback notification sync, local resume-session restore, user-selectable repeat modes (`off / all / one`), a native queue picker dialog for inspecting/jumping within the active queue, and playback session schema-v2 persistence (`isPlaying` + versioned state) saved on lifecycle stop for more reliable resume behavior.
+- **Partially present from future phases:** native player controls now include queue-aware playback for native media sources (`previous / play-pause / next`), playback notification sync, local resume-session restore, user-selectable repeat modes (`off / all / one`), a native queue picker dialog for inspecting/jumping within the active queue, and playback session schema-v3 persistence (including `isPlaying`, queue snapshot indexes, and queue cursor) saved on lifecycle stop and item transitions for more reliable resume behavior.
 - **Expanded this cycle:** auth/profile/settings parity now includes native profile navigation with dedicated local login, signup, and settings screens (still local-only; Firebase auth wiring remains pending).
 
 ### Phase-by-phase plan with definition of done
@@ -87,17 +87,16 @@ Use this lightweight process whenever native Android work lands so the README st
 **Exit criteria**
 - Feature parity with the web playlist workflow.
 
-#### Phase 4 — Player parity + TV polish 🟠 In progress (queue foundation expanded)
+#### Phase 4 — Player parity + TV polish 🟠 In progress (queue lifecycle foundation expanded)
 **Already available (foundation)**
 - Queue-aware native playback now builds a playable media queue from the active track list, exposes a native queue picker dialog for quick item inspection/selection, and keeps `previous` / `next` navigation aligned with playable native items, including repeat mode control (`off` / `all` / `one`).
-- Playback notification controls remain synced with player state updates.
-- Local playback session restore now brings back track list selection, resume position, and repeat mode (`off` / `all` / `one`) for native-playable items.
+- Playback notification controls remain synced with player state updates, and media control actions are now bridged for cold-start resume paths into `MainActivity`.
+- Local playback session restore now brings back track list selection, resume position, repeat mode (`off` / `all` / `one`), and schema-v3 queue snapshot state (ordered queue track indexes + active queue cursor) for deterministic queue resume.
 
 **Remaining scope**
-- Robust queue management (beyond single active session restore).
 - Improved TV remote / D-pad focus navigation.
 - Full-screen player + richer artwork handling.
-- Background playback lifecycle hardening.
+- Additional background playback lifecycle hardening (audio focus edge-cases, duplicate-player guards under rapid recreation, long-session soak validation).
 
 **Exit criteria**
 - Stable TV-first UX under long sessions and app lifecycle changes.
@@ -252,6 +251,11 @@ The next roadmap milestone is to complete **Phase 3 remaining scope**: Firestore
 Once Firestore playlist sync (Phase 3B) is stable, the immediate follow-up should target the highest-risk gaps in **Phase 4 (Player parity + TV polish)**.
 
 ### Phase 4A implementation outline (playback lifecycle hardening)
+
+**Implementation update (latest):**
+- ✅ Queue snapshot persistence has been implemented with schema-v3 playback session state (`queue_track_indexes`, `current_queue_index`) and deterministic queue restore fallback behavior.
+- ✅ Notification media controls now route through a cold-start-safe activity handoff path so `previous / play-pause / next` actions still execute after process recreation.
+- 🟠 Remaining: TV focus polish, full-screen player surface, and observability/soak-test gates.
 
 1. **Queue persistence beyond single-session restore**
    - Persist full queue snapshot (ordered ids, current index, repeat mode, play state).

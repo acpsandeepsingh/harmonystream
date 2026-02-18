@@ -213,12 +213,12 @@ jobs:
           echo "Generating keystore and signing.properties for release build..."
           echo "${ANDROID_RELEASE_STORE_FILE_BASE64}" | base64 --decode > release.keystore
 
-          cat > signing.properties <<EOF
-ANDROID_RELEASE_STORE_FILE=release.keystore
-ANDROID_RELEASE_STORE_PASSWORD=${ANDROID_RELEASE_STORE_PASSWORD}
-ANDROID_RELEASE_KEY_ALIAS=${ANDROID_RELEASE_KEY_ALIAS}
-ANDROID_RELEASE_KEY_PASSWORD=${ANDROID_RELEASE_KEY_PASSWORD}
-EOF
+          printf '%s\n' \
+            "ANDROID_RELEASE_STORE_FILE=release.keystore" \
+            "ANDROID_RELEASE_STORE_PASSWORD=${ANDROID_RELEASE_STORE_PASSWORD}" \
+            "ANDROID_RELEASE_KEY_ALIAS=${ANDROID_RELEASE_KEY_ALIAS}" \
+            "ANDROID_RELEASE_KEY_PASSWORD=${ANDROID_RELEASE_KEY_PASSWORD}" \
+            > signing.properties
 
           if [ -f gradle/wrapper/gradle-wrapper.jar ]; then
             ./gradlew assembleRelease bundleRelease --stacktrace --info --warning-mode all --no-daemon
