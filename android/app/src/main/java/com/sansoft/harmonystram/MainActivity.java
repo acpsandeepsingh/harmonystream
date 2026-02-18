@@ -207,6 +207,9 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
 
         currentIndex = sanitizeIndex(session.getCurrentIndex(), tracks.size());
         selectedTrackIndex = sanitizeIndex(session.getSelectedIndex(), tracks.size());
+        repeatMode = sanitizeRepeatMode(session.getRepeatMode());
+        applyRepeatModeToPlayer();
+        updateRepeatModeButtonLabel();
 
         if (currentIndex >= 0) {
             Song currentSong = tracks.get(currentIndex);
@@ -235,6 +238,13 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
 
     private int sanitizeIndex(int index, int size) {
         return (index >= 0 && index < size) ? index : -1;
+    }
+
+    private int sanitizeRepeatMode(int mode) {
+        if (mode == REPEAT_MODE_ALL || mode == REPEAT_MODE_ONE) {
+            return mode;
+        }
+        return REPEAT_MODE_OFF;
     }
 
     private void setupSourceSpinner() {
@@ -867,6 +877,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         applyRepeatModeToPlayer();
         updateRepeatModeButtonLabel();
         Toast.makeText(this, "Repeat mode: " + getRepeatModeLabel(), Toast.LENGTH_SHORT).show();
+        persistPlaybackSession();
     }
 
     private void applyRepeatModeToPlayer() {
@@ -901,7 +912,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         if (player != null && currentIndex >= 0 && currentIndex < tracks.size()) {
             positionMs = Math.max(0L, player.getCurrentPosition());
         }
-        playbackSessionStore.save(tracks, currentIndex, selectedTrackIndex, positionMs);
+        playbackSessionStore.save(tracks, currentIndex, selectedTrackIndex, positionMs, repeatMode);
     }
 
     private void updateNowPlayingText() {
