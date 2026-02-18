@@ -20,6 +20,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AlertDialog;
+import androidx.media3.common.C;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.Player;
@@ -197,17 +198,20 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
 
         if (currentIndex >= 0) {
             Song currentSong = tracks.get(currentIndex);
-            MediaItem mediaItem = new MediaItem.Builder()
-                    .setUri(currentSong.getMediaUrl())
-                    .setMediaId(String.valueOf(currentIndex))
-                    .build();
-            player.setMediaItem(mediaItem);
-            player.prepare();
-            long positionMs = Math.max(0L, session.getPositionMs());
-            if (positionMs > 0) {
-                player.seekTo(positionMs);
+            if (isYouTubeExternalTrack(currentSong)) {
+                nowPlayingText.setText("Last session track opens in YouTube app: " + currentSong.getTitle());
+            } else {
+                int mediaWindowIndex = buildAndApplyNativeQueue(currentIndex, false);
+                if (mediaWindowIndex >= 0) {
+                    long positionMs = Math.max(0L, session.getPositionMs());
+                    if (positionMs > 0) {
+                        player.seekTo(mediaWindowIndex, positionMs);
+                    }
+                    nowPlayingText.setText("Ready to resume: " + currentSong.getTitle() + " • " + currentSong.getArtist());
+                } else {
+                    nowPlayingText.setText("Session restored. Select a track.");
+                }
             }
-            nowPlayingText.setText("Ready to resume: " + currentSong.getTitle() + " • " + currentSong.getArtist());
         } else {
             nowPlayingText.setText("Session restored. Select a track.");
         }
@@ -661,13 +665,11 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
             return;
         }
 
-        MediaItem mediaItem = new MediaItem.Builder()
-                .setUri(track.getMediaUrl())
-                .setMediaId(String.valueOf(index))
-                .build();
-        player.setMediaItem(mediaItem);
-        player.prepare();
-        player.play();
+        int queueIndex = buildAndApplyNativeQueue(index, true);
+        if (queueIndex < 0) {
+            Toast.makeText(this, "Track cannot be played natively", Toast.LENGTH_SHORT).show();
+            return;
+        }
         updateNowPlayingText();
         syncPlaybackStateToNotification();
         persistPlaybackSession();
@@ -684,13 +686,19 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
 
     private void playNext() {
         if (tracks.isEmpty()) return;
-        int nextIndex = currentIndex < 0 ? 0 : (currentIndex + 1) % tracks.size();
+        int nextIndex = findAdjacentPlayableTrackIndex(currentIndex, true);
+        if (nextIndex < 0) {
+            nextIndex = currentIndex < 0 ? 0 : (currentIndex + 1) % tracks.size();
+        }
         playTrack(nextIndex);
     }
 
     private void playPrevious() {
         if (tracks.isEmpty()) return;
-        int prevIndex = currentIndex <= 0 ? tracks.size() - 1 : currentIndex - 1;
+        int prevIndex = findAdjacentPlayableTrackIndex(currentIndex, false);
+        if (prevIndex < 0) {
+            prevIndex = currentIndex <= 0 ? tracks.size() - 1 : currentIndex - 1;
+        }
         playTrack(prevIndex);
     }
 
@@ -702,7 +710,8 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
             player.pause();
         } else {
             if (currentIndex < 0) {
-                playTrack(0);
+                int firstPlayableIndex = findAdjacentPlayableTrackIndex(-1, true);
+                playTrack(firstPlayableIndex >= 0 ? firstPlayableIndex : 0);
                 return;
             }
             Song currentTrack = tracks.get(currentIndex);
@@ -710,10 +719,89 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
                 openYouTubeVideo(currentTrack.getMediaUrl());
                 return;
             }
+
+            if (player.getMediaItemCount() == 0) {
+                int queueIndex = buildAndApplyNativeQueue(currentIndex, false);
+                if (queueIndex < 0) {
+                    Toast.makeText(this, "Track cannot be played natively", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+            }
             player.play();
         }
         syncPlaybackStateToNotification();
         persistPlaybackSession();
+    }
+
+    private boolean isYouTubeExternalTrack(Song song) {
+        return song != null && song.getMediaUrl() != null && song.getMediaUrl().contains("youtube.com/watch");
+    }
+
+    private int buildAndApplyNativeQueue(int targetTrackIndex, boolean autoplay) {
+        if (player == null) return -1;
+
+        List<MediaItem> mediaItems = new ArrayList<>();
+        int targetWindowIndex = -1;
+
+        for (int i = 0; i < tracks.size(); i++) {
+            Song song = tracks.get(i);
+            if (song == null || isYouTubeExternalTrack(song)) {
+                continue;
+            }
+            String mediaUrl = song.getMediaUrl();
+            if (mediaUrl == null || mediaUrl.trim().isEmpty()) {
+                continue;
+            }
+
+            if (i == targetTrackIndex) {
+                targetWindowIndex = mediaItems.size();
+            }
+
+            MediaItem mediaItem = new MediaItem.Builder()
+                    .setUri(mediaUrl)
+                    .setMediaId(String.valueOf(i))
+                    .build();
+            mediaItems.add(mediaItem);
+        }
+
+        if (mediaItems.isEmpty() || targetWindowIndex < 0) {
+            return -1;
+        }
+
+        player.setMediaItems(mediaItems, targetWindowIndex, C.TIME_UNSET);
+        player.prepare();
+        if (autoplay) {
+            player.play();
+        }
+        return targetWindowIndex;
+    }
+
+    private int findAdjacentPlayableTrackIndex(int fromIndex, boolean forward) {
+        if (tracks.isEmpty()) return -1;
+
+        int size = tracks.size();
+        for (int step = 1; step <= size; step++) {
+            int candidate;
+            if (fromIndex < 0) {
+                candidate = forward ? step - 1 : size - step;
+            } else {
+                int delta = forward ? step : -step;
+                candidate = (fromIndex + delta) % size;
+                if (candidate < 0) {
+                    candidate += size;
+                }
+            }
+
+            Song song = tracks.get(candidate);
+            if (song != null && !isYouTubeExternalTrack(song)) {
+                String mediaUrl = song.getMediaUrl();
+                if (mediaUrl != null && !mediaUrl.trim().isEmpty()) {
+                    return candidate;
+                }
+            }
+        }
+
+        return -1;
     }
 
     private void persistPlaybackSession() {
