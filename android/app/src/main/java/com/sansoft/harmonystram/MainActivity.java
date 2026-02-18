@@ -142,6 +142,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         Button addToPlaylistButton = findViewById(R.id.btn_add_to_playlist);
         Button libraryButton = findViewById(R.id.btn_library);
         Button profileButton = findViewById(R.id.btn_profile);
+        Button fullscreenButton = findViewById(R.id.btn_fullscreen);
         RecyclerView trackList = findViewById(R.id.track_list);
 
         userSessionStore = new NativeUserSessionStore(this);
@@ -207,6 +208,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         addToPlaylistButton.setOnClickListener(v -> showAddToPlaylistDialog());
         libraryButton.setOnClickListener(v -> openLibraryScreen());
         profileButton.setOnClickListener(v -> openProfileScreen());
+        fullscreenButton.setOnClickListener(v -> openFullscreenPlayer());
 
         IntentFilter mediaFilter = new IntentFilter(PlaybackService.ACTION_MEDIA_CONTROL);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -1158,6 +1160,26 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         } else {
             nowPlayingText.setText("Select a track");
         }
+    }
+
+    private void openFullscreenPlayer() {
+        if (tracks.isEmpty() || currentIndex < 0 || currentIndex >= tracks.size()) {
+            Toast.makeText(this, "Play a track first to open full-screen player", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        Song currentSong = tracks.get(currentIndex);
+        Intent intent = new Intent(this, FullscreenPlayerActivity.class);
+        intent.putExtra("track_title", currentSong.getTitle());
+        intent.putExtra("track_artist", currentSong.getArtist());
+        intent.putExtra("track_thumbnail", currentSong.getThumbnailUrl());
+        intent.putExtra("queue_position", currentQueueIndex + 1);
+        intent.putExtra("queue_size", activeQueueTrackIndexes.size());
+        intent.putExtra("repeat_label", getRepeatModeLabel());
+        intent.putExtra("playback_state", player != null && player.isPlaying() ? "Playing" : "Paused");
+        intent.putExtra("buffering_state", player != null ? playbackStateLabel(player.getPlaybackState()) : "idle");
+        intent.putExtra("source_type", isYouTubeExternalTrack(currentSong) ? "YouTube app" : "Native queue");
+        startActivity(intent);
     }
 
     private void syncPlaybackStateToNotification() {
