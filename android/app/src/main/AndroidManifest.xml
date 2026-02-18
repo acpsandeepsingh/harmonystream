@@ -41,6 +41,12 @@
             android:exported="false"
             android:theme="@style/AppTheme.NoActionBarLaunch" />
 
+        <activity
+            android:name=".ProfileActivity"
+            android:label="Profile"
+            android:exported="false"
+            android:theme="@style/AppTheme.NoActionBarLaunch" />
+
         <service
             android:name=".PlaybackService"
             android:enabled="true"

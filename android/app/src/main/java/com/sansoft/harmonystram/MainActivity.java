@@ -37,6 +37,7 @@ import java.util.concurrent.Executors;
 public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTrackClickListener {
 
     private static final int REQUEST_LIBRARY = 6001;
+    private static final int REQUEST_PROFILE = 6002;
 
     private static final String SOURCE_YOUTUBE = "youtube";
     private static final String SOURCE_YOUTUBE_ALL = "youtube-all";
@@ -167,7 +168,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         createPlaylistButton.setOnClickListener(v -> showCreatePlaylistDialog());
         addToPlaylistButton.setOnClickListener(v -> showAddToPlaylistDialog());
         libraryButton.setOnClickListener(v -> openLibraryScreen());
-        profileButton.setOnClickListener(v -> showProfileDialog());
+        profileButton.setOnClickListener(v -> openProfileScreen());
 
         IntentFilter mediaFilter = new IntentFilter(PlaybackService.ACTION_MEDIA_CONTROL);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -392,6 +393,11 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         startActivityForResult(intent, REQUEST_LIBRARY);
     }
 
+    private void openProfileScreen() {
+        Intent intent = new Intent(this, ProfileActivity.class);
+        startActivityForResult(intent, REQUEST_PROFILE);
+    }
+
     private void showLibraryDialog() {
         List<Playlist> playlists = playlistStorageRepository.getPlaylists();
         if (playlists.isEmpty()) {
@@ -614,6 +620,12 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQUEST_PROFILE) {
+            updateAccountStatusText();
+            playlistStorageRepository = new PlaylistStorageRepository(this);
+            return;
+        }
+
         if (requestCode != REQUEST_LIBRARY || resultCode != RESULT_OK || data == null) {
             return;
         }

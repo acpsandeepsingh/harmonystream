@@ -1,0 +1,178 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="16dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Profile"
+            android:textSize="22sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/profile_status_text"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="Guest mode active" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/btn_profile_show_login"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Login" />
+
+            <Button
+                android:id="@+id/btn_profile_show_signup"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:text="Signup" />
+
+            <Button
+                android:id="@+id/btn_profile_show_settings"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:text="Settings" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/profile_login_section"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Native Login"
+                android:textStyle="bold" />
+
+            <EditText
+                android:id="@+id/profile_login_email_input"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Email"
+                android:inputType="textEmailAddress" />
+
+            <EditText
+                android:id="@+id/profile_login_display_name_input"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Display name (optional)"
+                android:inputType="textPersonName" />
+
+            <Button
+                android:id="@+id/btn_profile_login_submit"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Sign In" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/profile_signup_section"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Native Signup"
+                android:textStyle="bold" />
+
+            <EditText
+                android:id="@+id/profile_signup_email_input"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Email"
+                android:inputType="textEmailAddress" />
+
+            <EditText
+                android:id="@+id/profile_signup_display_name_input"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Display name (optional)"
+                android:inputType="textPersonName" />
+
+            <Button
+                android:id="@+id/btn_profile_signup_submit"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Create Account" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/profile_settings_section"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Profile Settings"
+                android:textStyle="bold" />
+
+            <EditText
+                android:id="@+id/profile_settings_display_name_input"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Display name"
+                android:inputType="textPersonName" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/btn_profile_update_display_name"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Save Settings" />
+
+                <Button
+                    android:id="@+id/btn_profile_sign_out"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:layout_weight="1"
+                    android:text="Sign Out" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <Button
+            android:id="@+id/btn_profile_close"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="Close" />
+    </LinearLayout>
+</ScrollView>

@@ -46,7 +46,7 @@ Use this lightweight process whenever native Android work lands so the README st
 ### Current delivery checkpoint (where coding stands now)
 - **Reached milestone:** **Phase 3 foundation is now delivered** with local playlist/library operations integrated into the native Android flow.
 - **Partially present from future phases:** native player controls now include queue-aware playback for native media sources (`previous / play-pause / next`), playback notification sync, and local resume-session restore.
-- **Partially started:** auth/profile/settings parity now has a local native profile foundation (guest + local sign-in identity + sign-out), while full Firebase auth integration and release hardening pipeline tasks remain pending.
+- **Expanded this cycle:** auth/profile/settings parity now includes native profile navigation with dedicated local login, signup, and settings screens (still local-only; Firebase auth wiring remains pending).
 
 ### Phase-by-phase plan with definition of done
 
@@ -102,14 +102,15 @@ Use this lightweight process whenever native Android work lands so the README st
 **Exit criteria**
 - Stable TV-first UX under long sessions and app lifecycle changes.
 
-#### Phase 5 — Auth/profile/settings parity 🟠 In progress (local profile foundation shipped)
+#### Phase 5 — Auth/profile/settings parity 🟠 In progress (local native screens now shipped)
 **What is implemented now**
 - Native profile entry point in the main Android screen with local session state persisted via SharedPreferences.
-- Guest/account status indicator in native UI and profile dialog flow (set display name, sign out).
+- Guest/account status indicator in native UI.
+- Dedicated native `ProfileActivity` with screen-level sections for login, signup, and settings.
+- Local account flows for sign-in, sign-up, display-name update, and sign-out.
 
 **Remaining scope**
-- Native login/signup/settings screens with proper screen-level navigation parity.
-- Firebase auth/session integration.
+- Firebase auth/session integration across native screens.
 - User-specific sync rules migration.
 
 **Exit criteria**
