@@ -43,9 +43,14 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
     private static final String SOURCE_YOUTUBE_ALL = "youtube-all";
     private static final int DEFAULT_SEARCH_MAX_RESULTS = 25;
 
+    private static final int REPEAT_MODE_OFF = 0;
+    private static final int REPEAT_MODE_ALL = 1;
+    private static final int REPEAT_MODE_ONE = 2;
+
     private ExoPlayer player;
     private PlayerView playerView;
     private Button playPauseButton;
+    private Button repeatModeButton;
     private TextView nowPlayingText;
     private TextView trackListStatus;
     private TextView accountStatus;
@@ -57,6 +62,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
     private TrackAdapter trackAdapter;
     private int currentIndex = -1;
     private int selectedTrackIndex = -1;
+    private int repeatMode = REPEAT_MODE_OFF;
 
     private final HomeCatalogRepository homeCatalogRepository = new YouTubeHomeCatalogRepository();
     private final SongRepository searchRepository = new YouTubeRepository();
@@ -116,6 +122,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         sourceSpinner = findViewById(R.id.search_source_spinner);
         searchButton = findViewById(R.id.btn_search);
         playPauseButton = findViewById(R.id.btn_play_pause);
+        repeatModeButton = findViewById(R.id.btn_repeat_mode);
         Button previousButton = findViewById(R.id.btn_previous);
         Button nextButton = findViewById(R.id.btn_next);
         Button createPlaylistButton = findViewById(R.id.btn_create_playlist);
@@ -136,6 +143,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         player = new ExoPlayer.Builder(this).build();
         playerView = findViewById(R.id.player_view);
         playerView.setPlayer(player);
+        applyRepeatModeToPlayer();
 
         player.addListener(new Player.Listener() {
             @Override
@@ -165,6 +173,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         playPauseButton.setOnClickListener(v -> togglePlayPause());
         previousButton.setOnClickListener(v -> playPrevious());
         nextButton.setOnClickListener(v -> playNext());
+        repeatModeButton.setOnClickListener(v -> cycleRepeatMode());
         createPlaylistButton.setOnClickListener(v -> showCreatePlaylistDialog());
         addToPlaylistButton.setOnClickListener(v -> showAddToPlaylistDialog());
         libraryButton.setOnClickListener(v -> openLibraryScreen());
@@ -176,6 +185,8 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         } else {
             registerReceiver(mediaActionReceiver, mediaFilter);
         }
+
+        updateRepeatModeButtonLabel();
 
         boolean restoredSession = restorePlaybackSession();
         if (!restoredSession) {
@@ -698,18 +709,32 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
 
     private void playNext() {
         if (tracks.isEmpty()) return;
-        int nextIndex = findAdjacentPlayableTrackIndex(currentIndex, true);
+
+        if (repeatMode == REPEAT_MODE_ONE && currentIndex >= 0) {
+            playTrack(currentIndex);
+            return;
+        }
+
+        int nextIndex = findAdjacentPlayableTrackIndex(currentIndex, true, repeatMode == REPEAT_MODE_ALL);
         if (nextIndex < 0) {
-            nextIndex = currentIndex < 0 ? 0 : (currentIndex + 1) % tracks.size();
+            Toast.makeText(this, "Reached end of queue", Toast.LENGTH_SHORT).show();
+            return;
         }
         playTrack(nextIndex);
     }
 
     private void playPrevious() {
         if (tracks.isEmpty()) return;
-        int prevIndex = findAdjacentPlayableTrackIndex(currentIndex, false);
+
+        if (repeatMode == REPEAT_MODE_ONE && currentIndex >= 0) {
+            playTrack(currentIndex);
+            return;
+        }
+
+        int prevIndex = findAdjacentPlayableTrackIndex(currentIndex, false, repeatMode == REPEAT_MODE_ALL);
         if (prevIndex < 0) {
-            prevIndex = currentIndex <= 0 ? tracks.size() - 1 : currentIndex - 1;
+            Toast.makeText(this, "Reached start of queue", Toast.LENGTH_SHORT).show();
+            return;
         }
         playTrack(prevIndex);
     }
@@ -722,7 +747,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
             player.pause();
         } else {
             if (currentIndex < 0) {
-                int firstPlayableIndex = findAdjacentPlayableTrackIndex(-1, true);
+                int firstPlayableIndex = findAdjacentPlayableTrackIndex(-1, true, repeatMode == REPEAT_MODE_ALL);
                 playTrack(firstPlayableIndex >= 0 ? firstPlayableIndex : 0);
                 return;
             }
@@ -788,20 +813,27 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         return targetWindowIndex;
     }
 
-    private int findAdjacentPlayableTrackIndex(int fromIndex, boolean forward) {
+    private int findAdjacentPlayableTrackIndex(int fromIndex, boolean forward, boolean wrapAround) {
         if (tracks.isEmpty()) return -1;
 
         int size = tracks.size();
-        for (int step = 1; step <= size; step++) {
-            int candidate;
-            if (fromIndex < 0) {
-                candidate = forward ? step - 1 : size - step;
-            } else {
-                int delta = forward ? step : -step;
-                candidate = (fromIndex + delta) % size;
-                if (candidate < 0) {
-                    candidate += size;
+        if (fromIndex < 0) {
+            return findFirstPlayableTrackIndex(forward);
+        }
+
+        int candidate = fromIndex;
+        while (true) {
+            candidate += forward ? 1 : -1;
+
+            if (candidate < 0 || candidate >= size) {
+                if (!wrapAround) {
+                    return -1;
                 }
+                candidate = forward ? 0 : size - 1;
+            }
+
+            if (candidate == fromIndex) {
+                return -1;
             }
 
             Song song = tracks.get(candidate);
@@ -812,8 +844,55 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
                 }
             }
         }
+    }
 
+    private int findFirstPlayableTrackIndex(boolean fromStart) {
+        if (tracks.isEmpty()) return -1;
+        int size = tracks.size();
+        for (int i = 0; i < size; i++) {
+            int candidate = fromStart ? i : (size - 1 - i);
+            Song song = tracks.get(candidate);
+            if (song != null && !isYouTubeExternalTrack(song)) {
+                String mediaUrl = song.getMediaUrl();
+                if (mediaUrl != null && !mediaUrl.trim().isEmpty()) {
+                    return candidate;
+                }
+            }
+        }
         return -1;
+    }
+
+    private void cycleRepeatMode() {
+        repeatMode = (repeatMode + 1) % 3;
+        applyRepeatModeToPlayer();
+        updateRepeatModeButtonLabel();
+        Toast.makeText(this, "Repeat mode: " + getRepeatModeLabel(), Toast.LENGTH_SHORT).show();
+    }
+
+    private void applyRepeatModeToPlayer() {
+        if (player == null) return;
+        if (repeatMode == REPEAT_MODE_ONE) {
+            player.setRepeatMode(Player.REPEAT_MODE_ONE);
+        } else if (repeatMode == REPEAT_MODE_ALL) {
+            player.setRepeatMode(Player.REPEAT_MODE_ALL);
+        } else {
+            player.setRepeatMode(Player.REPEAT_MODE_OFF);
+        }
+    }
+
+    private void updateRepeatModeButtonLabel() {
+        if (repeatModeButton == null) return;
+        repeatModeButton.setText("Repeat: " + getRepeatModeLabel());
+    }
+
+    private String getRepeatModeLabel() {
+        if (repeatMode == REPEAT_MODE_ALL) {
+            return "All";
+        }
+        if (repeatMode == REPEAT_MODE_ONE) {
+            return "One";
+        }
+        return "Off";
     }
 
     private void persistPlaybackSession() {
