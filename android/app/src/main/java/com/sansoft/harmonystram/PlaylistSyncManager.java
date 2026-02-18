@@ -11,6 +11,7 @@ import java.util.Set;
 
 public class PlaylistSyncManager {
     private static final boolean SYNC_ENABLED = BuildConfig.PLAYLIST_SYNC_ENABLED;
+    private static final String REMOTE_BACKEND_MODE = "firebase-firestore";
     private final PlaylistStorageRepository playlistRepository;
     private final FirestorePlaylistRemoteDataSource remoteDataSource;
     private final NativeUserSessionStore userSessionStore;
@@ -29,7 +30,7 @@ public class PlaylistSyncManager {
 
         NativeUserSessionStore.UserSession session = userSessionStore.getSession();
         if (session == null || !session.isSignedIn()) {
-            return new PlaylistSyncModels.SyncStatus("offline", "Guest mode: local library only");
+            return new PlaylistSyncModels.SyncStatus("offline", "Guest mode: local library only (sign in to sync with Firebase)");
         }
 
         PlaylistSyncModels.PlaylistSnapshot local = playlistRepository.pullLocalSnapshot();
@@ -40,7 +41,10 @@ public class PlaylistSyncManager {
         pushLocalChanges(merged);
         playlistRepository.markSyncSuccess();
 
-        return new PlaylistSyncModels.SyncStatus("conflict-resolved", "Synced " + merged.playlists.size() + " playlists");
+        return new PlaylistSyncModels.SyncStatus(
+                "conflict-resolved",
+                "Synced " + merged.playlists.size() + " playlists via " + REMOTE_BACKEND_MODE + " backend"
+        );
     }
 
     public synchronized PlaylistSyncModels.PlaylistSnapshot pullRemoteSnapshot() {

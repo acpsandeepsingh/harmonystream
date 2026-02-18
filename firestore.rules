@@ -158,6 +158,16 @@ service cloud.firestore {
       allow delete: if isExistingOwner(userId);
     }
 
+
+    /**
+     * @description Native Android playlist sync bridge used by REST-based mobile fallback.
+     * @path        /native_sync/{accountKey}
+     * @allow       Any client with project API key can read/write its account-key document.
+     */
+    match /native_sync/{accountKey} {
+      allow get, list, create, update, delete: if true;
+    }
+
     /**
      * @description Song information is public for anyone to read. Any authenticated user can add, update, or delete songs.
      * @path        /songs/{songId}
