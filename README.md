@@ -46,7 +46,7 @@ Use this lightweight process whenever native Android work lands so the README st
 ### Current delivery checkpoint (where coding stands now)
 - **Reached milestone:** **Phase 3 foundation is now delivered** with local playlist/library operations integrated into the native Android flow.
 - **Partially present from future phases:** native player controls now include queue-aware playback for native media sources (`previous / play-pause / next`), playback notification sync, local resume-session restore, user-selectable repeat modes (`off / all / one`), a native queue picker dialog for inspecting/jumping within the active queue, and playback session schema-v3 persistence (including `isPlaying`, queue snapshot indexes, and queue cursor) saved on lifecycle stop and item transitions for more reliable resume behavior.
-- **Expanded this cycle:** auth/profile/settings parity now includes native profile navigation with dedicated local login, signup, and settings screens (still local-only; Firebase auth wiring remains pending).
+- **Expanded this cycle:** Phase 3B sync foundation is now wired with identity-aware playlist reconciliation primitives (`pullRemoteSnapshot`, `pushLocalChanges`, `resolveConflicts`) using updated-at merge + playlist tombstones, with sync-state surfaced in Library/Profile screens and safe guest/local fallback.
 
 ### Phase-by-phase plan with definition of done
 
@@ -74,15 +74,16 @@ Use this lightweight process whenever native Android work lands so the README st
 **Exit criteria outcome**
 - Core behavior now matches web search intent for source selection and results rendering.
 
-#### Phase 3 — Native playlists & library 🟠 In progress (account-aware local foundation shipped)
+#### Phase 3 — Native playlists & library 🟠 In progress (sync foundation shipped, cloud backend wiring pending)
 **What is implemented now**
 - Local-first playlist storage layer backed by native SharedPreferences persistence.
 - Playlist persistence is now account-scoped locally (guest vs signed-in profile identity) with legacy migration support.
 - Native create playlist, add selected track to playlist, remove track, delete playlist, and play-all flow.
 - Dedicated native library screen/navigation from the main Android flow with playlist and per-track actions (play, remove, delete).
+- Phase 3B sync contract now implemented in native code with deterministic conflict reconciliation (`updatedAt` + deletion tombstones), per-account sync metadata persistence, and sync-state messaging in Library/Profile UIs.
 
 **Remaining scope**
-- Firestore-backed sync and cross-device playlist reconciliation.
+- Replace the current local remote-cache bridge with live Firestore transport + auth-backed cross-device reconciliation.
 
 **Exit criteria**
 - Feature parity with the web playlist workflow.

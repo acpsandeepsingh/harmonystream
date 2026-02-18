@@ -12,8 +12,10 @@ import androidx.appcompat.app.AppCompatActivity;
 public class ProfileActivity extends AppCompatActivity {
 
     private NativeUserSessionStore userSessionStore;
+    private PlaylistSyncManager playlistSyncManager;
 
     private TextView statusText;
+    private TextView syncStateText;
     private View loginSection;
     private View signupSection;
     private View settingsSection;
@@ -30,8 +32,10 @@ public class ProfileActivity extends AppCompatActivity {
         setContentView(R.layout.activity_profile);
 
         userSessionStore = new NativeUserSessionStore(this);
+        playlistSyncManager = new PlaylistSyncManager(this);
 
         statusText = findViewById(R.id.profile_status_text);
+        syncStateText = findViewById(R.id.profile_sync_state_text);
         loginSection = findViewById(R.id.profile_login_section);
         signupSection = findViewById(R.id.profile_signup_section);
         settingsSection = findViewById(R.id.profile_settings_section);
@@ -64,6 +68,11 @@ public class ProfileActivity extends AppCompatActivity {
         findViewById(R.id.btn_profile_sign_out).setOnClickListener(v -> signOut());
 
         refreshUi();
+    }
+
+    private void refreshSyncState() {
+        PlaylistSyncModels.SyncStatus status = playlistSyncManager.syncNow();
+        syncStateText.setText("Sync: " + status.state + " · " + status.detail);
     }
 
     private void showSection(View section) {
@@ -133,6 +142,7 @@ public class ProfileActivity extends AppCompatActivity {
     }
 
     private void refreshUi() {
+        refreshSyncState();
         NativeUserSessionStore.UserSession session = userSessionStore.getSession();
         if (session.isSignedIn()) {
             String displayName = session.getDisplayName();

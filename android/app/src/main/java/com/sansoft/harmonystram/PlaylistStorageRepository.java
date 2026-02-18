@@ -8,8 +8,10 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
 
 public class PlaylistStorageRepository {
@@ -17,6 +19,9 @@ public class PlaylistStorageRepository {
     private static final String KEY_PLAYLISTS = "playlists";
     private static final String KEY_PLAYLISTS_BY_ACCOUNT = "playlists_by_account";
     private static final String KEY_LEGACY_MIGRATED = "legacy_playlists_migrated";
+    private static final String KEY_UPDATED_AT_BY_ACCOUNT = "updated_at_by_account";
+    private static final String KEY_DELETED_BY_ACCOUNT = "deleted_by_account";
+    private static final String KEY_SYNC_META = "sync_meta";
     private static final String ACCOUNT_GUEST = "guest";
 
     private final SharedPreferences prefs;
@@ -41,6 +46,8 @@ public class PlaylistStorageRepository {
         Playlist playlist = new Playlist(UUID.randomUUID().toString(), trimmedName, new ArrayList<>());
         playlists.add(playlist);
         writePlaylists(playlists);
+        markUpdated(playlist.getId());
+        clearDeletionTombstone(playlist.getId());
         return playlist;
     }
 
@@ -53,6 +60,7 @@ public class PlaylistStorageRepository {
             }
         }
         writePlaylists(updated);
+        markDeleted(playlistId);
     }
 
     public synchronized boolean addSongToPlaylist(String playlistId, Song song) {
@@ -84,6 +92,9 @@ public class PlaylistStorageRepository {
         }
 
         writePlaylists(updated);
+        if (didAdd) {
+            markUpdated(playlistId);
+        }
         return didAdd;
     }
 
@@ -108,6 +119,61 @@ public class PlaylistStorageRepository {
         }
 
         writePlaylists(updated);
+        markUpdated(playlistId);
+    }
+
+    public synchronized PlaylistSyncModels.PlaylistSnapshot pullLocalSnapshot() {
+        List<Playlist> playlists = readPlaylists();
+        JSONObject updatedAtByPlaylist = readUpdatedAtByPlaylist();
+        List<PlaylistSyncModels.PlaylistRecord> records = new ArrayList<>();
+        for (Playlist playlist : playlists) {
+            long updatedAt = updatedAtByPlaylist.optLong(playlist.getId(), 0L);
+            records.add(new PlaylistSyncModels.PlaylistRecord(playlist, updatedAt));
+        }
+        return new PlaylistSyncModels.PlaylistSnapshot(
+                records,
+                readDeletedTombstones(),
+                System.currentTimeMillis()
+        );
+    }
+
+    public synchronized void applyResolvedSnapshot(PlaylistSyncModels.PlaylistSnapshot snapshot) {
+        List<Playlist> playlists = new ArrayList<>();
+        JSONObject updatedAtByPlaylist = new JSONObject();
+        for (PlaylistSyncModels.PlaylistRecord record : snapshot.playlists) {
+            if (record == null || record.playlist == null) continue;
+            playlists.add(record.playlist);
+            try {
+                updatedAtByPlaylist.put(record.playlist.getId(), record.updatedAtMs);
+            } catch (JSONException ignored) {
+            }
+        }
+
+        writePlaylists(playlists);
+        writeUpdatedAtByPlaylist(updatedAtByPlaylist);
+        writeDeletedTombstones(snapshot.deletedPlaylistIds);
+    }
+
+    public synchronized void markSyncSuccess() {
+        JSONObject syncMeta = readSyncMetaObject();
+        try {
+            syncMeta.put("state", "conflict-resolved");
+            syncMeta.put("detail", "Sync completed");
+            syncMeta.put("updatedAtMs", System.currentTimeMillis());
+        } catch (JSONException ignored) {
+        }
+        prefs.edit().putString(KEY_SYNC_META, syncMeta.toString()).apply();
+    }
+
+    public synchronized PlaylistSyncModels.SyncStatus getLastSyncStatus() {
+        JSONObject syncMeta = readSyncMetaObject();
+        String state = syncMeta.optString("state", "offline");
+        String detail = syncMeta.optString("detail", "Local-only mode");
+        return new PlaylistSyncModels.SyncStatus(state, detail);
+    }
+
+    public String getCurrentAccountKeyForSync() {
+        return getCurrentAccountKey();
     }
 
     private boolean sameSong(Song left, Song right) {
@@ -246,5 +312,89 @@ public class PlaylistStorageRepository {
                 .putBoolean(KEY_LEGACY_MIGRATED, true)
                 .remove(KEY_PLAYLISTS)
                 .apply();
+    }
+
+    private void markUpdated(String playlistId) {
+        JSONObject updatedAtByPlaylist = readUpdatedAtByPlaylist();
+        try {
+            updatedAtByPlaylist.put(playlistId, System.currentTimeMillis());
+        } catch (JSONException ignored) {
+        }
+        writeUpdatedAtByPlaylist(updatedAtByPlaylist);
+    }
+
+    private JSONObject readUpdatedAtByPlaylist() {
+        JSONObject all = readObject(KEY_UPDATED_AT_BY_ACCOUNT);
+        JSONObject account = all.optJSONObject(getCurrentAccountKey());
+        return account == null ? new JSONObject() : account;
+    }
+
+    private void writeUpdatedAtByPlaylist(JSONObject updatedAt) {
+        JSONObject all = readObject(KEY_UPDATED_AT_BY_ACCOUNT);
+        try {
+            all.put(getCurrentAccountKey(), updatedAt);
+        } catch (JSONException ignored) {
+        }
+        prefs.edit().putString(KEY_UPDATED_AT_BY_ACCOUNT, all.toString()).apply();
+    }
+
+    private void markDeleted(String playlistId) {
+        List<String> tombstones = readDeletedTombstones();
+        if (!tombstones.contains(playlistId)) {
+            tombstones.add(playlistId);
+        }
+        writeDeletedTombstones(tombstones);
+    }
+
+    private void clearDeletionTombstone(String playlistId) {
+        List<String> tombstones = readDeletedTombstones();
+        if (tombstones.remove(playlistId)) {
+            writeDeletedTombstones(tombstones);
+        }
+    }
+
+    private List<String> readDeletedTombstones() {
+        JSONObject all = readObject(KEY_DELETED_BY_ACCOUNT);
+        JSONArray accountArray = all.optJSONArray(getCurrentAccountKey());
+        Set<String> deduped = new HashSet<>();
+        List<String> result = new ArrayList<>();
+        if (accountArray == null) return result;
+        for (int i = 0; i < accountArray.length(); i++) {
+            String id = accountArray.optString(i, "");
+            if (!id.isEmpty() && !deduped.contains(id)) {
+                deduped.add(id);
+                result.add(id);
+            }
+        }
+        return result;
+    }
+
+    private void writeDeletedTombstones(List<String> tombstones) {
+        JSONObject all = readObject(KEY_DELETED_BY_ACCOUNT);
+        JSONArray accountArray = new JSONArray();
+        for (String id : tombstones) accountArray.put(id);
+        try {
+            all.put(getCurrentAccountKey(), accountArray);
+        } catch (JSONException ignored) {
+        }
+        prefs.edit().putString(KEY_DELETED_BY_ACCOUNT, all.toString()).apply();
+    }
+
+    private JSONObject readSyncMetaObject() {
+        String raw = prefs.getString(KEY_SYNC_META, "{}");
+        try {
+            return new JSONObject(raw);
+        } catch (JSONException ignored) {
+            return new JSONObject();
+        }
+    }
+
+    private JSONObject readObject(String key) {
+        String raw = prefs.getString(key, "{}");
+        try {
+            return new JSONObject(raw);
+        } catch (JSONException ignored) {
+            return new JSONObject();
+        }
     }
 }

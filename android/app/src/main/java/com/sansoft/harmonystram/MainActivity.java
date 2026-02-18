@@ -70,6 +70,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
     private final HomeCatalogRepository homeCatalogRepository = new YouTubeHomeCatalogRepository();
     private final SongRepository searchRepository = new YouTubeRepository();
     private PlaylistStorageRepository playlistStorageRepository;
+    private PlaylistSyncManager playlistSyncManager;
     private PlaybackSessionStore playbackSessionStore;
     private NativeUserSessionStore userSessionStore;
     private ExecutorService backgroundExecutor;
@@ -116,6 +117,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
 
         backgroundExecutor = Executors.newSingleThreadExecutor();
         playlistStorageRepository = new PlaylistStorageRepository(this);
+        playlistSyncManager = new PlaylistSyncManager(this);
         playbackSessionStore = new PlaybackSessionStore(this);
 
         nowPlayingText = findViewById(R.id.now_playing);
@@ -305,6 +307,13 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         sourceSpinner.setAdapter(sourceAdapter);
     }
 
+    private void runPlaylistSyncQuietly() {
+        PlaylistSyncModels.SyncStatus status = playlistSyncManager.syncNow();
+        updateAccountStatusText();
+        String base = accountStatus.getText() == null ? "Account" : accountStatus.getText().toString();
+        accountStatus.setText(base + " · Sync " + status.state);
+    }
+
     private void showCreatePlaylistDialog() {
         EditText input = new EditText(this);
         input.setHint("Playlist name");
@@ -320,6 +329,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
                         return;
                     }
                     playlistStorageRepository.createPlaylist(name);
+                    runPlaylistSyncQuietly();
                     Toast.makeText(this, "Playlist created", Toast.LENGTH_SHORT).show();
                 })
                 .show();
@@ -447,6 +457,9 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
                 .setItems(names, (dialog, which) -> {
                     Playlist selectedPlaylist = playlists.get(which);
                     boolean added = playlistStorageRepository.addSongToPlaylist(selectedPlaylist.getId(), selectedSong);
+                    if (added) {
+                        runPlaylistSyncQuietly();
+                    }
                     Toast.makeText(
                             this,
                             added ? "Track added to " + selectedPlaylist.getName() : "Track already exists in playlist",
@@ -494,6 +507,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
                     .setMessage("Playlist is empty")
                     .setNeutralButton("Delete playlist", (dialog, which) -> {
                         playlistStorageRepository.deletePlaylist(playlist.getId());
+                        runPlaylistSyncQuietly();
                         Toast.makeText(this, "Playlist deleted", Toast.LENGTH_SHORT).show();
                     })
                     .setPositiveButton("Play all", (dialog, which) -> playPlaylist(playlist))
@@ -537,6 +551,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
                 .setTitle("Remove from " + playlist.getName())
                 .setItems(songItems, (dialog, which) -> {
                     playlistStorageRepository.removeSongFromPlaylist(playlist.getId(), songs.get(which));
+                    runPlaylistSyncQuietly();
                     Toast.makeText(this, "Track removed", Toast.LENGTH_SHORT).show();
                 })
                 .setNegativeButton("Cancel", null)
@@ -692,6 +707,8 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         if (requestCode == REQUEST_PROFILE) {
             updateAccountStatusText();
             playlistStorageRepository = new PlaylistStorageRepository(this);
+            playlistSyncManager = new PlaylistSyncManager(this);
+            runPlaylistSyncQuietly();
             return;
         }
 
