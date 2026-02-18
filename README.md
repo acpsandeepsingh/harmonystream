@@ -45,7 +45,7 @@ Use this lightweight process whenever native Android work lands so the README st
 
 ### Current delivery checkpoint (where coding stands now)
 - **Reached milestone:** **Phase 3 foundation is now delivered** with local playlist/library operations integrated into the native Android flow.
-- **Partially present from future phases:** native player controls now include queue-aware playback for native media sources (`previous / play-pause / next`), playback notification sync, and local resume-session restore.
+- **Partially present from future phases:** native player controls now include queue-aware playback for native media sources (`previous / play-pause / next`), playback notification sync, local resume-session restore, and user-selectable repeat modes (`off / all / one`).
 - **Expanded this cycle:** auth/profile/settings parity now includes native profile navigation with dedicated local login, signup, and settings screens (still local-only; Firebase auth wiring remains pending).
 
 ### Phase-by-phase plan with definition of done
@@ -89,7 +89,7 @@ Use this lightweight process whenever native Android work lands so the README st
 
 #### Phase 4 — Player parity + TV polish 🟠 In progress (queue foundation expanded)
 **Already available (foundation)**
-- Queue-aware native playback now builds a playable media queue from the active track list and keeps `previous` / `next` navigation aligned with playable native items.
+- Queue-aware native playback now builds a playable media queue from the active track list and keeps `previous` / `next` navigation aligned with playable native items, including repeat mode control (`off` / `all` / `one`).
 - Playback notification controls remain synced with player state updates.
 - Local playback session restore continues to bring back track list selection and resume position for native-playable items.
 
