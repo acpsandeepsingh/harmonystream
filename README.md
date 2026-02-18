@@ -44,9 +44,9 @@ Use this lightweight process whenever native Android work lands so the README st
 > Suggested cadence: update this section in the same PR that introduces the feature so docs never lag implementation.
 
 ### Current delivery checkpoint (where coding stands now)
-- **Reached milestone:** **Phase 2 is complete** and integrated into the native Android flow.
+- **Reached milestone:** **Phase 3 foundation is now delivered** with local playlist/library operations integrated into the native Android flow.
 - **Partially present from future phases:** basic native player controls (`previous / play-pause / next`) and playback notification sync are already wired.
-- **Not started yet:** playlist/library parity, auth/profile/settings parity, and release hardening pipeline tasks.
+- **Not started yet:** auth/profile/settings parity and release hardening pipeline tasks.
 
 ### Phase-by-phase plan with definition of done
 
@@ -74,11 +74,15 @@ Use this lightweight process whenever native Android work lands so the README st
 **Exit criteria outcome**
 - Core behavior now matches web search intent for source selection and results rendering.
 
-#### Phase 3 — Native playlists & library 🟡 Pending
-**Scope to implement**
-- Playlist storage layer (Firestore or local-first with sync).
-- Add to playlist, create/delete playlist, play all.
-- Native library page with playlist details + track operations.
+#### Phase 3 — Native playlists & library 🟠 In progress (local-first foundation shipped)
+**What is implemented now**
+- Local-first playlist storage layer backed by native SharedPreferences persistence.
+- Native create playlist, add selected track to playlist, remove track, delete playlist, and play-all flow.
+- Native library dialog with playlist list + per-playlist detail and track operations.
+
+**Remaining scope**
+- Firestore-backed sync and account-aware playlist reconciliation.
+- Dedicated TV-optimized library page/navigation with parity to web UX.
 
 **Exit criteria**
 - Feature parity with the web playlist workflow.

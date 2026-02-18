@@ -19,6 +19,7 @@ import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.Player;
@@ -50,9 +51,11 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
     private final List<Song> tracks = new ArrayList<>();
     private TrackAdapter trackAdapter;
     private int currentIndex = -1;
+    private int selectedTrackIndex = -1;
 
     private final HomeCatalogRepository homeCatalogRepository = new YouTubeHomeCatalogRepository();
     private final SongRepository searchRepository = new YouTubeRepository();
+    private PlaylistStorageRepository playlistStorageRepository;
     private ExecutorService backgroundExecutor;
 
     private final Handler stateSyncHandler = new Handler(Looper.getMainLooper());
@@ -96,6 +99,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         setContentView(R.layout.activity_main);
 
         backgroundExecutor = Executors.newSingleThreadExecutor();
+        playlistStorageRepository = new PlaylistStorageRepository(this);
 
         nowPlayingText = findViewById(R.id.now_playing);
         trackListStatus = findViewById(R.id.track_list_status);
@@ -105,6 +109,9 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         playPauseButton = findViewById(R.id.btn_play_pause);
         Button previousButton = findViewById(R.id.btn_previous);
         Button nextButton = findViewById(R.id.btn_next);
+        Button createPlaylistButton = findViewById(R.id.btn_create_playlist);
+        Button addToPlaylistButton = findViewById(R.id.btn_add_to_playlist);
+        Button libraryButton = findViewById(R.id.btn_library);
         RecyclerView trackList = findViewById(R.id.track_list);
 
         setupSourceSpinner();
@@ -129,8 +136,13 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
                 if (mediaItem == null) return;
                 String mediaId = mediaItem.mediaId;
                 if (mediaId == null || mediaId.isEmpty()) return;
-                int newIndex = Integer.parseInt(mediaId);
-                currentIndex = newIndex;
+                try {
+                    int newIndex = Integer.parseInt(mediaId);
+                    currentIndex = newIndex;
+                    selectedTrackIndex = newIndex;
+                } catch (NumberFormatException ignored) {
+                    return;
+                }
                 updateNowPlayingText();
                 syncPlaybackStateToNotification();
             }
@@ -140,6 +152,9 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         playPauseButton.setOnClickListener(v -> togglePlayPause());
         previousButton.setOnClickListener(v -> playPrevious());
         nextButton.setOnClickListener(v -> playNext());
+        createPlaylistButton.setOnClickListener(v -> showCreatePlaylistDialog());
+        addToPlaylistButton.setOnClickListener(v -> showAddToPlaylistDialog());
+        libraryButton.setOnClickListener(v -> showLibraryDialog());
 
         IntentFilter mediaFilter = new IntentFilter(PlaybackService.ACTION_MEDIA_CONTROL);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -160,6 +175,163 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         );
         sourceAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         sourceSpinner.setAdapter(sourceAdapter);
+    }
+
+    private void showCreatePlaylistDialog() {
+        EditText input = new EditText(this);
+        input.setHint("Playlist name");
+
+        new AlertDialog.Builder(this)
+                .setTitle("Create playlist")
+                .setView(input)
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Create", (dialog, which) -> {
+                    String name = input.getText() == null ? "" : input.getText().toString().trim();
+                    if (name.isEmpty()) {
+                        Toast.makeText(this, "Playlist name is required", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    playlistStorageRepository.createPlaylist(name);
+                    Toast.makeText(this, "Playlist created", Toast.LENGTH_SHORT).show();
+                })
+                .show();
+    }
+
+    private void showAddToPlaylistDialog() {
+        Song selectedSong = getSelectedSong();
+        if (selectedSong == null) {
+            Toast.makeText(this, "Select a track first", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        List<Playlist> playlists = playlistStorageRepository.getPlaylists();
+        if (playlists.isEmpty()) {
+            Toast.makeText(this, "Create a playlist first", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        String[] names = new String[playlists.size()];
+        for (int i = 0; i < playlists.size(); i++) {
+            names[i] = playlists.get(i).getName();
+        }
+
+        new AlertDialog.Builder(this)
+                .setTitle("Add to playlist")
+                .setItems(names, (dialog, which) -> {
+                    Playlist selectedPlaylist = playlists.get(which);
+                    boolean added = playlistStorageRepository.addSongToPlaylist(selectedPlaylist.getId(), selectedSong);
+                    Toast.makeText(
+                            this,
+                            added ? "Track added to " + selectedPlaylist.getName() : "Track already exists in playlist",
+                            Toast.LENGTH_SHORT
+                    ).show();
+                })
+                .show();
+    }
+
+    private void showLibraryDialog() {
+        List<Playlist> playlists = playlistStorageRepository.getPlaylists();
+        if (playlists.isEmpty()) {
+            Toast.makeText(this, "No playlists yet", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        String[] names = new String[playlists.size()];
+        for (int i = 0; i < playlists.size(); i++) {
+            Playlist playlist = playlists.get(i);
+            names[i] = playlist.getName() + " (" + playlist.getSongs().size() + ")";
+        }
+
+        new AlertDialog.Builder(this)
+                .setTitle("Library")
+                .setItems(names, (dialog, which) -> showPlaylistDetailDialog(playlists.get(which)))
+                .show();
+    }
+
+    private void showPlaylistDetailDialog(Playlist playlist) {
+        List<Song> songs = playlist.getSongs();
+        if (songs.isEmpty()) {
+            new AlertDialog.Builder(this)
+                    .setTitle(playlist.getName())
+                    .setMessage("Playlist is empty")
+                    .setNeutralButton("Delete playlist", (dialog, which) -> {
+                        playlistStorageRepository.deletePlaylist(playlist.getId());
+                        Toast.makeText(this, "Playlist deleted", Toast.LENGTH_SHORT).show();
+                    })
+                    .setPositiveButton("Play all", (dialog, which) -> playPlaylist(playlist))
+                    .setNegativeButton("Close", null)
+                    .show();
+            return;
+        }
+
+        String[] songItems = new String[songs.size()];
+        for (int i = 0; i < songs.size(); i++) {
+            Song song = songs.get(i);
+            songItems[i] = song.getTitle() + " • " + song.getArtist();
+        }
+
+        new AlertDialog.Builder(this)
+                .setTitle(playlist.getName())
+                .setItems(songItems, (dialog, which) -> {
+                    playPlaylist(playlist);
+                    playTrack(which);
+                })
+                .setPositiveButton("Play all", (dialog, which) -> playPlaylist(playlist))
+                .setNeutralButton("Remove track", (dialog, which) -> showRemoveTrackDialog(playlist))
+                .setNegativeButton("Close", null)
+                .show();
+    }
+
+    private void showRemoveTrackDialog(Playlist playlist) {
+        List<Song> songs = playlist.getSongs();
+        if (songs.isEmpty()) {
+            Toast.makeText(this, "Playlist is empty", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        String[] songItems = new String[songs.size()];
+        for (int i = 0; i < songs.size(); i++) {
+            Song song = songs.get(i);
+            songItems[i] = song.getTitle() + " • " + song.getArtist();
+        }
+
+        new AlertDialog.Builder(this)
+                .setTitle("Remove from " + playlist.getName())
+                .setItems(songItems, (dialog, which) -> {
+                    playlistStorageRepository.removeSongFromPlaylist(playlist.getId(), songs.get(which));
+                    Toast.makeText(this, "Track removed", Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    private Song getSelectedSong() {
+        if (selectedTrackIndex >= 0 && selectedTrackIndex < tracks.size()) {
+            return tracks.get(selectedTrackIndex);
+        }
+        if (currentIndex >= 0 && currentIndex < tracks.size()) {
+            return tracks.get(currentIndex);
+        }
+        return null;
+    }
+
+    private void playPlaylist(Playlist playlist) {
+        tracks.clear();
+        tracks.addAll(playlist.getSongs());
+        trackAdapter.setTracks(tracks);
+        currentIndex = -1;
+        selectedTrackIndex = -1;
+
+        if (tracks.isEmpty()) {
+            nowPlayingText.setText("No track selected");
+            trackListStatus.setVisibility(View.VISIBLE);
+            trackListStatus.setText("Playlist is empty.");
+            return;
+        }
+
+        trackListStatus.setVisibility(View.GONE);
+        nowPlayingText.setText("Playlist loaded. Select a track.");
+        playTrack(0);
     }
 
     private void runSearchFromInput() {
@@ -193,6 +365,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
 
                     trackAdapter.setTracks(tracks);
                     currentIndex = -1;
+                    selectedTrackIndex = -1;
                     player.stop();
                     playPauseButton.setText("Play");
 
@@ -211,6 +384,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
                     tracks.clear();
                     trackAdapter.setTracks(tracks);
                     currentIndex = -1;
+                    selectedTrackIndex = -1;
                     trackListStatus.setVisibility(View.VISIBLE);
                     trackListStatus.setText("Search failed. Check API key/network and try again.");
                     nowPlayingText.setText("No track selected");
@@ -244,6 +418,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
                     tracks.addAll(fetchedSongs);
                     trackAdapter.setTracks(tracks);
                     currentIndex = -1;
+                    selectedTrackIndex = -1;
 
                     if (tracks.isEmpty()) {
                         trackListStatus.setVisibility(View.VISIBLE);
@@ -275,12 +450,14 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
 
     @Override
     public void onTrackClick(int position) {
+        selectedTrackIndex = position;
         playTrack(position);
     }
 
     private void playTrack(int index) {
         if (index < 0 || index >= tracks.size()) return;
         currentIndex = index;
+        selectedTrackIndex = index;
         Song track = tracks.get(index);
 
         if (track.getMediaUrl().contains("youtube.com/watch")) {
