@@ -51,6 +51,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
     private PlayerView playerView;
     private Button playPauseButton;
     private Button repeatModeButton;
+    private Button queueButton;
     private TextView nowPlayingText;
     private TextView trackListStatus;
     private TextView accountStatus;
@@ -123,6 +124,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         searchButton = findViewById(R.id.btn_search);
         playPauseButton = findViewById(R.id.btn_play_pause);
         repeatModeButton = findViewById(R.id.btn_repeat_mode);
+        queueButton = findViewById(R.id.btn_queue);
         Button previousButton = findViewById(R.id.btn_previous);
         Button nextButton = findViewById(R.id.btn_next);
         Button createPlaylistButton = findViewById(R.id.btn_create_playlist);
@@ -174,6 +176,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         previousButton.setOnClickListener(v -> playPrevious());
         nextButton.setOnClickListener(v -> playNext());
         repeatModeButton.setOnClickListener(v -> cycleRepeatMode());
+        queueButton.setOnClickListener(v -> showQueueDialog());
         createPlaylistButton.setOnClickListener(v -> showCreatePlaylistDialog());
         addToPlaylistButton.setOnClickListener(v -> showAddToPlaylistDialog());
         libraryButton.setOnClickListener(v -> openLibraryScreen());
@@ -869,6 +872,86 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
                 }
             }
         }
+        return -1;
+    }
+
+    private void showQueueDialog() {
+        if (tracks.isEmpty()) {
+            Toast.makeText(this, "Queue is empty", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        List<String> queueLines = new ArrayList<>();
+        int selectedQueueLine = -1;
+
+        for (int i = 0; i < tracks.size(); i++) {
+            Song song = tracks.get(i);
+            if (song == null) {
+                continue;
+            }
+
+            String mediaUrl = song.getMediaUrl();
+            if (mediaUrl == null || mediaUrl.trim().isEmpty()) {
+                continue;
+            }
+
+            StringBuilder line = new StringBuilder();
+            if (i == currentIndex) {
+                line.append("▶ ");
+            } else {
+                line.append("   ");
+            }
+
+            line.append(song.getTitle()).append(" • ").append(song.getArtist());
+
+            if (isYouTubeExternalTrack(song)) {
+                line.append(" (YouTube)");
+            } else {
+                line.append(" (Native)");
+            }
+
+            queueLines.add(line.toString());
+            if (i == currentIndex) {
+                selectedQueueLine = queueLines.size() - 1;
+            }
+        }
+
+        if (queueLines.isEmpty()) {
+            Toast.makeText(this, "Queue has no playable items", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(this)
+                .setTitle("Active Queue")
+                .setNegativeButton("Close", null)
+                .setItems(queueLines.toArray(new String[0]), (dialog, which) -> playTrack(resolveQueueTrackIndex(which)));
+
+        if (selectedQueueLine >= 0) {
+            builder.setMessage("Current track is marked with ▶");
+        }
+
+        builder.show();
+    }
+
+    private int resolveQueueTrackIndex(int queueLineIndex) {
+        if (queueLineIndex < 0) return -1;
+
+        int lineCursor = -1;
+        for (int i = 0; i < tracks.size(); i++) {
+            Song song = tracks.get(i);
+            if (song == null) {
+                continue;
+            }
+            String mediaUrl = song.getMediaUrl();
+            if (mediaUrl == null || mediaUrl.trim().isEmpty()) {
+                continue;
+            }
+            lineCursor += 1;
+            if (lineCursor == queueLineIndex) {
+                return i;
+            }
+        }
+
         return -1;
     }
 
