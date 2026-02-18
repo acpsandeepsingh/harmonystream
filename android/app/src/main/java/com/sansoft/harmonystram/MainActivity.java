@@ -44,6 +44,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
     private Button playPauseButton;
     private TextView nowPlayingText;
     private TextView trackListStatus;
+    private TextView accountStatus;
     private EditText searchInput;
     private Spinner sourceSpinner;
     private Button searchButton;
@@ -57,6 +58,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
     private final SongRepository searchRepository = new YouTubeRepository();
     private PlaylistStorageRepository playlistStorageRepository;
     private PlaybackSessionStore playbackSessionStore;
+    private NativeUserSessionStore userSessionStore;
     private ExecutorService backgroundExecutor;
 
     private final Handler stateSyncHandler = new Handler(Looper.getMainLooper());
@@ -105,6 +107,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
 
         nowPlayingText = findViewById(R.id.now_playing);
         trackListStatus = findViewById(R.id.track_list_status);
+        accountStatus = findViewById(R.id.account_status);
         searchInput = findViewById(R.id.search_query_input);
         sourceSpinner = findViewById(R.id.search_source_spinner);
         searchButton = findViewById(R.id.btn_search);
@@ -114,7 +117,11 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         Button createPlaylistButton = findViewById(R.id.btn_create_playlist);
         Button addToPlaylistButton = findViewById(R.id.btn_add_to_playlist);
         Button libraryButton = findViewById(R.id.btn_library);
+        Button profileButton = findViewById(R.id.btn_profile);
         RecyclerView trackList = findViewById(R.id.track_list);
+
+        userSessionStore = new NativeUserSessionStore(this);
+        updateAccountStatusText();
 
         setupSourceSpinner();
 
@@ -157,6 +164,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         createPlaylistButton.setOnClickListener(v -> showCreatePlaylistDialog());
         addToPlaylistButton.setOnClickListener(v -> showAddToPlaylistDialog());
         libraryButton.setOnClickListener(v -> showLibraryDialog());
+        profileButton.setOnClickListener(v -> showProfileDialog());
 
         IntentFilter mediaFilter = new IntentFilter(PlaybackService.ACTION_MEDIA_CONTROL);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -239,6 +247,105 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
                     Toast.makeText(this, "Playlist created", Toast.LENGTH_SHORT).show();
                 })
                 .show();
+    }
+
+    private void showProfileDialog() {
+        NativeUserSessionStore.UserSession session = userSessionStore.getSession();
+        if (session.isSignedIn()) {
+            showSignedInProfileDialog(session);
+            return;
+        }
+        showSignInDialog();
+    }
+
+    private void showSignInDialog() {
+        View dialogView = getLayoutInflater().inflate(android.R.layout.simple_list_item_2, null);
+        TextView text1 = dialogView.findViewById(android.R.id.text1);
+        TextView text2 = dialogView.findViewById(android.R.id.text2);
+        text1.setText("Add a profile identity for native session");
+        text2.setText("Firebase auth wiring is planned next.");
+
+        EditText emailInput = new EditText(this);
+        emailInput.setHint("Email");
+        EditText displayNameInput = new EditText(this);
+        displayNameInput.setHint("Display name");
+
+        android.widget.LinearLayout container = new android.widget.LinearLayout(this);
+        container.setOrientation(android.widget.LinearLayout.VERTICAL);
+        int padding = (int) (16 * getResources().getDisplayMetrics().density);
+        container.setPadding(padding, padding, padding, 0);
+        container.addView(dialogView);
+        container.addView(emailInput);
+        container.addView(displayNameInput);
+
+        new AlertDialog.Builder(this)
+                .setTitle("Profile")
+                .setView(container)
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Save", (dialog, which) -> {
+                    String email = emailInput.getText() == null ? "" : emailInput.getText().toString().trim();
+                    String displayName = displayNameInput.getText() == null ? "" : displayNameInput.getText().toString().trim();
+
+                    if (email.isEmpty()) {
+                        Toast.makeText(this, "Email is required", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+
+                    if (displayName.isEmpty()) {
+                        int atIndex = email.indexOf("@");
+                        displayName = atIndex > 0 ? email.substring(0, atIndex) : email;
+                    }
+
+                    userSessionStore.signIn(email, displayName);
+                    updateAccountStatusText();
+                    Toast.makeText(this, "Profile saved locally", Toast.LENGTH_SHORT).show();
+                })
+                .show();
+    }
+
+    private void showSignedInProfileDialog(NativeUserSessionStore.UserSession session) {
+        EditText displayNameInput = new EditText(this);
+        displayNameInput.setHint("Display name");
+        displayNameInput.setText(session.getDisplayName());
+
+        new AlertDialog.Builder(this)
+                .setTitle("Profile")
+                .setMessage("Signed in as " + session.getEmail())
+                .setView(displayNameInput)
+                .setPositiveButton("Update", (dialog, which) -> {
+                    String nextDisplayName = displayNameInput.getText() == null
+                            ? ""
+                            : displayNameInput.getText().toString().trim();
+                    if (nextDisplayName.isEmpty()) {
+                        Toast.makeText(this, "Display name cannot be empty", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    userSessionStore.updateDisplayName(nextDisplayName);
+                    updateAccountStatusText();
+                    Toast.makeText(this, "Profile updated", Toast.LENGTH_SHORT).show();
+                })
+                .setNeutralButton("Sign out", (dialog, which) -> {
+                    userSessionStore.signOut();
+                    updateAccountStatusText();
+                    Toast.makeText(this, "Signed out", Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton("Close", null)
+                .show();
+    }
+
+    private void updateAccountStatusText() {
+        if (accountStatus == null || userSessionStore == null) return;
+        NativeUserSessionStore.UserSession session = userSessionStore.getSession();
+        if (!session.isSignedIn()) {
+            accountStatus.setText("Account: Guest");
+            return;
+        }
+
+        String displayName = session.getDisplayName();
+        if (displayName == null || displayName.isEmpty()) {
+            displayName = session.getEmail();
+        }
+        accountStatus.setText("Account: " + displayName);
     }
 
     private void showAddToPlaylistDialog() {
