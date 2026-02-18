@@ -19,7 +19,7 @@ public class YouTubeHomeCatalogRepository implements HomeCatalogRepository {
 
     @Override
     public List<Song> loadHomeCatalog(int maxResults) throws Exception {
-        List<SearchResult> searchResults = songRepository.search(DEFAULT_HOME_QUERY, maxResults);
+        List<SearchResult> searchResults = songRepository.search(DEFAULT_HOME_QUERY, maxResults, "youtube");
         List<Song> songs = new ArrayList<>(searchResults.size());
 
         for (SearchResult result : searchResults) {

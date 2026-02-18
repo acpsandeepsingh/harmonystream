@@ -15,13 +15,18 @@ public class YouTubeApiClient {
     private static final String YOUTUBE_SEARCH_API_URL = "https://www.googleapis.com/youtube/v3/search";
     private static final String YOUTUBE_VIDEOS_API_URL = "https://www.googleapis.com/youtube/v3/videos";
 
-    public JSONObject searchVideos(String query, int maxResults) throws Exception {
-        String requestUrl = new StringBuilder(YOUTUBE_SEARCH_API_URL)
+    public JSONObject searchVideos(String query, int maxResults, boolean musicOnly) throws Exception {
+        StringBuilder requestBuilder = new StringBuilder(YOUTUBE_SEARCH_API_URL)
                 .append("?part=snippet")
                 .append("&maxResults=").append(Math.max(1, Math.min(maxResults, 50)))
                 .append("&q=").append(URLEncoder.encode(query, StandardCharsets.UTF_8.name()))
-                .append("&type=video")
-                .append("&videoCategoryId=10")
+                .append("&type=video");
+
+        if (musicOnly) {
+            requestBuilder.append("&videoCategoryId=10");
+        }
+
+        String requestUrl = requestBuilder
                 .append("&key=").append(URLEncoder.encode(getApiKey(), StandardCharsets.UTF_8.name()))
                 .toString();
 

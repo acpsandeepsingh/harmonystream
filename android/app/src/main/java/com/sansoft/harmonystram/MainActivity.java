@@ -10,19 +10,22 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.view.View;
 import android.view.WindowManager;
+import android.widget.ArrayAdapter;
 import android.widget.Button;
+import android.widget.EditText;
+import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.recyclerview.widget.LinearLayoutManager;
-import androidx.recyclerview.widget.RecyclerView;
-
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.Player;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.ui.PlayerView;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -31,16 +34,25 @@ import java.util.concurrent.Executors;
 
 public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTrackClickListener {
 
+    private static final String SOURCE_YOUTUBE = "youtube";
+    private static final String SOURCE_YOUTUBE_ALL = "youtube-all";
+    private static final int DEFAULT_SEARCH_MAX_RESULTS = 25;
+
     private ExoPlayer player;
     private PlayerView playerView;
     private Button playPauseButton;
     private TextView nowPlayingText;
+    private TextView trackListStatus;
+    private EditText searchInput;
+    private Spinner sourceSpinner;
+    private Button searchButton;
 
     private final List<Song> tracks = new ArrayList<>();
     private TrackAdapter trackAdapter;
     private int currentIndex = -1;
 
     private final HomeCatalogRepository homeCatalogRepository = new YouTubeHomeCatalogRepository();
+    private final SongRepository searchRepository = new YouTubeRepository();
     private ExecutorService backgroundExecutor;
 
     private final Handler stateSyncHandler = new Handler(Looper.getMainLooper());
@@ -86,10 +98,16 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         backgroundExecutor = Executors.newSingleThreadExecutor();
 
         nowPlayingText = findViewById(R.id.now_playing);
+        trackListStatus = findViewById(R.id.track_list_status);
+        searchInput = findViewById(R.id.search_query_input);
+        sourceSpinner = findViewById(R.id.search_source_spinner);
+        searchButton = findViewById(R.id.btn_search);
         playPauseButton = findViewById(R.id.btn_play_pause);
         Button previousButton = findViewById(R.id.btn_previous);
         Button nextButton = findViewById(R.id.btn_next);
         RecyclerView trackList = findViewById(R.id.track_list);
+
+        setupSourceSpinner();
 
         trackList.setLayoutManager(new LinearLayoutManager(this));
         trackAdapter = new TrackAdapter(this);
@@ -118,6 +136,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
             }
         });
 
+        searchButton.setOnClickListener(v -> runSearchFromInput());
         playPauseButton.setOnClickListener(v -> togglePlayPause());
         previousButton.setOnClickListener(v -> playPrevious());
         nextButton.setOnClickListener(v -> playNext());
@@ -133,33 +152,123 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         stateSyncHandler.post(stateSyncRunnable);
     }
 
-    private void loadHomeCatalog() {
+    private void setupSourceSpinner() {
+        ArrayAdapter<String> sourceAdapter = new ArrayAdapter<>(
+                this,
+                android.R.layout.simple_spinner_item,
+                new String[]{SOURCE_YOUTUBE, SOURCE_YOUTUBE_ALL}
+        );
+        sourceAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        sourceSpinner.setAdapter(sourceAdapter);
+    }
+
+    private void runSearchFromInput() {
+        String query = searchInput.getText() != null ? searchInput.getText().toString().trim() : "";
+        if (query.isEmpty()) {
+            searchInput.setError("Enter a search query");
+            return;
+        }
+
+        String selectedSource = sourceSpinner.getSelectedItem() != null
+                ? sourceSpinner.getSelectedItem().toString()
+                : SOURCE_YOUTUBE;
+
+        performSearch(query, selectedSource);
+    }
+
+    private void performSearch(String query, String source) {
+        setSearchLoadingState(true);
+        trackListStatus.setVisibility(View.VISIBLE);
+        trackListStatus.setText("Searching for: " + query + " (" + source + ")...");
+
         backgroundExecutor.execute(() -> {
             try {
-                List<Song> fetchedSongs = homeCatalogRepository.loadHomeCatalog(25);
-                if (fetchedSongs.isEmpty()) return;
+                List<SearchResult> searchResults = searchRepository.search(query, DEFAULT_SEARCH_MAX_RESULTS, source);
+
+                runOnUiThread(() -> {
+                    tracks.clear();
+                    for (SearchResult result : searchResults) {
+                        tracks.add(result.getSong());
+                    }
+
+                    trackAdapter.setTracks(tracks);
+                    currentIndex = -1;
+                    player.stop();
+                    playPauseButton.setText("Play");
+
+                    if (tracks.isEmpty()) {
+                        trackListStatus.setVisibility(View.VISIBLE);
+                        trackListStatus.setText("No results found.");
+                        nowPlayingText.setText("No track selected");
+                    } else {
+                        trackListStatus.setVisibility(View.GONE);
+                        nowPlayingText.setText("Search loaded. Select a track.");
+                    }
+                    setSearchLoadingState(false);
+                });
+            } catch (Exception error) {
+                runOnUiThread(() -> {
+                    tracks.clear();
+                    trackAdapter.setTracks(tracks);
+                    currentIndex = -1;
+                    trackListStatus.setVisibility(View.VISIBLE);
+                    trackListStatus.setText("Search failed. Check API key/network and try again.");
+                    nowPlayingText.setText("No track selected");
+                    setSearchLoadingState(false);
+                    Toast.makeText(
+                            MainActivity.this,
+                            "Search failed: " + error.getMessage(),
+                            Toast.LENGTH_LONG
+                    ).show();
+                });
+            }
+        });
+    }
+
+    private void setSearchLoadingState(boolean isLoading) {
+        searchButton.setEnabled(!isLoading);
+        searchInput.setEnabled(!isLoading);
+        sourceSpinner.setEnabled(!isLoading);
+    }
+
+    private void loadHomeCatalog() {
+        trackListStatus.setVisibility(View.VISIBLE);
+        trackListStatus.setText("Loading home catalog...");
+
+        backgroundExecutor.execute(() -> {
+            try {
+                List<Song> fetchedSongs = homeCatalogRepository.loadHomeCatalog(DEFAULT_SEARCH_MAX_RESULTS);
 
                 runOnUiThread(() -> {
                     tracks.clear();
                     tracks.addAll(fetchedSongs);
                     trackAdapter.setTracks(tracks);
                     currentIndex = -1;
-                    nowPlayingText.setText("Home catalog loaded. Select a track.");
+
+                    if (tracks.isEmpty()) {
+                        trackListStatus.setVisibility(View.VISIBLE);
+                        trackListStatus.setText("Home catalog is empty.");
+                        nowPlayingText.setText("No track selected");
+                    } else {
+                        trackListStatus.setVisibility(View.GONE);
+                        nowPlayingText.setText("Home catalog loaded. Select a track.");
+                    }
+
                     if (player != null) {
                         player.stop();
                         playPauseButton.setText("Play");
                     }
-
-                    if (!tracks.isEmpty()) {
-                        playTrack(0);
-                    }
                 });
             } catch (Exception error) {
-                runOnUiThread(() -> Toast.makeText(
-                        MainActivity.this,
-                        "Failed to load home catalog: " + error.getMessage(),
-                        Toast.LENGTH_LONG
-                ).show());
+                runOnUiThread(() -> {
+                    trackListStatus.setVisibility(View.VISIBLE);
+                    trackListStatus.setText("Failed to load home catalog.");
+                    Toast.makeText(
+                            MainActivity.this,
+                            "Failed to load home catalog: " + error.getMessage(),
+                            Toast.LENGTH_LONG
+                    ).show();
+                });
             }
         });
     }
