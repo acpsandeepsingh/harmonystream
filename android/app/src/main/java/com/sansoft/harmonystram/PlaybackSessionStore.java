@@ -15,6 +15,7 @@ public class PlaybackSessionStore {
     private static final String KEY_CURRENT_INDEX = "current_index";
     private static final String KEY_SELECTED_INDEX = "selected_index";
     private static final String KEY_POSITION_MS = "position_ms";
+    private static final String KEY_REPEAT_MODE = "repeat_mode";
 
     private final SharedPreferences sharedPreferences;
 
@@ -22,7 +23,7 @@ public class PlaybackSessionStore {
         sharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
     }
 
-    public void save(List<Song> tracks, int currentIndex, int selectedIndex, long positionMs) {
+    public void save(List<Song> tracks, int currentIndex, int selectedIndex, long positionMs, int repeatMode) {
         JSONArray tracksArray = new JSONArray();
         for (Song song : tracks) {
             JSONObject songJson = new JSONObject();
@@ -40,6 +41,7 @@ public class PlaybackSessionStore {
                 .putInt(KEY_CURRENT_INDEX, currentIndex)
                 .putInt(KEY_SELECTED_INDEX, selectedIndex)
                 .putLong(KEY_POSITION_MS, Math.max(0L, positionMs))
+                .putInt(KEY_REPEAT_MODE, repeatMode)
                 .apply();
     }
 
@@ -77,8 +79,9 @@ public class PlaybackSessionStore {
         int currentIndex = sharedPreferences.getInt(KEY_CURRENT_INDEX, -1);
         int selectedIndex = sharedPreferences.getInt(KEY_SELECTED_INDEX, -1);
         long positionMs = Math.max(0L, sharedPreferences.getLong(KEY_POSITION_MS, 0L));
+        int repeatMode = sharedPreferences.getInt(KEY_REPEAT_MODE, 0);
 
-        return new PlaybackSession(sessionTracks, currentIndex, selectedIndex, positionMs);
+        return new PlaybackSession(sessionTracks, currentIndex, selectedIndex, positionMs, repeatMode);
     }
 
     private String safeValue(String value) {
@@ -90,16 +93,18 @@ public class PlaybackSessionStore {
         private final int currentIndex;
         private final int selectedIndex;
         private final long positionMs;
+        private final int repeatMode;
 
-        private PlaybackSession(List<Song> tracks, int currentIndex, int selectedIndex, long positionMs) {
+        private PlaybackSession(List<Song> tracks, int currentIndex, int selectedIndex, long positionMs, int repeatMode) {
             this.tracks = tracks;
             this.currentIndex = currentIndex;
             this.selectedIndex = selectedIndex;
             this.positionMs = positionMs;
+            this.repeatMode = repeatMode;
         }
 
         public static PlaybackSession empty() {
-            return new PlaybackSession(new ArrayList<>(), -1, -1, 0L);
+            return new PlaybackSession(new ArrayList<>(), -1, -1, 0L, 0);
         }
 
         public boolean hasTracks() {
@@ -120,6 +125,10 @@ public class PlaybackSessionStore {
 
         public long getPositionMs() {
             return positionMs;
+        }
+
+        public int getRepeatMode() {
+            return repeatMode;
         }
     }
 }

@@ -91,7 +91,7 @@ Use this lightweight process whenever native Android work lands so the README st
 **Already available (foundation)**
 - Queue-aware native playback now builds a playable media queue from the active track list and keeps `previous` / `next` navigation aligned with playable native items, including repeat mode control (`off` / `all` / `one`).
 - Playback notification controls remain synced with player state updates.
-- Local playback session restore continues to bring back track list selection and resume position for native-playable items.
+- Local playback session restore now brings back track list selection, resume position, and repeat mode (`off` / `all` / `one`) for native-playable items.
 
 **Remaining scope**
 - Robust queue management (beyond single active session restore).
