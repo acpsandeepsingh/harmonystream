@@ -27,6 +27,7 @@ public class PlaybackService extends Service {
     public static final String ACTION_PLAY_PAUSE = "com.sansoft.harmonystram.PLAY_PAUSE";
     public static final String ACTION_NEXT = "com.sansoft.harmonystram.NEXT";
     public static final String ACTION_MEDIA_CONTROL = "com.sansoft.harmonystram.MEDIA_CONTROL";
+    public static final String EXTRA_PENDING_MEDIA_ACTION = "pending_media_action";
 
     private String currentTitle = "HarmonyStream";
     private String currentArtist = "";
@@ -108,6 +109,15 @@ public class PlaybackService extends Service {
         intent.setPackage(getPackageName());
         intent.putExtra("action", action);
         sendBroadcast(intent);
+
+        Intent launchIntent = new Intent(this, MainActivity.class);
+        launchIntent.putExtra(EXTRA_PENDING_MEDIA_ACTION, action);
+        launchIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        try {
+            startActivity(launchIntent);
+        } catch (Exception ignored) {
+            // Broadcast path above still handles active-process control dispatch.
+        }
     }
 
     private void updateNotification() {

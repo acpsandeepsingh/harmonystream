@@ -171,6 +171,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
                 }
                 updateNowPlayingText();
                 syncPlaybackStateToNotification();
+                persistPlaybackSession();
             }
         });
 
@@ -198,7 +199,39 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         if (!restoredSession) {
             loadHomeCatalog();
         }
+        handlePendingMediaControlAction(getIntent());
         stateSyncHandler.post(stateSyncRunnable);
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handlePendingMediaControlAction(intent);
+    }
+
+
+    private void handlePendingMediaControlAction(Intent intent) {
+        if (intent == null) return;
+
+        String pendingAction = intent.getStringExtra(PlaybackService.EXTRA_PENDING_MEDIA_ACTION);
+        if (pendingAction == null || pendingAction.isEmpty()) {
+            return;
+        }
+
+        intent.removeExtra(PlaybackService.EXTRA_PENDING_MEDIA_ACTION);
+
+        if (PlaybackService.ACTION_PREVIOUS.equals(pendingAction)) {
+            playPrevious();
+            return;
+        }
+        if (PlaybackService.ACTION_NEXT.equals(pendingAction)) {
+            playNext();
+            return;
+        }
+        if (PlaybackService.ACTION_PLAY_PAUSE.equals(pendingAction)) {
+            togglePlayPause();
+        }
     }
 
     private boolean restorePlaybackSession() {
