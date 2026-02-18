@@ -40,7 +40,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
     private TrackAdapter trackAdapter;
     private int currentIndex = -1;
 
-    private final YouTubeRepository youTubeRepository = new YouTubeRepository();
+    private final SongRepository songRepository = new YouTubeRepository();
     private ExecutorService backgroundExecutor;
 
     private final Handler stateSyncHandler = new Handler(Looper.getMainLooper());
@@ -129,45 +129,18 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
             registerReceiver(mediaActionReceiver, mediaFilter);
         }
 
-        seedFallbackTrackCatalog();
         loadInitialSongsFromYouTube();
-
-        if (!tracks.isEmpty()) {
-            playTrack(0);
-        }
         stateSyncHandler.post(stateSyncRunnable);
-    }
-
-    private void seedFallbackTrackCatalog() {
-        tracks.clear();
-        tracks.add(new Song(
-                "demo-1",
-                "SoundHelix Song 1",
-                "Demo Stream",
-                "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
-                ""
-        ));
-        tracks.add(new Song(
-                "demo-2",
-                "SoundHelix Song 2",
-                "Demo Stream",
-                "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
-                ""
-        ));
-        tracks.add(new Song(
-                "demo-3",
-                "Big Buck Bunny (Video)",
-                "Demo Video",
-                "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-                ""
-        ));
-        trackAdapter.setTracks(tracks);
     }
 
     private void loadInitialSongsFromYouTube() {
         backgroundExecutor.execute(() -> {
             try {
-                List<Song> fetchedSongs = youTubeRepository.searchSongs("trending music", 25);
+                List<SearchResult> fetchedResults = songRepository.search("trending music", 25);
+                List<Song> fetchedSongs = new ArrayList<>();
+                for (SearchResult result : fetchedResults) {
+                    fetchedSongs.add(result.getSong());
+                }
                 if (fetchedSongs.isEmpty()) return;
 
                 runOnUiThread(() -> {
@@ -180,11 +153,15 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
                         player.stop();
                         playPauseButton.setText("Play");
                     }
+
+                    if (!tracks.isEmpty()) {
+                        playTrack(0);
+                    }
                 });
             } catch (Exception error) {
                 runOnUiThread(() -> Toast.makeText(
                         MainActivity.this,
-                        "Using fallback tracks. YouTube fetch failed: " + error.getMessage(),
+                        "Failed to load YouTube tracks: " + error.getMessage(),
                         Toast.LENGTH_LONG
                 ).show());
             }
@@ -242,10 +219,12 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
 
     private void togglePlayPause() {
         if (player == null) return;
+        if (tracks.isEmpty()) return;
+
         if (player.isPlaying()) {
             player.pause();
         } else {
-            if (currentIndex < 0 && !tracks.isEmpty()) {
+            if (currentIndex < 0) {
                 playTrack(0);
                 return;
             }
