@@ -15,7 +15,20 @@ android {
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
-        def ytKey = (project.findProperty("YOUTUBE_API_KEY") ?: System.getenv("YOUTUBE_API_KEY") ?: "")
+        def secretsProperties = new Properties()
+        def secretsFile = rootProject.file("secrets.properties")
+        if (secretsFile.exists()) {
+            secretsFile.withInputStream { stream ->
+                secretsProperties.load(stream)
+            }
+        }
+
+        def ytKey = (
+                project.findProperty("YOUTUBE_API_KEY")
+                        ?: secretsProperties.getProperty("YOUTUBE_API_KEY")
+                        ?: System.getenv("YOUTUBE_API_KEY")
+                        ?: ""
+        )
         buildConfigField "String", "YOUTUBE_API_KEY", "\"${ytKey}\""
     }
 
