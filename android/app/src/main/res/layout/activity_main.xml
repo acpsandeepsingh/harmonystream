@@ -9,10 +9,17 @@
         android:id="@+id/header_title"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:paddingBottom="8dp"
+        android:paddingBottom="4dp"
         android:text="HarmonyStream Native"
         android:textSize="22sp"
         android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/account_status"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingBottom="8dp"
+        android:text="Account: Guest" />
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -73,6 +80,14 @@
             android:layout_marginStart="8dp"
             android:layout_weight="1"
             android:text="Library" />
+
+        <Button
+            android:id="@+id/btn_profile"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:layout_weight="1"
+            android:text="Profile" />
     </LinearLayout>
     <TextView
         android:id="@+id/track_list_status"
