@@ -67,8 +67,10 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - name: Set up Gradle
+      - name: Set up Gradle 8.2
         uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: 8.2
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
@@ -123,7 +125,8 @@ jobs:
         run: |
           set -e
           if [ ! -f android/gradle/wrapper/gradle-wrapper.jar ]; then
-            curl -fsSL https://raw.githubusercontent.com/gradle/gradle/v8.2.1/gradle/wrapper/gradle-wrapper.jar -o android/gradle/wrapper/gradle-wrapper.jar
+            echo "gradle-wrapper.jar missing, generating it with local Gradle"
+            gradle -p android wrapper --gradle-version 8.2 --distribution-type bin --no-daemon
           fi
 
       - name: Normalize and enable Gradle wrapper
@@ -137,9 +140,9 @@ jobs:
           set -e
           cd android
           if [ -f gradle/wrapper/gradle-wrapper.jar ]; then
-            ./gradlew assembleDebug --stacktrace
+            ./gradlew assembleDebug --stacktrace --no-daemon
           else
-            gradle assembleDebug --stacktrace
+            gradle assembleDebug --stacktrace --no-daemon
           fi
 
       - name: Verify APK was created
