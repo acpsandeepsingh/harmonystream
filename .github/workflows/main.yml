@@ -56,6 +56,12 @@ jobs:
 
   apk:
     runs-on: ubuntu-latest
+    env:
+      # Optional mirrors for environments where direct Google/Maven Central access is blocked.
+      ANDROID_GOOGLE_MAVEN_MIRROR: ${{ secrets.ANDROID_GOOGLE_MAVEN_MIRROR }}
+      ANDROID_MAVEN_CENTRAL_MIRROR: ${{ secrets.ANDROID_MAVEN_CENTRAL_MIRROR }}
+      # Native Android runtime key resolution uses YOUTUBE_API_KEY.
+      YOUTUBE_API_KEY: ${{ secrets.NEXT_PUBLIC_YOUTUBE_API_KEY }}
 
     steps:
       - name: Checkout
@@ -79,6 +85,15 @@ jobs:
         run: |
           set -e
           sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+
+      - name: Log repository source mode
+        run: |
+          set -e
+          if [ -n "${ANDROID_GOOGLE_MAVEN_MIRROR}" ] || [ -n "${ANDROID_MAVEN_CENTRAL_MIRROR}" ]; then
+            echo "Using configured Maven mirror settings for Gradle dependency resolution."
+          else
+            echo "Using default google()/mavenCentral() repositories."
+          fi
 
       - name: Accept Android SDK licenses
         run: yes | sdkmanager --licenses
@@ -148,6 +163,20 @@ jobs:
             ./gradlew assembleDebug --stacktrace --info --warning-mode all --no-daemon
           else
             gradle assembleDebug --stacktrace --info --warning-mode all --no-daemon
+          fi
+
+      - name: Validate generated BuildConfig API key wiring
+        run: |
+          set -e
+          if [ -f android/app/build/generated/source/buildConfig/debug/com/sansoft/harmonystram/BuildConfig.java ]; then
+            if grep -q 'YOUTUBE_API_KEY = ""' android/app/build/generated/source/buildConfig/debug/com/sansoft/harmonystram/BuildConfig.java; then
+              echo "⚠️ YOUTUBE_API_KEY resolved as empty in native BuildConfig."
+              echo "Set NEXT_PUBLIC_YOUTUBE_API_KEY GitHub secret for dynamic catalog playback."
+            else
+              echo "✅ Native BuildConfig includes a non-empty YOUTUBE_API_KEY."
+            fi
+          else
+            echo "BuildConfig.java not found in expected path; skipping key validation."
           fi
 
       - name: Verify APK was created
