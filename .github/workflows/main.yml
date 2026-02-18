@@ -61,11 +61,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Java 21
+      - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '21'
+          java-version: '17'
 
       - name: Set up Gradle 8.2
         uses: gradle/actions/setup-gradle@v3
@@ -74,6 +74,11 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+
+      - name: Install required Android SDK packages
+        run: |
+          set -e
+          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
 
       - name: Accept Android SDK licenses
         run: yes | sdkmanager --licenses
@@ -140,9 +145,9 @@ jobs:
           set -e
           cd android
           if [ -f gradle/wrapper/gradle-wrapper.jar ]; then
-            ./gradlew assembleDebug --stacktrace --no-daemon
+            ./gradlew assembleDebug --stacktrace --info --warning-mode all --no-daemon
           else
-            gradle assembleDebug --stacktrace --no-daemon
+            gradle assembleDebug --stacktrace --info --warning-mode all --no-daemon
           fi
 
       - name: Verify APK was created
