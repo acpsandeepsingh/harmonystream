@@ -10,8 +10,9 @@
     "typecheck": "tsc --noEmit",
     "cap:add:android": "npx cap add android",
     "cap:sync:android": "npx cap sync android",
-    "apk:debug": "./android/gradlew -p android assembleDebug",
-    "build:android": "BUILD_TARGET=android NODE_ENV=production next build"
+    "apk:debug": "npm run android:sdk:prepare && ./android/gradlew -p android assembleDebug",
+    "build:android": "BUILD_TARGET=android NODE_ENV=production next build",
+    "android:sdk:prepare": "./scripts.ensure-android-sdk.sh"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.1.0",
