@@ -82,9 +82,6 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
-      - name: Install Capacitor packages for Android build
-        run: npm install --no-save @capacitor/core @capacitor/android @capacitor/cli
-
       - name: Build web output for Android
         env:
           BUILD_TARGET: android
@@ -100,14 +97,13 @@ jobs:
             echo "✅ Build is clean (no basePath)"
           fi
 
-      - name: Generate and sync Android project
+      - name: Prepare Android project assets
         run: |
           set -e
-          test -f capacitor.config.json || test -f capacitor.config.ts || (echo "capacitor config is missing" && exit 1)
-          if [ ! -d android ]; then
-            npx cap add android
-          fi
-          npx cap sync android
+          test -d android || (echo "android project folder is missing" && exit 1)
+          mkdir -p android/app/src/main/assets
+          rm -rf android/app/src/main/assets/*
+          cp -R out/. android/app/src/main/assets/
 
       - name: Configure Android SDK path
         run: |
@@ -118,6 +114,13 @@ jobs:
             echo "sdk.dir=${ANDROID_HOME}" > android/local.properties
           else
             echo "ANDROID_SDK_ROOT/ANDROID_HOME is not set" && exit 1
+          fi
+
+      - name: Ensure Gradle wrapper JAR exists
+        run: |
+          set -e
+          if [ ! -f android/gradle/wrapper/gradle-wrapper.jar ]; then
+            curl -fsSL https://raw.githubusercontent.com/gradle/gradle/v8.2.1/gradle/wrapper/gradle-wrapper.jar -o android/gradle/wrapper/gradle-wrapper.jar
           fi
 
       - name: Normalize and enable Gradle wrapper
