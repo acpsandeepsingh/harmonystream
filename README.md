@@ -47,6 +47,7 @@ Use this lightweight process whenever native Android work lands so the README st
 - **Reached milestone:** **Phase 3 foundation is now delivered** with local playlist/library operations integrated into the native Android flow.
 - **Partially present from future phases:** native player controls now include queue-aware playback for native media sources (`previous / play-pause / next`), playback notification sync, local resume-session restore, user-selectable repeat modes (`off / all / one`), a native queue picker dialog for inspecting/jumping within the active queue, and playback session schema-v3 persistence (including `isPlaying`, queue snapshot indexes, and queue cursor) saved on lifecycle stop and item transitions for more reliable resume behavior.
 - **Expanded this cycle:** Phase 3B sync foundation is now wired with identity-aware playlist reconciliation primitives (`pullRemoteSnapshot`, `pushLocalChanges`, `resolveConflicts`) using updated-at merge + playlist tombstones, with sync-state surfaced in Library/Profile screens and safe guest/local fallback.
+- **Expanded this cycle:** Phase 4A lifecycle hardening now includes a TV focus-navigation pass for main playback controls, key-driven media toggle handling for D-pad/remote workflows, and structured native playback event diagnostics persisted for lifecycle + queue troubleshooting.
 
 ### Phase-by-phase plan with definition of done
 
@@ -256,7 +257,7 @@ Once Firestore playlist sync (Phase 3B) is stable, the immediate follow-up shoul
 **Implementation update (latest):**
 - ✅ Queue snapshot persistence has been implemented with schema-v3 playback session state (`queue_track_indexes`, `current_queue_index`) and deterministic queue restore fallback behavior.
 - ✅ Notification media controls now route through a cold-start-safe activity handoff path so `previous / play-pause / next` actions still execute after process recreation.
-- 🟠 Remaining: TV focus polish, full-screen player surface, and observability/soak-test gates.
+- 🟠 Remaining: full-screen player surface and extended soak-test gate coverage.
 
 1. **Queue persistence beyond single-session restore**
    - Persist full queue snapshot (ordered ids, current index, repeat mode, play state).

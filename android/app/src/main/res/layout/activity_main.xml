@@ -100,8 +100,15 @@
         android:id="@+id/now_playing"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:paddingBottom="8dp"
+        android:paddingBottom="4dp"
         android:text="Select a track" />
+
+    <TextView
+        android:id="@+id/playback_diagnostics"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingBottom="8dp"
+        android:text="Lifecycle: idle" />
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/track_list"

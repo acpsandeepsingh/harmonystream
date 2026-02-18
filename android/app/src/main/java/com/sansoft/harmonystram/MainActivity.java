@@ -10,6 +10,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.view.KeyEvent;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.ArrayAdapter;
@@ -30,7 +31,9 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -53,6 +56,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
     private Button repeatModeButton;
     private Button queueButton;
     private TextView nowPlayingText;
+    private TextView playbackDiagnosticsText;
     private TextView trackListStatus;
     private TextView accountStatus;
     private EditText searchInput;
@@ -74,6 +78,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
     private PlaybackSessionStore playbackSessionStore;
     private NativeUserSessionStore userSessionStore;
     private ExecutorService backgroundExecutor;
+    private PlaybackEventLogger playbackEventLogger;
 
     private final Handler stateSyncHandler = new Handler(Looper.getMainLooper());
     private final Runnable stateSyncRunnable = new Runnable() {
@@ -119,8 +124,10 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         playlistStorageRepository = new PlaylistStorageRepository(this);
         playlistSyncManager = new PlaylistSyncManager(this);
         playbackSessionStore = new PlaybackSessionStore(this);
+        playbackEventLogger = new PlaybackEventLogger(this);
 
         nowPlayingText = findViewById(R.id.now_playing);
+        playbackDiagnosticsText = findViewById(R.id.playback_diagnostics);
         trackListStatus = findViewById(R.id.track_list_status);
         accountStatus = findViewById(R.id.account_status);
         searchInput = findViewById(R.id.search_query_input);
@@ -149,13 +156,25 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         player = new ExoPlayer.Builder(this).build();
         playerView = findViewById(R.id.player_view);
         playerView.setPlayer(player);
+        applyTvFocusPolish();
         applyRepeatModeToPlayer();
 
         player.addListener(new Player.Listener() {
             @Override
             public void onIsPlayingChanged(boolean isPlaying) {
                 playPauseButton.setText(isPlaying ? "Pause" : "Play");
+                updatePlaybackDiagnostics(isPlaying ? "playing" : "paused");
+                logPlaybackEvent("is_playing_changed", eventAttrs("is_playing", String.valueOf(isPlaying)));
                 syncPlaybackStateToNotification();
+            }
+
+            @Override
+            public void onEvents(Player player, Player.Events events) {
+                if (events.contains(Player.EVENT_PLAYBACK_STATE_CHANGED)) {
+                    String state = playbackStateLabel(player.getPlaybackState());
+                    logPlaybackEvent("playback_state", eventAttrs("state", state));
+                    updatePlaybackDiagnostics("State: " + state);
+                }
             }
 
             @Override
@@ -172,6 +191,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
                     return;
                 }
                 updateNowPlayingText();
+                updatePlaybackDiagnostics("Queue cursor: " + currentQueueIndex);
                 syncPlaybackStateToNotification();
                 persistPlaybackSession();
             }
@@ -195,11 +215,16 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
             registerReceiver(mediaActionReceiver, mediaFilter);
         }
 
+        logPlaybackEvent("activity_created", eventAttrs("saved_state", String.valueOf(savedInstanceState != null)));
+        updatePlaybackDiagnostics("Lifecycle: created");
         updateRepeatModeButtonLabel();
 
         boolean restoredSession = restorePlaybackSession();
         if (!restoredSession) {
             loadHomeCatalog();
+        } else {
+            logPlaybackEvent("restore_session", eventAttrs("status", "restored"));
+            updatePlaybackDiagnostics("Lifecycle: restored session");
         }
         handlePendingMediaControlAction(getIntent());
         stateSyncHandler.post(stateSyncRunnable);
@@ -209,6 +234,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
+        logPlaybackEvent("new_intent", eventAttrs("has_pending_action", String.valueOf(intent != null && intent.hasExtra(PlaybackService.EXTRA_PENDING_MEDIA_ACTION))));
         handlePendingMediaControlAction(intent);
     }
 
@@ -221,6 +247,8 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
             return;
         }
 
+        logPlaybackEvent("pending_media_action", eventAttrs("action", pendingAction));
+        updatePlaybackDiagnostics("Notification action: " + pendingAction);
         intent.removeExtra(PlaybackService.EXTRA_PENDING_MEDIA_ACTION);
 
         if (PlaybackService.ACTION_PREVIOUS.equals(pendingAction)) {
@@ -752,6 +780,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
 
     private void playTrack(int index) {
         if (index < 0 || index >= tracks.size()) return;
+        logPlaybackEvent("play_track_requested", eventAttrs("track_index", String.valueOf(index)));
         currentIndex = index;
         selectedTrackIndex = index;
         Song track = tracks.get(index);
@@ -759,6 +788,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         if (track.getMediaUrl().contains("youtube.com/watch")) {
             openYouTubeVideo(track.getMediaUrl());
             nowPlayingText.setText("Opened in YouTube app: " + track.getTitle());
+            updatePlaybackDiagnostics("External playback: YouTube app");
             syncPlaybackStateToNotification();
             return;
         }
@@ -769,6 +799,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
             return;
         }
         updateNowPlayingText();
+        updatePlaybackDiagnostics("Native queue index: " + queueIndex);
         syncPlaybackStateToNotification();
         persistPlaybackSession();
     }
@@ -784,6 +815,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
 
     private void playNext() {
         if (tracks.isEmpty()) return;
+        logPlaybackEvent("queue_next", eventAttrs("current_index", String.valueOf(currentIndex)));
 
         if (repeatMode == REPEAT_MODE_ONE && currentIndex >= 0) {
             playTrack(currentIndex);
@@ -800,6 +832,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
 
     private void playPrevious() {
         if (tracks.isEmpty()) return;
+        logPlaybackEvent("queue_previous", eventAttrs("current_index", String.valueOf(currentIndex)));
 
         if (repeatMode == REPEAT_MODE_ONE && currentIndex >= 0) {
             playTrack(currentIndex);
@@ -817,6 +850,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
     private void togglePlayPause() {
         if (player == null) return;
         if (tracks.isEmpty()) return;
+        logPlaybackEvent("toggle_play_pause", eventAttrs("is_playing", String.valueOf(player.isPlaying())));
 
         if (player.isPlaying()) {
             player.pause();
@@ -855,6 +889,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         List<MediaItem> mediaItems = new ArrayList<>();
         int targetWindowIndex = -1;
         activeQueueTrackIndexes.clear();
+        logPlaybackEvent("build_native_queue", eventAttrs("target_track_index", String.valueOf(targetTrackIndex), "autoplay", String.valueOf(autoplay)));
 
         for (int i = 0; i < tracks.size(); i++) {
             Song song = tracks.get(i);
@@ -884,6 +919,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
 
         currentQueueIndex = targetWindowIndex;
         player.setMediaItems(mediaItems, targetWindowIndex, C.TIME_UNSET);
+        logPlaybackEvent("native_queue_applied", eventAttrs("media_items", String.valueOf(mediaItems.size()), "queue_index", String.valueOf(currentQueueIndex)));
         player.prepare();
         if (autoplay) {
             player.play();
@@ -896,6 +932,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
 
         List<MediaItem> mediaItems = new ArrayList<>();
         activeQueueTrackIndexes.clear();
+        logPlaybackEvent("apply_queue_snapshot", eventAttrs("snapshot_size", String.valueOf(queueTrackIndexes.size()), "target_queue_index", String.valueOf(targetQueueIndex), "autoplay", String.valueOf(autoplay)));
 
         for (Integer trackIndexObj : queueTrackIndexes) {
             if (trackIndexObj == null) continue;
@@ -1074,6 +1111,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         applyRepeatModeToPlayer();
         updateRepeatModeButtonLabel();
         Toast.makeText(this, "Repeat mode: " + getRepeatModeLabel(), Toast.LENGTH_SHORT).show();
+        logPlaybackEvent("repeat_mode_changed", eventAttrs("repeat_mode", getRepeatModeLabel()));
         persistPlaybackSession();
     }
 
@@ -1110,6 +1148,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
             positionMs = Math.max(0L, player.getCurrentPosition());
         }
         playbackSessionStore.save(tracks, currentIndex, selectedTrackIndex, positionMs, repeatMode, player != null && player.isPlaying(), activeQueueTrackIndexes, currentQueueIndex);
+        logPlaybackEvent("session_persisted", eventAttrs("track_count", String.valueOf(tracks.size()), "current_index", String.valueOf(currentIndex), "queue_index", String.valueOf(currentQueueIndex)));
     }
 
     private void updateNowPlayingText() {
@@ -1139,15 +1178,93 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         }
     }
 
+    @Override
+    protected void onStart() {
+        super.onStart();
+        logPlaybackEvent("activity_start", eventAttrs());
+        updatePlaybackDiagnostics("Lifecycle: start");
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        logPlaybackEvent("activity_resume", eventAttrs());
+        updatePlaybackDiagnostics("Lifecycle: resume");
+    }
+
+    @Override
+    protected void onPause() {
+        logPlaybackEvent("activity_pause", eventAttrs());
+        updatePlaybackDiagnostics("Lifecycle: pause");
+        super.onPause();
+    }
+
+    private void applyTvFocusPolish() {
+        if (searchInput != null) searchInput.setNextFocusDownId(R.id.track_list);
+        if (searchButton != null) searchButton.setNextFocusDownId(R.id.track_list);
+        if (playPauseButton != null) playPauseButton.setNextFocusUpId(R.id.track_list);
+        if (queueButton != null) queueButton.setNextFocusUpId(R.id.track_list);
+
+        if (playPauseButton != null) {
+            playPauseButton.setOnKeyListener((v, keyCode, event) -> {
+                if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
+                if (keyCode == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE || keyCode == KeyEvent.KEYCODE_SPACE || keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER) {
+                    togglePlayPause();
+                    return true;
+                }
+                return false;
+            });
+        }
+        if (playerView != null) {
+            playerView.setUseController(true);
+            playerView.setControllerAutoShow(true);
+        }
+    }
+
+    private void updatePlaybackDiagnostics(String message) {
+        if (playbackDiagnosticsText != null && message != null && !message.isEmpty()) {
+            playbackDiagnosticsText.setText(message);
+        }
+    }
+
+    private String playbackStateLabel(int state) {
+        if (state == Player.STATE_IDLE) return "idle";
+        if (state == Player.STATE_BUFFERING) return "buffering";
+        if (state == Player.STATE_READY) return "ready";
+        if (state == Player.STATE_ENDED) return "ended";
+        return "unknown";
+    }
+
+    private Map<String, String> eventAttrs(String... keyValues) {
+        Map<String, String> attrs = new LinkedHashMap<>();
+        if (keyValues == null) return attrs;
+        for (int i = 0; i + 1 < keyValues.length; i += 2) {
+            attrs.put(keyValues[i], keyValues[i + 1]);
+        }
+        attrs.put("current_index", String.valueOf(currentIndex));
+        attrs.put("queue_index", String.valueOf(currentQueueIndex));
+        attrs.put("repeat_mode", getRepeatModeLabel());
+        attrs.put("is_playing", String.valueOf(player != null && player.isPlaying()));
+        return attrs;
+    }
+
+    private void logPlaybackEvent(String eventName, Map<String, String> attrs) {
+        if (playbackEventLogger == null) return;
+        playbackEventLogger.log(eventName, attrs);
+    }
 
     @Override
     protected void onStop() {
+        logPlaybackEvent("activity_stop", eventAttrs());
+        updatePlaybackDiagnostics("Lifecycle: stop");
         super.onStop();
         persistPlaybackSession();
     }
 
     @Override
     protected void onDestroy() {
+        logPlaybackEvent("activity_destroy", eventAttrs());
+        updatePlaybackDiagnostics("Lifecycle: destroy");
         super.onDestroy();
         stateSyncHandler.removeCallbacksAndMessages(null);
 
