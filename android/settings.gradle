@@ -1,15 +1,40 @@
 pluginManagement {
     repositories {
-        google()
-        mavenCentral()
+        def googleMirror = System.getenv("ANDROID_GOOGLE_MAVEN_MIRROR")
+        def centralMirror = System.getenv("ANDROID_MAVEN_CENTRAL_MIRROR")
+
+        if (googleMirror != null && !googleMirror.isEmpty()) {
+            maven { url = uri(googleMirror) }
+        } else {
+            google()
+        }
+
+        if (centralMirror != null && !centralMirror.isEmpty()) {
+            maven { url = uri(centralMirror) }
+        } else {
+            mavenCentral()
+        }
+
         gradlePluginPortal()
     }
 }
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
-        google()
-        mavenCentral()
+        def googleMirror = System.getenv("ANDROID_GOOGLE_MAVEN_MIRROR")
+        def centralMirror = System.getenv("ANDROID_MAVEN_CENTRAL_MIRROR")
+
+        if (googleMirror != null && !googleMirror.isEmpty()) {
+            maven { url = uri(googleMirror) }
+        } else {
+            google()
+        }
+
+        if (centralMirror != null && !centralMirror.isEmpty()) {
+            maven { url = uri(centralMirror) }
+        } else {
+            mavenCentral()
+        }
     }
 }
 rootProject.name = "HarmonyStream"

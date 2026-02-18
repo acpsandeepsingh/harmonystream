@@ -4,6 +4,30 @@ This is a NextJS starter app for a music streaming service, built in Firebase St
 
 To get started, take a look at `src/app/page.tsx`.
 
+
+## Native Android Rewrite Status
+
+The Android module now runs as a fully native screen (RecyclerView + Media3/ExoPlayer player) instead of loading the web app through a WebView. The current native build includes:
+
+- Native track list UI and native playback controls (Previous/Play-Pause/Next).
+- Native audio/video playback using Media3 ExoPlayer.
+- Existing `PlaybackService` notification controls integrated with player state updates.
+
+> Note: The native rewrite currently uses sample media URLs as a baseline player implementation. YouTube-specific catalog, search, and account-connected features still need to be implemented natively in future steps.
+
+
+## Native Migration Roadmap (Step-by-Step)
+
+### Phase 1 (Implemented)
+- Added Android-native `Song` model and `YouTubeRepository` data layer for YouTube search API fetches.
+- Added Android `YOUTUBE_API_KEY` configuration via Gradle `buildConfigField` from `YOUTUBE_API_KEY` env/property.
+- Main screen now tries loading a YouTube song list first; if it fails, app safely falls back to local demo streams.
+
+### Next phases
+- **Phase 2:** Native search screen + filters + loading/error states.
+- **Phase 3:** Native playlist/library management with Firebase sync.
+- **Phase 4:** Full native YouTube playback/session handling and TV polish.
+
 ## Your Development Workflow
 
 Developing and releasing your app is fully automated. Here’s the step-by-step process:
@@ -29,7 +53,7 @@ This project is automatically deployed to GitHub Pages when changes are pushed t
 
 ## Android TV App
 
-This project includes a native Android wrapper app that provides a better experience on Smart TVs by enabling smooth D-pad navigation. This app is self-contained and does not require an internet connection to run, as it bundles the website files directly into the APK.
+This project includes a native Android app focused on TV-friendly playback with native controls, Media3 player integration, and Android media notifications.
 
 ### How to Get the Android App (APK)
 
@@ -57,3 +81,11 @@ If the Android app shell opens but the actual app content is blank or never load
 
 3. **No internet connectivity on device**
    - The APK bundles UI files, but song discovery/streaming still requires network access.
+
+
+4. **Gradle dependency download fails with `403 Forbidden` in CI/dev shell**
+   - Some environments block direct Maven/Google repository access and require internal mirrors.
+   - Set these environment variables before building Android:
+     - `ANDROID_GOOGLE_MAVEN_MIRROR` (mirror URL for Google Maven artifacts)
+     - `ANDROID_MAVEN_CENTRAL_MIRROR` (mirror URL for Maven Central artifacts)
+   - Then rerun: `./android/gradlew -p android assembleDebug`
