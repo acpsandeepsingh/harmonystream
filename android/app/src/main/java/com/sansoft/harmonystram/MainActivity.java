@@ -24,7 +24,11 @@ import androidx.webkit.WebViewAssetLoader;
 
 public class MainActivity extends AppCompatActivity {
 
+    private static final String LOCAL_ASSET_DOMAIN = "localhost";
+    private static final String LOCAL_ASSET_BASE_URL = "https://" + LOCAL_ASSET_DOMAIN;
+
     private WebView webView;
+    private boolean attemptedFileSchemeFallback = false;
 
     private final BroadcastReceiver mediaActionReceiver = new BroadcastReceiver() {
         @Override
@@ -97,6 +101,11 @@ public class MainActivity extends AppCompatActivity {
         webSettings.setNeedInitialFocus(true);
 
         final WebViewAssetLoader assetLoader = new WebViewAssetLoader.Builder()
+                .setDomain(LOCAL_ASSET_DOMAIN)
+                // Serve bundled web build files from the app asset root.
+                // This supports routes like /, /search/, /_next/* and keeps client-side navigation working.
+                .addPathHandler("/", new WebViewAssetLoader.AssetsPathHandler(this))
+                // Keep legacy /assets/* requests working for older builds.
                 .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
                 .build();
 
@@ -111,9 +120,55 @@ public class MainActivity extends AppCompatActivity {
             public WebResourceResponse shouldInterceptRequest(WebView view, String url) {
                 return assetLoader.shouldInterceptRequest(android.net.Uri.parse(url));
             }
+
+            @Override
+            public void onReceivedError(WebView view, WebResourceRequest request, android.webkit.WebResourceError error) {
+                super.onReceivedError(view, request, error);
+                if (request == null || !request.isForMainFrame() || attemptedFileSchemeFallback) {
+                    return;
+                }
+
+                if (error != null && error.getErrorCode() == WebViewClient.ERROR_HOST_LOOKUP) {
+                    attemptedFileSchemeFallback = true;
+                    view.loadUrl("file:///android_asset/index.html");
+                }
+            }
+
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                if (request == null || request.getUrl() == null) {
+                    return false;
+                }
+
+                String scheme = request.getUrl().getScheme();
+                String host = request.getUrl().getHost();
+
+                if ("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme)) {
+                    if (LOCAL_ASSET_DOMAIN.equalsIgnoreCase(host)
+                            || "appassets.androidplatform.net".equalsIgnoreCase(host)) {
+                        return false;
+                    }
+
+                    // Keep app page navigation inside bundled APK assets.
+                    // Music/video providers (e.g. youtube.com, youtu.be) are allowed to load from internet.
+                    if (!request.isForMainFrame()) {
+                        return false;
+                    }
+
+                    String path = request.getUrl().getEncodedPath();
+                    if (path == null || path.isEmpty() || "/".equals(path)) {
+                        view.loadUrl(LOCAL_ASSET_BASE_URL + "/index.html");
+                    } else {
+                        view.loadUrl(LOCAL_ASSET_BASE_URL + path);
+                    }
+                    return true;
+                }
+
+                return false;
+            }
         });
         webView.setWebChromeClient(new WebChromeClient());
-        webView.loadUrl("https://appassets.androidplatform.net/assets/index.html");
+        webView.loadUrl(LOCAL_ASSET_BASE_URL + "/index.html");
 
         IntentFilter mediaFilter = new IntentFilter(PlaybackService.ACTION_MEDIA_CONTROL);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
