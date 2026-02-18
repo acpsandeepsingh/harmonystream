@@ -44,9 +44,9 @@ Use this lightweight process whenever native Android work lands so the README st
 > Suggested cadence: update this section in the same PR that introduces the feature so docs never lag implementation.
 
 ### Current delivery checkpoint (where coding stands now)
-- **Reached milestone:** **Phase 1 is complete** and integrated into the native Android flow.
+- **Reached milestone:** **Phase 2 is complete** and integrated into the native Android flow.
 - **Partially present from future phases:** basic native player controls (`previous / play-pause / next`) and playback notification sync are already wired.
-- **Not started yet:** full native search page, playlist/library parity, auth/profile/settings parity, and release hardening pipeline tasks.
+- **Not started yet:** playlist/library parity, auth/profile/settings parity, and release hardening pipeline tasks.
 
 ### Phase-by-phase plan with definition of done
 
@@ -64,15 +64,15 @@ Use this lightweight process whenever native Android work lands so the README st
 - `YOUTUBE_API_KEY` is injected via Gradle property / `android/secrets.properties` / env var.
 - Home catalog load is repository-backed using YouTube query results.
 
-#### Phase 2 — Native search screen 🟡 Pending
-**Scope to implement**
-- Native search UI: query input + source selector (`youtube` / `youtube-all`).
-- Call repository search methods from UI.
-- Render loading/error/empty/success states.
-- On search result tap: play through ExoPlayer and sync playback notification.
+#### Phase 2 — Native search screen ✅ Complete
+**What is implemented now**
+- Native search UI with query input + source selector (`youtube` / `youtube-all`).
+- Repository-backed search from native UI, including source-aware query behavior.
+- Loading/error/empty/success states rendered in the native screen.
+- Search result tap opens playable media flow and syncs playback notification state.
 
-**Exit criteria**
-- Behavior matches current web search flow first, even if visual polish comes later.
+**Exit criteria outcome**
+- Core behavior now matches web search intent for source selection and results rendering.
 
 #### Phase 3 — Native playlists & library 🟡 Pending
 **Scope to implement**

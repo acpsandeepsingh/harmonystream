@@ -8,6 +8,9 @@ import java.util.List;
 
 public class YouTubeRepository implements SongRepository {
 
+    private static final String SOURCE_YOUTUBE = "youtube";
+    private static final String SOURCE_YOUTUBE_ALL = "youtube-all";
+
     private final YouTubeApiClient apiClient;
 
     public YouTubeRepository() {
@@ -19,8 +22,11 @@ public class YouTubeRepository implements SongRepository {
     }
 
     @Override
-    public List<SearchResult> search(String query, int maxResults) throws Exception {
-        JSONObject json = apiClient.searchVideos(query, maxResults);
+    public List<SearchResult> search(String query, int maxResults, String source) throws Exception {
+        boolean musicOnly = !SOURCE_YOUTUBE_ALL.equals(source);
+        String normalizedSource = musicOnly ? SOURCE_YOUTUBE : SOURCE_YOUTUBE_ALL;
+
+        JSONObject json = apiClient.searchVideos(query, maxResults, musicOnly);
         JSONArray items = json.optJSONArray("items");
         List<SearchResult> results = new ArrayList<>();
 
@@ -51,7 +57,7 @@ public class YouTubeRepository implements SongRepository {
                     thumbnailUrl,
                     0L
             );
-            results.add(new SearchResult(song, "youtube"));
+            results.add(new SearchResult(song, normalizedSource));
         }
 
         return results;
