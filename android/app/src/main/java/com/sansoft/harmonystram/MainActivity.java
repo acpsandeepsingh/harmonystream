@@ -24,6 +24,9 @@ import androidx.webkit.WebViewAssetLoader;
 
 public class MainActivity extends AppCompatActivity {
 
+    private static final String LOCAL_ASSET_DOMAIN = "localhost";
+    private static final String LOCAL_ASSET_BASE_URL = "https://" + LOCAL_ASSET_DOMAIN;
+
     private WebView webView;
     private boolean attemptedFileSchemeFallback = false;
 
