@@ -113,9 +113,12 @@ Use this lightweight process whenever native Android work lands so the README st
 **Exit criteria**
 - Fully native end-to-end authenticated flow with cloud-backed account state.
 
-#### Phase 6 — Build/release reliability 🟡 Pending
-**Scope to implement**
-- Final Gradle/repository mirror setup for target environment.
+#### Phase 6 — Build/release reliability 🟠 In progress
+**What is implemented now**
+- APK CI workflow now reads optional Android Maven mirror secrets (`ANDROID_GOOGLE_MAVEN_MIRROR`, `ANDROID_MAVEN_CENTRAL_MIRROR`) to support restricted build environments.
+- APK CI now maps native `YOUTUBE_API_KEY` from repository secrets and validates generated native BuildConfig wiring during CI.
+
+**Remaining scope**
 - CI for signed APK/AAB release builds.
 - Crash reporting, analytics, and regression checklist.
 
