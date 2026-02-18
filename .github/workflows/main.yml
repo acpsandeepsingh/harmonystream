@@ -5,9 +5,21 @@ on:
   push:
     branches: ["main"]
 
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
 jobs:
   website:
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
       - name: Checkout
@@ -24,15 +36,23 @@ jobs:
 
       - name: Build website
         env:
-          BUILD_TARGET: gh-pages
           NEXT_PUBLIC_YOUTUBE_API_KEY: ${{ secrets.NEXT_PUBLIC_YOUTUBE_API_KEY }}
         run: npm run build
 
-      - name: Upload website build artifact
-        uses: actions/upload-artifact@v4
+      - name: Add .nojekyll file
+        run: touch ./out/.nojekyll
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload website artifact
+        uses: actions/upload-pages-artifact@v3
         with:
-          name: website-out
-          path: out
+          path: './out'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
 
   apk:
     runs-on: ubuntu-latest
@@ -65,16 +85,25 @@ jobs:
       - name: Install Capacitor packages for Android build
         run: npm install --no-save @capacitor/core @capacitor/android @capacitor/cli
 
-      - name: Build web output
+      - name: Build web output for Android
         env:
           BUILD_TARGET: android
           NEXT_PUBLIC_YOUTUBE_API_KEY: ${{ secrets.NEXT_PUBLIC_YOUTUBE_API_KEY }}
         run: npm run build
 
+      - name: Verify Android build has no basePath
+        run: |
+          echo "Checking if basePath was removed..."
+          if grep -q "harmonystream" out/index.html; then
+            echo "❌ WARNING: basePath still present in build!"
+          else
+            echo "✅ Build is clean (no basePath)"
+          fi
+
       - name: Generate and sync Android project
         run: |
           set -e
-          test -f capacitor.config.json || (echo "capacitor.config.json is missing" && exit 1)
+          test -f capacitor.config.json || test -f capacitor.config.ts || (echo "capacitor config is missing" && exit 1)
           if [ ! -d android ]; then
             npx cap add android
           fi
@@ -98,10 +127,20 @@ jobs:
           chmod +x android/gradlew
 
       - name: Build debug APK
-        run: cd android && ./gradlew assembleDebug
+        run: cd android && ./gradlew assembleDebug --stacktrace
+
+      - name: Verify APK was created
+        run: |
+          if [ -f android/app/build/outputs/apk/debug/app-debug.apk ]; then
+            echo "✅ APK created successfully"
+            ls -lh android/app/build/outputs/apk/debug/app-debug.apk
+          else
+            echo "❌ APK not found!"
+            exit 1
+          fi
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug-apk
+          name: HarmonyStream-Android-APK
           path: android/app/build/outputs/apk/debug/app-debug.apk
