@@ -138,7 +138,7 @@ Developing and releasing your app is fully automated. Here’s the step-by-step 
 
 3.  **Automation Takes Over:** Pushing to `main` automatically triggers two processes in your repository's "Actions" tab:
     *   **Website Deployment:** Your Next.js app is built and deployed to GitHub Pages.
-    *   **Android App Build:** A native Android `.apk` file is built, bundling your website inside it.
+    *   **Android App Build:** A native Android `.apk` file is built from the Android module (no WebView shell).
 
 4.  **Get Your Updates:**
     *   **Live Website:** Your changes will be live at the URL below within a few minutes.
@@ -171,9 +171,9 @@ This project is set up to automatically build the Android app for you. You do **
 
 If the Android app shell opens but the actual app content is blank or never loads, the cause is usually one of these:
 
-1. **Wrong build command for Android assets**
-   - For APK builds you must use the Android build path (`npm run apk:debug` or at minimum `npm run build:android` + `npm run cap:sync:android`).
-   - Running a regular web build (`npm run build`) can generate asset paths for GitHub Pages (`/harmonystream/...`), which are not valid inside the APK webview.
+1. **Android SDK is not configured in the local shell**
+   - If Gradle fails with `SDK location not found`, set Android SDK path in either `ANDROID_HOME` or `android/local.properties` (`sdk.dir=/path/to/Android/Sdk`).
+   - Then rerun: `npm run apk:debug`.
 
 2. **Missing YouTube API key at build time**
    - The app fetches songs from YouTube Data API and expects `NEXT_PUBLIC_YOUTUBE_API_KEY` during build/runtime.
