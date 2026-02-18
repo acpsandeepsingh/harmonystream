@@ -121,10 +121,10 @@ Use this lightweight process whenever native Android work lands so the README st
 - APK CI workflow now reads optional Android Maven mirror secrets (`ANDROID_GOOGLE_MAVEN_MIRROR`, `ANDROID_MAVEN_CENTRAL_MIRROR`) to support restricted build environments.
 - APK CI now maps native `YOUTUBE_API_KEY` from repository secrets and validates generated native BuildConfig wiring during CI.
 - Local Android debug builds now run a preflight SDK resolver (`npm run android:sdk:prepare`) that auto-writes `android/local.properties` when a valid SDK is detected.
+- CI can now optionally build signed release `APK` and `AAB` artifacts when release-signing secrets are configured, while keeping unsigned debug APK builds always-on.
 - Next.js production builds now avoid Firebase App Hosting auto-init warnings during SSR/static generation by using explicit config on server renders.
 
 **Remaining scope**
-- CI for signed APK/AAB release builds.
 - Crash reporting, analytics, and regression checklist.
 
 **Exit criteria**
@@ -192,3 +192,12 @@ If the Android app shell opens but the actual app content is blank or never load
      - `ANDROID_GOOGLE_MAVEN_MIRROR` (mirror URL for Google Maven artifacts)
      - `ANDROID_MAVEN_CENTRAL_MIRROR` (mirror URL for Maven Central artifacts)
    - Then rerun: `./android/gradlew -p android assembleDebug`
+
+
+5. **Release signing artifacts are missing in CI**
+   - The workflow builds signed release artifacts only when all signing secrets are configured:
+     - `ANDROID_RELEASE_STORE_FILE_BASE64`
+     - `ANDROID_RELEASE_STORE_PASSWORD`
+     - `ANDROID_RELEASE_KEY_ALIAS`
+     - `ANDROID_RELEASE_KEY_PASSWORD`
+   - For local signed builds, copy `android/signing.properties.example` to `android/signing.properties` and set keystore path + credentials, then run: `./android/gradlew -p android assembleRelease bundleRelease`.

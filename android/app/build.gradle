@@ -2,6 +2,41 @@ plugins {
     id 'com.android.application'
 }
 
+def signingProperties = new Properties()
+def signingFile = rootProject.file("signing.properties")
+if (signingFile.exists()) {
+    signingFile.withInputStream { stream ->
+        signingProperties.load(stream)
+    }
+}
+
+def releaseStoreFilePath = (
+        project.findProperty("ANDROID_RELEASE_STORE_FILE")
+                ?: signingProperties.getProperty("ANDROID_RELEASE_STORE_FILE")
+                ?: System.getenv("ANDROID_RELEASE_STORE_FILE")
+)
+def releaseStorePassword = (
+        project.findProperty("ANDROID_RELEASE_STORE_PASSWORD")
+                ?: signingProperties.getProperty("ANDROID_RELEASE_STORE_PASSWORD")
+                ?: System.getenv("ANDROID_RELEASE_STORE_PASSWORD")
+)
+def releaseKeyAlias = (
+        project.findProperty("ANDROID_RELEASE_KEY_ALIAS")
+                ?: signingProperties.getProperty("ANDROID_RELEASE_KEY_ALIAS")
+                ?: System.getenv("ANDROID_RELEASE_KEY_ALIAS")
+)
+def releaseKeyPassword = (
+        project.findProperty("ANDROID_RELEASE_KEY_PASSWORD")
+                ?: signingProperties.getProperty("ANDROID_RELEASE_KEY_PASSWORD")
+                ?: System.getenv("ANDROID_RELEASE_KEY_PASSWORD")
+)
+def hasReleaseSigning = [
+        releaseStoreFilePath,
+        releaseStorePassword,
+        releaseKeyAlias,
+        releaseKeyPassword
+].every { value -> value != null && !value.toString().trim().isEmpty() }
+
 android {
     namespace 'com.sansoft.harmonystram'
     compileSdk 34
@@ -36,8 +71,25 @@ android {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            if (hasReleaseSigning) {
+                signingConfig signingConfigs.release
+            }
         }
     }
+
+    signingConfigs {
+        release {
+            if (hasReleaseSigning) {
+                storeFile file(releaseStoreFilePath)
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+                enableV1Signing true
+                enableV2Signing true
+            }
+        }
+    }
+
     buildFeatures {
         buildConfig true
     }

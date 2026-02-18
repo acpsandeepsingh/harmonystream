@@ -102,3 +102,7 @@ app/src/main/res/xml/config.xml
 
 # Local app/API secrets
 secrets.properties
+
+# Local release signing secrets
+signing.properties
+release.keystore
