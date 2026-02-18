@@ -225,7 +225,11 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
                     if (positionMs > 0) {
                         player.seekTo(mediaWindowIndex, positionMs);
                     }
-                    nowPlayingText.setText("Ready to resume: " + currentSong.getTitle() + " • " + currentSong.getArtist());
+                    if (session.isPlaying()) {
+                        nowPlayingText.setText("Resume ready (was playing): " + currentSong.getTitle() + " • " + currentSong.getArtist());
+                    } else {
+                        nowPlayingText.setText("Ready to resume: " + currentSong.getTitle() + " • " + currentSong.getArtist());
+                    }
                 } else {
                     nowPlayingText.setText("Session restored. Select a track.");
                 }
@@ -995,7 +999,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         if (player != null && currentIndex >= 0 && currentIndex < tracks.size()) {
             positionMs = Math.max(0L, player.getCurrentPosition());
         }
-        playbackSessionStore.save(tracks, currentIndex, selectedTrackIndex, positionMs, repeatMode);
+        playbackSessionStore.save(tracks, currentIndex, selectedTrackIndex, positionMs, repeatMode, player != null && player.isPlaying());
     }
 
     private void updateNowPlayingText() {
@@ -1023,6 +1027,13 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         } else {
             startService(serviceIntent);
         }
+    }
+
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        persistPlaybackSession();
     }
 
     @Override
