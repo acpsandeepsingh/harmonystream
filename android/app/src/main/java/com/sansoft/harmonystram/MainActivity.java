@@ -64,6 +64,8 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
     private int currentIndex = -1;
     private int selectedTrackIndex = -1;
     private int repeatMode = REPEAT_MODE_OFF;
+    private final List<Integer> activeQueueTrackIndexes = new ArrayList<>();
+    private int currentQueueIndex = -1;
 
     private final HomeCatalogRepository homeCatalogRepository = new YouTubeHomeCatalogRepository();
     private final SongRepository searchRepository = new YouTubeRepository();
@@ -163,6 +165,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
                     int newIndex = Integer.parseInt(mediaId);
                     currentIndex = newIndex;
                     selectedTrackIndex = newIndex;
+                    currentQueueIndex = activeQueueTrackIndexes.indexOf(newIndex);
                 } catch (NumberFormatException ignored) {
                     return;
                 }
@@ -219,7 +222,12 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
             if (isYouTubeExternalTrack(currentSong)) {
                 nowPlayingText.setText("Last session track opens in YouTube app: " + currentSong.getTitle());
             } else {
-                int mediaWindowIndex = buildAndApplyNativeQueue(currentIndex, false);
+                int mediaWindowIndex;
+                if (session.hasQueueSnapshot()) {
+                    mediaWindowIndex = applyNativeQueueSnapshot(session.getQueueTrackIndexes(), session.getCurrentQueueIndex(), false);
+                } else {
+                    mediaWindowIndex = buildAndApplyNativeQueue(currentIndex, false);
+                }
                 if (mediaWindowIndex >= 0) {
                     long positionMs = Math.max(0L, session.getPositionMs());
                     if (positionMs > 0) {
@@ -796,6 +804,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
 
         List<MediaItem> mediaItems = new ArrayList<>();
         int targetWindowIndex = -1;
+        activeQueueTrackIndexes.clear();
 
         for (int i = 0; i < tracks.size(); i++) {
             Song song = tracks.get(i);
@@ -810,6 +819,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
             if (i == targetTrackIndex) {
                 targetWindowIndex = mediaItems.size();
             }
+            activeQueueTrackIndexes.add(i);
 
             MediaItem mediaItem = new MediaItem.Builder()
                     .setUri(mediaUrl)
@@ -822,12 +832,62 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
             return -1;
         }
 
+        currentQueueIndex = targetWindowIndex;
         player.setMediaItems(mediaItems, targetWindowIndex, C.TIME_UNSET);
         player.prepare();
         if (autoplay) {
             player.play();
         }
         return targetWindowIndex;
+    }
+
+    private int applyNativeQueueSnapshot(List<Integer> queueTrackIndexes, int targetQueueIndex, boolean autoplay) {
+        if (player == null || queueTrackIndexes == null || queueTrackIndexes.isEmpty()) return -1;
+
+        List<MediaItem> mediaItems = new ArrayList<>();
+        activeQueueTrackIndexes.clear();
+
+        for (Integer trackIndexObj : queueTrackIndexes) {
+            if (trackIndexObj == null) continue;
+            int trackIndex = trackIndexObj;
+            if (trackIndex < 0 || trackIndex >= tracks.size()) {
+                continue;
+            }
+
+            Song song = tracks.get(trackIndex);
+            if (song == null || isYouTubeExternalTrack(song)) {
+                continue;
+            }
+
+            String mediaUrl = song.getMediaUrl();
+            if (mediaUrl == null || mediaUrl.trim().isEmpty()) {
+                continue;
+            }
+
+            activeQueueTrackIndexes.add(trackIndex);
+            mediaItems.add(new MediaItem.Builder()
+                    .setUri(mediaUrl)
+                    .setMediaId(String.valueOf(trackIndex))
+                    .build());
+        }
+
+        if (mediaItems.isEmpty()) {
+            currentQueueIndex = -1;
+            return -1;
+        }
+
+        int safeQueueIndex = targetQueueIndex;
+        if (safeQueueIndex < 0 || safeQueueIndex >= mediaItems.size()) {
+            safeQueueIndex = 0;
+        }
+
+        currentQueueIndex = safeQueueIndex;
+        player.setMediaItems(mediaItems, safeQueueIndex, C.TIME_UNSET);
+        player.prepare();
+        if (autoplay) {
+            player.play();
+        }
+        return safeQueueIndex;
     }
 
     private int findAdjacentPlayableTrackIndex(int fromIndex, boolean forward, boolean wrapAround) {
@@ -999,7 +1059,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         if (player != null && currentIndex >= 0 && currentIndex < tracks.size()) {
             positionMs = Math.max(0L, player.getCurrentPosition());
         }
-        playbackSessionStore.save(tracks, currentIndex, selectedTrackIndex, positionMs, repeatMode, player != null && player.isPlaying());
+        playbackSessionStore.save(tracks, currentIndex, selectedTrackIndex, positionMs, repeatMode, player != null && player.isPlaying(), activeQueueTrackIndexes, currentQueueIndex);
     }
 
     private void updateNowPlayingText() {

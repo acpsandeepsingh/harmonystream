@@ -18,10 +18,13 @@ public class PlaybackSessionStore {
     private static final String KEY_REPEAT_MODE = "repeat_mode";
     private static final String KEY_IS_PLAYING = "is_playing";
     private static final String KEY_SCHEMA_VERSION = "schema_version";
+    private static final String KEY_QUEUE_TRACK_INDEXES = "queue_track_indexes";
+    private static final String KEY_CURRENT_QUEUE_INDEX = "current_queue_index";
 
     private static final int SCHEMA_VERSION_1 = 1;
     private static final int SCHEMA_VERSION_2 = 2;
-    private static final int CURRENT_SCHEMA_VERSION = SCHEMA_VERSION_2;
+    private static final int SCHEMA_VERSION_3 = 3;
+    private static final int CURRENT_SCHEMA_VERSION = SCHEMA_VERSION_3;
 
     private final SharedPreferences sharedPreferences;
 
@@ -29,7 +32,7 @@ public class PlaybackSessionStore {
         sharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
     }
 
-    public void save(List<Song> tracks, int currentIndex, int selectedIndex, long positionMs, int repeatMode, boolean isPlaying) {
+    public void save(List<Song> tracks, int currentIndex, int selectedIndex, long positionMs, int repeatMode, boolean isPlaying, List<Integer> queueTrackIndexes, int currentQueueIndex) {
         JSONArray tracksArray = new JSONArray();
         for (Song song : tracks) {
             JSONObject songJson = new JSONObject();
@@ -42,6 +45,14 @@ public class PlaybackSessionStore {
             tracksArray.put(songJson);
         }
 
+        JSONArray queueIndexesArray = new JSONArray();
+        if (queueTrackIndexes != null) {
+            for (Integer trackIndex : queueTrackIndexes) {
+                if (trackIndex == null) continue;
+                queueIndexesArray.put(Math.max(0, trackIndex));
+            }
+        }
+
         sharedPreferences.edit()
                 .putString(KEY_TRACKS, tracksArray.toString())
                 .putInt(KEY_CURRENT_INDEX, currentIndex)
@@ -49,6 +60,8 @@ public class PlaybackSessionStore {
                 .putLong(KEY_POSITION_MS, Math.max(0L, positionMs))
                 .putInt(KEY_REPEAT_MODE, repeatMode)
                 .putBoolean(KEY_IS_PLAYING, isPlaying)
+                .putString(KEY_QUEUE_TRACK_INDEXES, queueIndexesArray.toString())
+                .putInt(KEY_CURRENT_QUEUE_INDEX, currentQueueIndex)
                 .putInt(KEY_SCHEMA_VERSION, CURRENT_SCHEMA_VERSION)
                 .apply();
     }
@@ -91,7 +104,24 @@ public class PlaybackSessionStore {
         int repeatMode = sharedPreferences.getInt(KEY_REPEAT_MODE, 0);
         boolean isPlaying = schemaVersion >= SCHEMA_VERSION_2 && sharedPreferences.getBoolean(KEY_IS_PLAYING, false);
 
-        return new PlaybackSession(sessionTracks, currentIndex, selectedIndex, positionMs, repeatMode, isPlaying, schemaVersion);
+        List<Integer> queueTrackIndexes = new ArrayList<>();
+        if (schemaVersion >= SCHEMA_VERSION_3) {
+            String queueIndexesJson = sharedPreferences.getString(KEY_QUEUE_TRACK_INDEXES, "[]");
+            try {
+                JSONArray queueIndexesArray = new JSONArray(queueIndexesJson);
+                for (int i = 0; i < queueIndexesArray.length(); i++) {
+                    int trackIndex = queueIndexesArray.optInt(i, -1);
+                    if (trackIndex >= 0 && trackIndex < sessionTracks.size()) {
+                        queueTrackIndexes.add(trackIndex);
+                    }
+                }
+            } catch (Exception ignored) {
+                queueTrackIndexes.clear();
+            }
+        }
+        int currentQueueIndex = sharedPreferences.getInt(KEY_CURRENT_QUEUE_INDEX, -1);
+
+        return new PlaybackSession(sessionTracks, currentIndex, selectedIndex, positionMs, repeatMode, isPlaying, schemaVersion, queueTrackIndexes, currentQueueIndex);
     }
 
     private String safeValue(String value) {
@@ -106,8 +136,10 @@ public class PlaybackSessionStore {
         private final int repeatMode;
         private final boolean isPlaying;
         private final int schemaVersion;
+        private final List<Integer> queueTrackIndexes;
+        private final int currentQueueIndex;
 
-        private PlaybackSession(List<Song> tracks, int currentIndex, int selectedIndex, long positionMs, int repeatMode, boolean isPlaying, int schemaVersion) {
+        private PlaybackSession(List<Song> tracks, int currentIndex, int selectedIndex, long positionMs, int repeatMode, boolean isPlaying, int schemaVersion, List<Integer> queueTrackIndexes, int currentQueueIndex) {
             this.tracks = tracks;
             this.currentIndex = currentIndex;
             this.selectedIndex = selectedIndex;
@@ -115,10 +147,12 @@ public class PlaybackSessionStore {
             this.repeatMode = repeatMode;
             this.isPlaying = isPlaying;
             this.schemaVersion = schemaVersion;
+            this.queueTrackIndexes = queueTrackIndexes;
+            this.currentQueueIndex = currentQueueIndex;
         }
 
         public static PlaybackSession empty() {
-            return new PlaybackSession(new ArrayList<>(), -1, -1, 0L, 0, false, CURRENT_SCHEMA_VERSION);
+            return new PlaybackSession(new ArrayList<>(), -1, -1, 0L, 0, false, CURRENT_SCHEMA_VERSION, new ArrayList<>(), -1);
         }
 
         public boolean hasTracks() {
@@ -151,6 +185,18 @@ public class PlaybackSessionStore {
 
         public int getSchemaVersion() {
             return schemaVersion;
+        }
+
+        public boolean hasQueueSnapshot() {
+            return !queueTrackIndexes.isEmpty();
+        }
+
+        public List<Integer> getQueueTrackIndexes() {
+            return queueTrackIndexes;
+        }
+
+        public int getCurrentQueueIndex() {
+            return currentQueueIndex;
         }
     }
 }
