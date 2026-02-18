@@ -86,6 +86,14 @@ export function useCollection<T = any>(
         setIsLoading(false);
       },
       (error: FirestoreError) => {
+        // Network/offline errors should not crash the whole app. Let local hook state handle them.
+        if (error.code !== 'permission-denied') {
+          setError(error);
+          setData(null);
+          setIsLoading(false);
+          return;
+        }
+
         // This logic extracts the path from either a ref or a query
         const path: string =
           memoizedTargetRefOrQuery.type === 'collection'
