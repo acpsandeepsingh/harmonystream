@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Slider } from '@/components/ui/slider';
 import { Play, Pause, SkipBack, SkipForward, Volume2, Video, Music as MusicIcon, Plus, ListMusic, PlusCircle, Heart, X, Maximize2, Minimize2, History, GripVertical, Share2 } from 'lucide-react';
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import YouTube from 'react-youtube';
 import type { YouTubePlayer, YouTubeProps, YouTubeEvent } from 'react-youtube';
 import { cn } from '@/lib/utils';
@@ -418,6 +418,17 @@ export function MusicPlayer() {
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
 
+  const isAndroidAppRuntime = useMemo(() => {
+    if (typeof window === 'undefined') return false;
+
+    const userAgent = navigator.userAgent || '';
+    const isAndroidUa = /Android/i.test(userAgent);
+    const isFileProtocol = window.location.protocol === 'file:';
+
+    // Android APK runs from local file:// assets; keep this behavior Android-app-only.
+    return isAndroidUa && isFileProtocol;
+  }, []);
+
   useEffect(() => {
     if (isQueueOpen && currentTrack) {
       // Use a short timeout to allow the sheet and its content to render before scrolling
@@ -800,6 +811,22 @@ export function MusicPlayer() {
     };
   }, [resetControlsTimeout]);
   
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!isAndroidAppRuntime || !document.hidden) return;
+
+      // When app goes to background while in video mode, force audio mode so playback
+      // has the best chance to continue (especially on Android TV/WebView builds).
+      if (playerMode === 'video' && isGlobalPlaying) {
+        setPlayerMode('audio');
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [playerMode, isGlobalPlaying, setPlayerMode, isAndroidAppRuntime]);
+
   // --- Media Session API ---
   useEffect(() => {
     if (!('mediaSession' in navigator)) return;
@@ -829,8 +856,17 @@ export function MusicPlayer() {
     navigator.mediaSession.setActionHandler('nexttrack', globalPlayNext);
     navigator.mediaSession.setActionHandler('seekbackward', null);
     navigator.mediaSession.setActionHandler('seekforward', null);
+    if (isAndroidAppRuntime) {
+      navigator.mediaSession.setActionHandler('seekto', (details) => {
+        if (typeof details.seekTime === 'number') {
+          handleSeekCommit([details.seekTime]);
+        }
+      });
+    } else {
+      navigator.mediaSession.setActionHandler('seekto', null);
+    }
 
-  }, [isGlobalPlaying, setGlobalIsPlaying, globalPlayPrev, globalPlayNext]);
+  }, [isGlobalPlaying, setGlobalIsPlaying, globalPlayPrev, globalPlayNext, handleSeekCommit, isAndroidAppRuntime]);
 
   useEffect(() => {
     if ('mediaSession' in navigator && navigator.mediaSession.metadata) {
