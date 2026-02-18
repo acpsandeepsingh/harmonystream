@@ -429,59 +429,6 @@ export function MusicPlayer() {
     return isAndroidUa && isFileProtocol;
   }, []);
 
-  const syncAndroidNotification = useCallback((positionSeconds: number, durationSeconds: number) => {
-    if (!isAndroidAppRuntime || !currentTrack) return;
-
-    const bridge = (window as any).HarmonyAndroidBridge;
-    if (!bridge || typeof bridge.updatePlaybackState !== 'function') return;
-
-    bridge.updatePlaybackState(
-      currentTrack.title ?? 'HarmonyStream',
-      currentTrack.artist ?? '',
-      isGlobalPlaying,
-      positionSeconds || 0,
-      durationSeconds || 0,
-      null
-    );
-  }, [isAndroidAppRuntime, currentTrack, isGlobalPlaying]);
-
-  useEffect(() => {
-    syncAndroidNotification(currentTime, duration);
-  }, [currentTime, duration, syncAndroidNotification]);
-
-  useEffect(() => {
-    if (!isAndroidAppRuntime) return;
-
-    const onNativeAction = (event: Event) => {
-      const nativeEvent = event as CustomEvent<{ action?: string }>;
-      const action = nativeEvent.detail?.action;
-
-      if (action === 'playpause') {
-        if (currentTrack) {
-          setGlobalIsPlaying(!isGlobalPlaying);
-        }
-      } else if (action === 'next') {
-        globalPlayNext();
-      } else if (action === 'previous') {
-        globalPlayPrev();
-      }
-    };
-
-    window.addEventListener('harmonystream-native-action', onNativeAction as EventListener);
-    return () => {
-      window.removeEventListener('harmonystream-native-action', onNativeAction as EventListener);
-    };
-  }, [isAndroidAppRuntime, currentTrack, setGlobalIsPlaying, isGlobalPlaying, globalPlayNext, globalPlayPrev]);
-
-  useEffect(() => {
-    if (!isAndroidAppRuntime || currentTrack) return;
-
-    const bridge = (window as any).HarmonyAndroidBridge;
-    if (!bridge || typeof bridge.updatePlaybackState !== 'function') return;
-
-    bridge.updatePlaybackState('HarmonyStream', '', false, 0, 0, null);
-  }, [isAndroidAppRuntime, currentTrack]);
-
   useEffect(() => {
     if (isQueueOpen && currentTrack) {
       // Use a short timeout to allow the sheet and its content to render before scrolling

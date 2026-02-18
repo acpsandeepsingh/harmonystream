@@ -123,7 +123,7 @@ jobs:
         run: |
           set -e
           if [ ! -f android/gradle/wrapper/gradle-wrapper.jar ]; then
-            curl -fsSL https://raw.githubusercontent.com/gradle/gradle/v8.2.1/gradle/wrapper/gradle-wrapper.jar -o android/gradle/wrapper/gradle-wrapper.jar || true
+            curl -fsSL https://raw.githubusercontent.com/gradle/gradle/v8.2.1/gradle/wrapper/gradle-wrapper.jar -o android/gradle/wrapper/gradle-wrapper.jar
           fi
 
       - name: Normalize and enable Gradle wrapper
