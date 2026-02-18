@@ -8,9 +8,9 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "cap:add:android": "npx --yes @capacitor/cli@latest add android",
-    "cap:sync:android": "npx --yes @capacitor/cli@latest sync android",
-    "apk:debug": "npm run build:android && (test -d android || npm run cap:add:android) && npm run cap:sync:android && ./android/gradlew -p android assembleDebug",
+    "cap:add:android": "npx cap add android",
+    "cap:sync:android": "npx cap sync android",
+    "apk:debug": "./android/gradlew -p android assembleDebug",
     "build:android": "BUILD_TARGET=android NODE_ENV=production next build"
   },
   "dependencies": {
