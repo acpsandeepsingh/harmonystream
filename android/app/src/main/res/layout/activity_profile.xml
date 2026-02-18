@@ -176,6 +176,13 @@
         </LinearLayout>
 
         <Button
+            android:id="@+id/btn_profile_sync_now"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="Sync Now" />
+
+        <Button
             android:id="@+id/btn_profile_close"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"

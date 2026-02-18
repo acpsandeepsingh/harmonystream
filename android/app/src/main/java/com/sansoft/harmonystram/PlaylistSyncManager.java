@@ -10,6 +10,7 @@ import java.util.Map;
 import java.util.Set;
 
 public class PlaylistSyncManager {
+    private static final boolean SYNC_ENABLED = BuildConfig.PLAYLIST_SYNC_ENABLED;
     private final PlaylistStorageRepository playlistRepository;
     private final FirestorePlaylistRemoteDataSource remoteDataSource;
     private final NativeUserSessionStore userSessionStore;
@@ -22,21 +23,34 @@ public class PlaylistSyncManager {
     }
 
     public synchronized PlaylistSyncModels.SyncStatus syncNow() {
+        if (!SYNC_ENABLED) {
+            return new PlaylistSyncModels.SyncStatus("offline", "Sync disabled by feature flag");
+        }
+
         NativeUserSessionStore.UserSession session = userSessionStore.getSession();
         if (session == null || !session.isSignedIn()) {
             return new PlaylistSyncModels.SyncStatus("offline", "Guest mode: local library only");
         }
 
-        String accountKey = playlistRepository.getCurrentAccountKeyForSync();
         PlaylistSyncModels.PlaylistSnapshot local = playlistRepository.pullLocalSnapshot();
-        PlaylistSyncModels.PlaylistSnapshot remote = remoteDataSource.pull(accountKey);
-
+        PlaylistSyncModels.PlaylistSnapshot remote = pullRemoteSnapshot();
         PlaylistSyncModels.PlaylistSnapshot merged = resolveConflicts(local, remote);
+
         playlistRepository.applyResolvedSnapshot(merged);
-        remoteDataSource.push(accountKey, merged);
+        pushLocalChanges(merged);
         playlistRepository.markSyncSuccess();
 
         return new PlaylistSyncModels.SyncStatus("conflict-resolved", "Synced " + merged.playlists.size() + " playlists");
+    }
+
+    public synchronized PlaylistSyncModels.PlaylistSnapshot pullRemoteSnapshot() {
+        String accountKey = playlistRepository.getCurrentAccountKeyForSync();
+        return remoteDataSource.pull(accountKey);
+    }
+
+    public synchronized void pushLocalChanges(PlaylistSyncModels.PlaylistSnapshot snapshot) {
+        String accountKey = playlistRepository.getCurrentAccountKeyForSync();
+        remoteDataSource.push(accountKey, snapshot);
     }
 
     public synchronized PlaylistSyncModels.SyncStatus getLastStatus() {

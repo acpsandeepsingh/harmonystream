@@ -43,6 +43,26 @@ public class PlaybackEventLogger {
         persist(line);
     }
 
+    public List<String> getRecentEvents() {
+        String existing = sharedPreferences.getString(KEY_RECENT_EVENTS, "");
+        List<String> events = new ArrayList<>();
+        if (existing == null || existing.isEmpty()) {
+            return events;
+        }
+
+        String[] parts = existing.split(ENTRY_DELIMITER);
+        for (String part : parts) {
+            if (part != null && !part.isEmpty()) {
+                events.add(part);
+            }
+        }
+        return events;
+    }
+
+    public void clear() {
+        sharedPreferences.edit().remove(KEY_RECENT_EVENTS).apply();
+    }
+
     private String toStructuredLine(Map<String, String> payload) {
         StringBuilder builder = new StringBuilder();
         boolean first = true;
@@ -57,16 +77,7 @@ public class PlaybackEventLogger {
     }
 
     private void persist(String line) {
-        String existing = sharedPreferences.getString(KEY_RECENT_EVENTS, "");
-        List<String> events = new ArrayList<>();
-        if (existing != null && !existing.isEmpty()) {
-            String[] parts = existing.split(ENTRY_DELIMITER);
-            for (String part : parts) {
-                if (!part.isEmpty()) {
-                    events.add(part);
-                }
-            }
-        }
+        List<String> events = getRecentEvents();
 
         events.add(line);
         if (events.size() > MAX_EVENTS) {
@@ -88,4 +99,3 @@ public class PlaybackEventLogger {
         return value.replace(" ", "_");
     }
 }
-

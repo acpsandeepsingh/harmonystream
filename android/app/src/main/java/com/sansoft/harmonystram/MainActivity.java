@@ -79,6 +79,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
     private NativeUserSessionStore userSessionStore;
     private ExecutorService backgroundExecutor;
     private PlaybackEventLogger playbackEventLogger;
+    private PlaybackSoakGateEvaluator playbackSoakGateEvaluator;
 
     private final Handler stateSyncHandler = new Handler(Looper.getMainLooper());
     private final Runnable stateSyncRunnable = new Runnable() {
@@ -125,6 +126,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         playlistSyncManager = new PlaylistSyncManager(this);
         playbackSessionStore = new PlaybackSessionStore(this);
         playbackEventLogger = new PlaybackEventLogger(this);
+        playbackSoakGateEvaluator = new PlaybackSoakGateEvaluator(playbackEventLogger);
 
         nowPlayingText = findViewById(R.id.now_playing);
         playbackDiagnosticsText = findViewById(R.id.playback_diagnostics);
@@ -143,6 +145,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         Button libraryButton = findViewById(R.id.btn_library);
         Button profileButton = findViewById(R.id.btn_profile);
         Button fullscreenButton = findViewById(R.id.btn_fullscreen);
+        Button playbackDiagnosticsButton = findViewById(R.id.btn_playback_diagnostics);
         RecyclerView trackList = findViewById(R.id.track_list);
 
         userSessionStore = new NativeUserSessionStore(this);
@@ -209,6 +212,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         libraryButton.setOnClickListener(v -> openLibraryScreen());
         profileButton.setOnClickListener(v -> openProfileScreen());
         fullscreenButton.setOnClickListener(v -> openFullscreenPlayer());
+        playbackDiagnosticsButton.setOnClickListener(v -> showPlaybackDiagnosticsDialog());
 
         IntentFilter mediaFilter = new IntentFilter(PlaybackService.ACTION_MEDIA_CONTROL);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -1180,6 +1184,39 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         intent.putExtra("buffering_state", player != null ? playbackStateLabel(player.getPlaybackState()) : "idle");
         intent.putExtra("source_type", isYouTubeExternalTrack(currentSong) ? "YouTube app" : "Native queue");
         startActivity(intent);
+    }
+
+    private void showPlaybackDiagnosticsDialog() {
+        if (playbackSoakGateEvaluator == null || playbackEventLogger == null) {
+            Toast.makeText(this, "Playback diagnostics are unavailable", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        PlaybackSoakGateEvaluator.GateResult gateResult = playbackSoakGateEvaluator.evaluate();
+        List<String> events = playbackEventLogger.getRecentEvents();
+        StringBuilder details = new StringBuilder();
+        details.append(gateResult.summary).append("\n\n");
+        details.append("Recent events (newest last):\n");
+
+        int start = Math.max(0, events.size() - 25);
+        if (events.isEmpty()) {
+            details.append("- No events recorded yet");
+        } else {
+            for (int i = start; i < events.size(); i++) {
+                details.append("- ").append(events.get(i)).append("\n");
+            }
+        }
+
+        new AlertDialog.Builder(this)
+                .setTitle("Playback Diagnostics")
+                .setMessage(details.toString())
+                .setPositiveButton("Close", null)
+                .setNeutralButton("Clear Logs", (dialog, which) -> {
+                    playbackSoakGateEvaluator.clearDiagnostics();
+                    updatePlaybackDiagnostics("Diagnostics cleared");
+                    Toast.makeText(this, "Playback diagnostics cleared", Toast.LENGTH_SHORT).show();
+                })
+                .show();
     }
 
     private void syncPlaybackStateToNotification() {

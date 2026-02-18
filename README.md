@@ -43,6 +43,11 @@ Use this lightweight process whenever native Android work lands so the README st
 
 > Suggested cadence: update this section in the same PR that introduces the feature so docs never lag implementation.
 
+### Build issue resolution note (current environment)
+- If `npm run apk:debug` fails with `Android SDK not found`, the build scripts are behaving as designed and require a configured local SDK path.
+- Fix by setting `ANDROID_HOME` or `ANDROID_SDK_ROOT`, or writing `android/local.properties` with `sdk.dir=/absolute/path/to/Android/Sdk`.
+- Then rerun `npm run android:sdk:prepare` followed by `npm run apk:debug`.
+
 ### Current delivery checkpoint (where coding stands now)
 - **Reached milestone:** **Phase 3 foundation is now delivered** with local playlist/library operations integrated into the native Android flow.
 - **Partially present from future phases:** native player controls now include queue-aware playback for native media sources (`previous / play-pause / next`), playback notification sync, local resume-session restore, user-selectable repeat modes (`off / all / one`), a native queue picker dialog for inspecting/jumping within the active queue, and playback session schema-v3 persistence (including `isPlaying`, queue snapshot indexes, and queue cursor) saved on lifecycle stop and item transitions for more reliable resume behavior.
@@ -239,7 +244,7 @@ The next roadmap milestone is to complete **Phase 3 remaining scope**: Firestore
 5. **Validation + rollout guardrails**
    - Add repository-level tests for merge rules.
    - Add instrumentation checks for sign-in/out transitions and offline/online resume sync.
-   - Gate rollout behind a feature flag so local-only fallback remains safe.
+   - ✅ Rollout is now gated behind `PLAYLIST_SYNC_ENABLED` (Gradle/env feature flag) so local-only fallback remains safe.
 
 ### Definition of done for this next phase
 
@@ -258,7 +263,8 @@ Once Firestore playlist sync (Phase 3B) is stable, the immediate follow-up shoul
 - ✅ Queue snapshot persistence has been implemented with schema-v3 playback session state (`queue_track_indexes`, `current_queue_index`) and deterministic queue restore fallback behavior.
 - ✅ Notification media controls now route through a cold-start-safe activity handoff path so `previous / play-pause / next` actions still execute after process recreation.
 - ✅ Dedicated native full-screen player surface is now available with large artwork, queue position context, and visible playback/repeat/buffering/source badges.
-- 🟠 Remaining: extended soak-test gate coverage.
+- ✅ Added in-app playback diagnostics + soak-gate evaluator summary (event checkpoints for background/resume, queue navigation, session persistence, and notification-resume path).
+- 🟠 Remaining: extended long-duration soak execution coverage across physical-device matrix.
 
 1. **Queue persistence beyond single-session restore**
    - Persist full queue snapshot (ordered ids, current index, repeat mode, play state).
