@@ -45,7 +45,7 @@ Use this lightweight process whenever native Android work lands so the README st
 
 ### Current delivery checkpoint (where coding stands now)
 - **Reached milestone:** **Phase 3 foundation is now delivered** with local playlist/library operations integrated into the native Android flow.
-- **Partially present from future phases:** native player controls now include queue-aware playback for native media sources (`previous / play-pause / next`), playback notification sync, local resume-session restore, user-selectable repeat modes (`off / all / one`), and a native queue picker dialog for inspecting/jumping within the active queue.
+- **Partially present from future phases:** native player controls now include queue-aware playback for native media sources (`previous / play-pause / next`), playback notification sync, local resume-session restore, user-selectable repeat modes (`off / all / one`), a native queue picker dialog for inspecting/jumping within the active queue, and playback session schema-v2 persistence (`isPlaying` + versioned state) saved on lifecycle stop for more reliable resume behavior.
 - **Expanded this cycle:** auth/profile/settings parity now includes native profile navigation with dedicated local login, signup, and settings screens (still local-only; Firebase auth wiring remains pending).
 
 ### Phase-by-phase plan with definition of done
@@ -142,6 +142,15 @@ Developing and releasing your app is fully automated. Here’s the step-by-step 
     *   **Website Deployment:** Your Next.js app is built and deployed to GitHub Pages.
     *   **Android App Build:** A native Android `.apk` file is built from the Android module (no WebView shell).
 
+### Workflow naming clarification (common source of confusion)
+
+If you are looking for CI run status, use these exact workflow/artifact names as currently configured:
+
+- **Workflow name:** `Build Website and Android APK`
+- **Debug APK artifact name:** `HarmonyStream-Android-APK`
+
+Older notes/tutorials may still reference "Build Android APK" or `HarmonyStream-Android-App`; those labels are outdated.
+
 4.  **Get Your Updates:**
     *   **Live Website:** Your changes will be live at the URL below within a few minutes.
     *   **Android App:** You can download the updated `.apk` file from the build artifacts, as described in the "Android TV App" section.
@@ -163,9 +172,9 @@ This project is set up to automatically build the Android app for you. You do **
 
 1.  **Push Changes:** Make any changes you want to the app and push them to the `main` branch of your GitHub repository. This is the only step you need to do.
 
-2.  **Wait for the Build:** Pushing to `main` will automatically trigger a build process. You can monitor its progress in the **"Actions"** tab of your GitHub repository. Look for the "Build Android APK" workflow.
+2.  **Wait for the Build:** Pushing to `main` will automatically trigger a build process. You can monitor its progress in the **"Actions"** tab of your GitHub repository. Look for the **"Build Website and Android APK"** workflow.
 
-3.  **Download the APK:** Once the workflow is complete (it will have a green checkmark), click on it. On the summary page, you will find an "Artifact" named **HarmonyStream-Android-App**. Click it to download the `app-debug.apk` file.
+3.  **Download the APK:** Once the workflow is complete (it will have a green checkmark), click on it. On the summary page, you will find an "Artifact" named **HarmonyStream-Android-APK**. Click it to download the `app-debug.apk` file.
 
 4.  **Install the App:** Transfer the downloaded `app-debug.apk` file to your Android TV and install it. You may need to enable "Install from unknown sources" in your TV's settings.
 
@@ -179,7 +188,8 @@ If the Android app shell opens but the actual app content is blank or never load
    - Then rerun: `npm run apk:debug`.
 
 2. **Missing YouTube API key at build time**
-   - The app fetches songs from YouTube Data API and expects `NEXT_PUBLIC_YOUTUBE_API_KEY` during build/runtime.
+   - Native Android runtime expects `YOUTUBE_API_KEY` (injected from Gradle property / `android/secrets.properties` / env var).
+   - In GitHub Actions, this is currently mapped from repository secret `NEXT_PUBLIC_YOUTUBE_API_KEY` into native `YOUTUBE_API_KEY` for the Android build job.
    - If the key is missing/invalid or quota is exhausted, dynamic song content may fail to load.
 
 3. **No internet connectivity on device**
@@ -201,3 +211,76 @@ If the Android app shell opens but the actual app content is blank or never load
      - `ANDROID_RELEASE_KEY_ALIAS`
      - `ANDROID_RELEASE_KEY_PASSWORD`
    - For local signed builds, copy `android/signing.properties.example` to `android/signing.properties` and set keystore path + credentials, then run: `./android/gradlew -p android assembleRelease bundleRelease`.
+
+
+## Next phase implementation plan (from current roadmap)
+
+The next roadmap milestone is to complete **Phase 3 remaining scope**: Firestore-backed playlist sync with cross-device reconciliation.
+
+### Phase 3B implementation outline (Firestore sync)
+
+1. **Data contract + repository extension**
+   - Add a Firestore playlist schema (`users/{uid}/playlists/{playlistId}` + track subcollection/array strategy).
+   - Extend native playlist repository interfaces with explicit sync methods (`pushLocalChanges`, `pullRemoteSnapshot`, `resolveConflicts`).
+
+2. **Identity-aware sync bootstrap**
+   - On profile/session change, load identity-scoped local cache and attempt remote pull.
+   - Keep current guest/local behavior as fallback when auth or network is unavailable.
+
+3. **Conflict resolution strategy (first pass)**
+   - Use deterministic `updatedAt` merge with tombstones for deleted playlists/tracks.
+   - Persist reconciliation metadata locally (last sync timestamp + per-playlist sync hash/version).
+
+4. **UI/UX parity updates**
+   - Add sync-state UI in library/profile surfaces (`syncing`, `offline`, `conflict-resolved`, `error`).
+   - Keep play/remove/delete actions optimistic, then reconcile in background.
+
+5. **Validation + rollout guardrails**
+   - Add repository-level tests for merge rules.
+   - Add instrumentation checks for sign-in/out transitions and offline/online resume sync.
+   - Gate rollout behind a feature flag so local-only fallback remains safe.
+
+### Definition of done for this next phase
+
+- A signed-in user sees the same playlist library on two devices after sync.
+- Playlist create/edit/delete operations converge correctly after offline edits.
+- Guest users continue to use local-only storage without regressions.
+- Sync failures are visible and recover automatically when connectivity returns.
+
+## Further next phase implementation (after Phase 3B)
+
+Once Firestore playlist sync (Phase 3B) is stable, the immediate follow-up should target the highest-risk gaps in **Phase 4 (Player parity + TV polish)**.
+
+### Phase 4A implementation outline (playback lifecycle hardening)
+
+1. **Queue persistence beyond single-session restore**
+   - Persist full queue snapshot (ordered ids, current index, repeat mode, play state).
+   - Restore queue deterministically after process death and app relaunch.
+   - Add schema versioning for queue state to allow safe future migrations.
+
+2. **Background/foreground lifecycle correctness**
+   - Ensure service/player survive screen transitions and activity recreation without duplicate player instances.
+   - Harden audio focus handling (duck, transient loss, permanent loss) with explicit test scenarios.
+   - Normalize notification action behavior when app process is cold-started from media controls.
+
+3. **TV remote and D-pad focus navigation pass**
+   - Define predictable focus order across home/search/library/player controls.
+   - Add fallback focus anchors to prevent focus loss after list updates and dialog close.
+   - Validate navigation behavior on long lists, nested dialogs, and resume from background.
+
+4. **Full-screen player UX parity**
+   - Introduce dedicated full-screen player surface with large artwork and queue context.
+   - Add visible state badges (repeat, buffering, source type) and consistent seek affordances.
+   - Keep controls accessible for both D-pad and touch emulator workflows.
+
+5. **Observability + stability gates**
+   - Add structured playback event logging for lifecycle transitions and queue operations.
+   - Add regression checklist for long-session soak (e.g., 2+ hour playback with background transitions).
+   - Define release gate: no crashes/ANRs in smoke tests + deterministic queue resume behavior.
+
+### Definition of done for Phase 4A
+
+- Playback continues correctly across app background/foreground and activity recreation.
+- Queue and repeat state restore reliably after process death for native-playable items.
+- TV remote navigation remains predictable across all primary screens.
+- Media notification actions function correctly even on cold-start resume paths.

@@ -16,6 +16,12 @@ public class PlaybackSessionStore {
     private static final String KEY_SELECTED_INDEX = "selected_index";
     private static final String KEY_POSITION_MS = "position_ms";
     private static final String KEY_REPEAT_MODE = "repeat_mode";
+    private static final String KEY_IS_PLAYING = "is_playing";
+    private static final String KEY_SCHEMA_VERSION = "schema_version";
+
+    private static final int SCHEMA_VERSION_1 = 1;
+    private static final int SCHEMA_VERSION_2 = 2;
+    private static final int CURRENT_SCHEMA_VERSION = SCHEMA_VERSION_2;
 
     private final SharedPreferences sharedPreferences;
 
@@ -23,7 +29,7 @@ public class PlaybackSessionStore {
         sharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
     }
 
-    public void save(List<Song> tracks, int currentIndex, int selectedIndex, long positionMs, int repeatMode) {
+    public void save(List<Song> tracks, int currentIndex, int selectedIndex, long positionMs, int repeatMode, boolean isPlaying) {
         JSONArray tracksArray = new JSONArray();
         for (Song song : tracks) {
             JSONObject songJson = new JSONObject();
@@ -42,6 +48,8 @@ public class PlaybackSessionStore {
                 .putInt(KEY_SELECTED_INDEX, selectedIndex)
                 .putLong(KEY_POSITION_MS, Math.max(0L, positionMs))
                 .putInt(KEY_REPEAT_MODE, repeatMode)
+                .putBoolean(KEY_IS_PLAYING, isPlaying)
+                .putInt(KEY_SCHEMA_VERSION, CURRENT_SCHEMA_VERSION)
                 .apply();
     }
 
@@ -76,12 +84,14 @@ public class PlaybackSessionStore {
             return PlaybackSession.empty();
         }
 
+        int schemaVersion = sharedPreferences.getInt(KEY_SCHEMA_VERSION, SCHEMA_VERSION_1);
         int currentIndex = sharedPreferences.getInt(KEY_CURRENT_INDEX, -1);
         int selectedIndex = sharedPreferences.getInt(KEY_SELECTED_INDEX, -1);
         long positionMs = Math.max(0L, sharedPreferences.getLong(KEY_POSITION_MS, 0L));
         int repeatMode = sharedPreferences.getInt(KEY_REPEAT_MODE, 0);
+        boolean isPlaying = schemaVersion >= SCHEMA_VERSION_2 && sharedPreferences.getBoolean(KEY_IS_PLAYING, false);
 
-        return new PlaybackSession(sessionTracks, currentIndex, selectedIndex, positionMs, repeatMode);
+        return new PlaybackSession(sessionTracks, currentIndex, selectedIndex, positionMs, repeatMode, isPlaying, schemaVersion);
     }
 
     private String safeValue(String value) {
@@ -94,17 +104,21 @@ public class PlaybackSessionStore {
         private final int selectedIndex;
         private final long positionMs;
         private final int repeatMode;
+        private final boolean isPlaying;
+        private final int schemaVersion;
 
-        private PlaybackSession(List<Song> tracks, int currentIndex, int selectedIndex, long positionMs, int repeatMode) {
+        private PlaybackSession(List<Song> tracks, int currentIndex, int selectedIndex, long positionMs, int repeatMode, boolean isPlaying, int schemaVersion) {
             this.tracks = tracks;
             this.currentIndex = currentIndex;
             this.selectedIndex = selectedIndex;
             this.positionMs = positionMs;
             this.repeatMode = repeatMode;
+            this.isPlaying = isPlaying;
+            this.schemaVersion = schemaVersion;
         }
 
         public static PlaybackSession empty() {
-            return new PlaybackSession(new ArrayList<>(), -1, -1, 0L, 0);
+            return new PlaybackSession(new ArrayList<>(), -1, -1, 0L, 0, false, CURRENT_SCHEMA_VERSION);
         }
 
         public boolean hasTracks() {
@@ -129,6 +143,14 @@ public class PlaybackSessionStore {
 
         public int getRepeatMode() {
             return repeatMode;
+        }
+
+        public boolean isPlaying() {
+            return isPlaying;
+        }
+
+        public int getSchemaVersion() {
+            return schemaVersion;
         }
     }
 }
