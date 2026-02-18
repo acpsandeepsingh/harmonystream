@@ -78,11 +78,10 @@ Use this lightweight process whenever native Android work lands so the README st
 **What is implemented now**
 - Local-first playlist storage layer backed by native SharedPreferences persistence.
 - Native create playlist, add selected track to playlist, remove track, delete playlist, and play-all flow.
-- Native library dialog with playlist list + per-playlist detail and track operations.
+- Dedicated native library screen/navigation from the main Android flow with playlist and per-track actions (play, remove, delete).
 
 **Remaining scope**
 - Firestore-backed sync and account-aware playlist reconciliation.
-- Dedicated TV-optimized library page/navigation with parity to web UX.
 
 **Exit criteria**
 - Feature parity with the web playlist workflow.
