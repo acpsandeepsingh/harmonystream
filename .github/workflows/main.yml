@@ -123,7 +123,8 @@ jobs:
         run: |
           set -e
           if [ ! -f android/gradle/wrapper/gradle-wrapper.jar ]; then
-            curl -fsSL https://raw.githubusercontent.com/gradle/gradle/v8.2.1/gradle/wrapper/gradle-wrapper.jar -o android/gradle/wrapper/gradle-wrapper.jar
+            echo "gradle-wrapper.jar missing, generating it with local Gradle"
+            gradle -p android wrapper --gradle-version 8.2 --distribution-type bin
           fi
 
       - name: Normalize and enable Gradle wrapper
