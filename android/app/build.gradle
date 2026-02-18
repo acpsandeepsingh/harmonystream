@@ -65,6 +65,20 @@ android {
                         ?: ""
         )
         buildConfigField "String", "YOUTUBE_API_KEY", "\"${ytKey}\""
+        def firebaseProjectId = (
+                project.findProperty("FIREBASE_PROJECT_ID")
+                        ?: secretsProperties.getProperty("FIREBASE_PROJECT_ID")
+                        ?: System.getenv("FIREBASE_PROJECT_ID")
+                        ?: "studio-8258640677-40b59"
+        )
+        def firebaseApiKey = (
+                project.findProperty("FIREBASE_API_KEY")
+                        ?: secretsProperties.getProperty("FIREBASE_API_KEY")
+                        ?: System.getenv("FIREBASE_API_KEY")
+                        ?: "AIzaSyAbHGZu-NdtvQhV_IkWh0htVgsSoIHam-s"
+        )
+        buildConfigField "String", "FIREBASE_PROJECT_ID", "\"${firebaseProjectId}\""
+        buildConfigField "String", "FIREBASE_API_KEY", "\"${firebaseApiKey}\""
         def playlistSyncEnabledValue = (
                 project.findProperty("PLAYLIST_SYNC_ENABLED")
                         ?: System.getenv("PLAYLIST_SYNC_ENABLED")
