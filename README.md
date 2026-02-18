@@ -1,6 +1,6 @@
 # HarmonyStream
 
-This is a NextJS starter app for a music streaming service, built in Firebase Studio.
+This is a Next.js starter app for a music streaming service, built in Firebase Studio.
 
 To get started, take a look at `src/app/page.tsx`.
 
@@ -30,6 +30,18 @@ The Android module now runs as a fully native screen (RecyclerView + Media3/ExoP
 
 
 ## Native Migration Roadmap (Step-by-Step)
+
+### How to update this roadmap after each delivery
+
+Use this lightweight process whenever native Android work lands so the README stays aligned with reality:
+
+1. Verify what shipped in code (UI, repositories, playback lifecycle changes, and build/release scripts).
+2. Update the **Current delivery checkpoint** bullets to reflect the latest milestone.
+3. Move each affected phase status (`Pending` / `In progress` / `Complete`) and adjust scope notes.
+4. Keep each phase's **Exit criteria** outcome-oriented and testable.
+5. Add any new risks or environment requirements to the troubleshooting section.
+
+> Suggested cadence: update this section in the same PR that introduces the feature so docs never lag implementation.
 
 ### Current delivery checkpoint (where coding stands now)
 - **Reached milestone:** **Phase 1 is complete** and integrated into the native Android flow.
