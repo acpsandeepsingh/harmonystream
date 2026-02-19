@@ -197,52 +197,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         player = new ExoPlayer.Builder(this).build();
         playerView = findViewById(R.id.player_view);
         youtubePlayerView = findViewById(R.id.youtube_player_view);
-        getLifecycle().addObserver(youtubePlayerView);
-        IFramePlayerOptions iFramePlayerOptions = new IFramePlayerOptions.Builder()
-                .controls(0)
-                .build();
-        youtubePlayerView.initialize(new AbstractYouTubePlayerListener() {
-            @Override
-            public void onReady(YouTubePlayer youTubePlayer) {
-                embeddedYouTubePlayer = youTubePlayer;
-                if (pendingYouTubeVideoId != null && !pendingYouTubeVideoId.isEmpty()) {
-                    YouTubePlayerUtils.loadOrCueVideo(embeddedYouTubePlayer, getLifecycle(), pendingYouTubeVideoId, 0f);
-                    youtubeIsPlaying = true;
-                    playPauseButton.setText("Pause");
-                    pendingYouTubeVideoId = null;
-                }
-            }
-
-            @Override
-            public void onStateChange(YouTubePlayer youTubePlayer, PlayerConstants.PlayerState state) {
-                if (state == null) return;
-                switch (state) {
-                    case PLAYING:
-                        youtubeIsPlaying = true;
-                        playPauseButton.setText("Pause");
-                        syncPlaybackStateToNotification();
-                        break;
-                    case PAUSED:
-                    case ENDED:
-                        youtubeIsPlaying = false;
-                        playPauseButton.setText("Play");
-                        syncPlaybackStateToNotification();
-                        break;
-                    default:
-                        break;
-                }
-            }
-
-            @Override
-            public void onError(YouTubePlayer youTubePlayer, PlayerConstants.PlayerError error) {
-                String reason = error == null ? "UNKNOWN" : error.name();
-                updatePlaybackDiagnostics("YouTube error: " + reason);
-                logPlaybackEvent("youtube_player_error", eventAttrs("reason", reason));
-                if (activeYouTubeVideoId != null && !activeYouTubeVideoId.isEmpty()) {
-                    fallbackToExternalYouTube(activeYouTubeVideoId, reason);
-                }
-            }
-        }, true, iFramePlayerOptions);
+        initializeEmbeddedYouTubePlayerSafely();
         playerView.setPlayer(player);
         applyTvFocusPolish();
         applyRepeatModeToPlayer();
@@ -326,6 +281,70 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         }
         handlePendingMediaControlAction(getIntent());
         stateSyncHandler.post(stateSyncRunnable);
+    }
+
+    private void initializeEmbeddedYouTubePlayerSafely() {
+        if (youtubePlayerView == null) {
+            youtubeFallbackActivated = true;
+            updatePlaybackDiagnostics("Embedded YouTube player unavailable");
+            logPlaybackEvent("youtube_embed_unavailable", eventAttrs("reason", "view_missing"));
+            return;
+        }
+
+        getLifecycle().addObserver(youtubePlayerView);
+        IFramePlayerOptions iFramePlayerOptions = new IFramePlayerOptions.Builder()
+                .controls(0)
+                .build();
+
+        try {
+            youtubePlayerView.initialize(new AbstractYouTubePlayerListener() {
+                @Override
+                public void onReady(YouTubePlayer youTubePlayer) {
+                    embeddedYouTubePlayer = youTubePlayer;
+                    if (pendingYouTubeVideoId != null && !pendingYouTubeVideoId.isEmpty()) {
+                        YouTubePlayerUtils.loadOrCueVideo(embeddedYouTubePlayer, getLifecycle(), pendingYouTubeVideoId, 0f);
+                        youtubeIsPlaying = true;
+                        playPauseButton.setText("Pause");
+                        pendingYouTubeVideoId = null;
+                    }
+                }
+
+                @Override
+                public void onStateChange(YouTubePlayer youTubePlayer, PlayerConstants.PlayerState state) {
+                    if (state == null) return;
+                    switch (state) {
+                        case PLAYING:
+                            youtubeIsPlaying = true;
+                            playPauseButton.setText("Pause");
+                            syncPlaybackStateToNotification();
+                            break;
+                        case PAUSED:
+                        case ENDED:
+                            youtubeIsPlaying = false;
+                            playPauseButton.setText("Play");
+                            syncPlaybackStateToNotification();
+                            break;
+                        default:
+                            break;
+                    }
+                }
+
+                @Override
+                public void onError(YouTubePlayer youTubePlayer, PlayerConstants.PlayerError error) {
+                    String reason = error == null ? "UNKNOWN" : error.name();
+                    updatePlaybackDiagnostics("YouTube error: " + reason);
+                    logPlaybackEvent("youtube_player_error", eventAttrs("reason", reason));
+                    if (activeYouTubeVideoId != null && !activeYouTubeVideoId.isEmpty()) {
+                        fallbackToExternalYouTube(activeYouTubeVideoId, reason);
+                    }
+                }
+            }, true, iFramePlayerOptions);
+        } catch (RuntimeException runtimeError) {
+            youtubeFallbackActivated = true;
+            updatePlaybackDiagnostics("Embedded YouTube unavailable: " + runtimeError.getClass().getSimpleName());
+            logPlaybackEvent("youtube_embed_unavailable", eventAttrs("reason", runtimeError.getClass().getSimpleName()));
+            youtubePlayerView.setVisibility(View.GONE);
+        }
     }
 
     @Override
