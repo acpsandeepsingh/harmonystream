@@ -109,15 +109,6 @@ public class PlaybackService extends Service {
         intent.setPackage(getPackageName());
         intent.putExtra("action", action);
         sendBroadcast(intent);
-
-        Intent launchIntent = new Intent(this, MainActivity.class);
-        launchIntent.putExtra(EXTRA_PENDING_MEDIA_ACTION, action);
-        launchIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        try {
-            startActivity(launchIntent);
-        } catch (Exception ignored) {
-            // Broadcast path above still handles active-process control dispatch.
-        }
     }
 
     private void updateNotification() {

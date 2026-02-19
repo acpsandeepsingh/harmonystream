@@ -48,6 +48,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
     private static final String SOURCE_YOUTUBE = "youtube";
     private static final String SOURCE_YOUTUBE_ALL = "youtube-all";
     private static final int DEFAULT_SEARCH_MAX_RESULTS = 25;
+    private static final String GENRE_ALL = "All Genres";
 
     private static final int REPEAT_MODE_OFF = 0;
     private static final int REPEAT_MODE_ALL = 1;
@@ -65,9 +66,12 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
     private TextView accountStatus;
     private EditText searchInput;
     private Spinner sourceSpinner;
+    private Spinner genreSpinner;
     private Button searchButton;
 
     private final List<Song> tracks = new ArrayList<>();
+    private final List<Song> allTracks = new ArrayList<>();
+    private String selectedGenre = GENRE_ALL;
     private TrackAdapter trackAdapter;
     private int currentIndex = -1;
     private int selectedTrackIndex = -1;
@@ -158,6 +162,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         accountStatus = findViewById(R.id.account_status);
         searchInput = findViewById(R.id.search_query_input);
         sourceSpinner = findViewById(R.id.search_source_spinner);
+        genreSpinner = findViewById(R.id.genre_filter_spinner);
         searchButton = findViewById(R.id.btn_search);
         playPauseButton = findViewById(R.id.btn_play_pause);
         repeatModeButton = findViewById(R.id.btn_repeat_mode);
@@ -177,6 +182,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         runPlaylistSyncQuietly();
 
         setupSourceSpinner();
+        setupGenreSpinner();
 
         trackList.setLayoutManager(new LinearLayoutManager(this));
         trackAdapter = new TrackAdapter(this);
@@ -323,6 +329,9 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
 
         tracks.clear();
         tracks.addAll(session.getTracks());
+        allTracks.clear();
+        allTracks.addAll(session.getTracks());
+        refreshGenreFilterOptions(allTracks);
         trackAdapter.setTracks(tracks);
 
         currentIndex = sanitizeIndex(session.getCurrentIndex(), tracks.size());
@@ -384,6 +393,94 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         );
         sourceAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         sourceSpinner.setAdapter(sourceAdapter);
+    }
+
+    private void setupGenreSpinner() {
+        if (genreSpinner == null) return;
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(
+                this,
+                android.R.layout.simple_spinner_item,
+                new String[]{GENRE_ALL}
+        );
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        genreSpinner.setAdapter(adapter);
+        genreSpinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) {
+                Object value = parent.getItemAtPosition(position);
+                selectedGenre = value == null ? GENRE_ALL : value.toString();
+                applyGenreFilter();
+            }
+
+            @Override
+            public void onNothingSelected(android.widget.AdapterView<?> parent) {
+                selectedGenre = GENRE_ALL;
+                applyGenreFilter();
+            }
+        });
+    }
+
+    private void refreshGenreFilterOptions(List<Song> sourceTracks) {
+        if (genreSpinner == null) return;
+        List<String> genres = new ArrayList<>();
+        genres.add(GENRE_ALL);
+
+        Map<String, Integer> genreCount = new LinkedHashMap<>();
+        for (Song song : sourceTracks) {
+            if (song == null) continue;
+            String genre = song.getGenre() == null ? "" : song.getGenre().trim();
+            if (genre.isEmpty()) genre = "Music";
+            genreCount.put(genre, (genreCount.containsKey(genre) ? genreCount.get(genre) : 0) + 1);
+        }
+
+        genres.addAll(genreCount.keySet());
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(
+                this,
+                android.R.layout.simple_spinner_item,
+                genres
+        );
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        genreSpinner.setAdapter(adapter);
+
+        int selectedIndex = genres.indexOf(selectedGenre);
+        if (selectedIndex < 0) {
+            selectedGenre = GENRE_ALL;
+            selectedIndex = 0;
+        }
+        genreSpinner.setSelection(selectedIndex, false);
+    }
+
+    private void applyGenreFilter() {
+        tracks.clear();
+        if (GENRE_ALL.equals(selectedGenre)) {
+            tracks.addAll(allTracks);
+        } else {
+            for (Song song : allTracks) {
+                if (song == null) continue;
+                String genre = song.getGenre() == null ? "" : song.getGenre().trim();
+                if (genre.isEmpty()) genre = "Music";
+                if (selectedGenre.equalsIgnoreCase(genre)) {
+                    tracks.add(song);
+                }
+            }
+        }
+
+        trackAdapter.setTracks(tracks);
+        currentIndex = -1;
+        selectedTrackIndex = -1;
+        if (player != null) {
+            player.stop();
+        }
+        playPauseButton.setText("Play");
+
+        if (tracks.isEmpty()) {
+            trackListStatus.setVisibility(View.VISIBLE);
+            trackListStatus.setText("No songs found in " + selectedGenre + ".");
+            nowPlayingText.setText("No track selected");
+        } else {
+            trackListStatus.setVisibility(View.GONE);
+            nowPlayingText.setText("Loaded " + tracks.size() + " songs • " + selectedGenre);
+        }
     }
 
     private void runPlaylistSyncQuietly() {
@@ -690,9 +787,11 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
     }
 
     private void playPlaylist(Playlist playlist) {
-        tracks.clear();
-        tracks.addAll(playlist.getSongs());
-        trackAdapter.setTracks(tracks);
+        allTracks.clear();
+        allTracks.addAll(playlist.getSongs());
+        refreshGenreFilterOptions(allTracks);
+        selectedGenre = GENRE_ALL;
+        applyGenreFilter();
         currentIndex = -1;
         selectedTrackIndex = -1;
 
@@ -732,18 +831,19 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
                 List<SearchResult> searchResults = searchRepository.search(query, DEFAULT_SEARCH_MAX_RESULTS, source);
 
                 runOnUiThread(() -> {
-                    tracks.clear();
+                    allTracks.clear();
                     for (SearchResult result : searchResults) {
-                        tracks.add(result.getSong());
+                        allTracks.add(result.getSong());
                     }
 
-                    trackAdapter.setTracks(tracks);
+                    refreshGenreFilterOptions(allTracks);
+                    applyGenreFilter();
                     currentIndex = -1;
                     selectedTrackIndex = -1;
                     player.stop();
                     playPauseButton.setText("Play");
 
-                    if (tracks.isEmpty()) {
+                    if (allTracks.isEmpty()) {
                         trackListStatus.setVisibility(View.VISIBLE);
                         trackListStatus.setText("No results found.");
                         nowPlayingText.setText("No track selected");
@@ -756,6 +856,8 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
             } catch (Exception error) {
                 runOnUiThread(() -> {
                     tracks.clear();
+                    allTracks.clear();
+                    refreshGenreFilterOptions(allTracks);
                     trackAdapter.setTracks(tracks);
                     currentIndex = -1;
                     selectedTrackIndex = -1;
@@ -777,6 +879,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         searchButton.setEnabled(!isLoading);
         searchInput.setEnabled(!isLoading);
         sourceSpinner.setEnabled(!isLoading);
+        if (genreSpinner != null) genreSpinner.setEnabled(!isLoading);
     }
 
     private void loadHomeCatalog() {
@@ -788,13 +891,14 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
                 List<Song> fetchedSongs = homeCatalogRepository.loadHomeCatalog(DEFAULT_SEARCH_MAX_RESULTS);
 
                 runOnUiThread(() -> {
-                    tracks.clear();
-                    tracks.addAll(fetchedSongs);
-                    trackAdapter.setTracks(tracks);
+                    allTracks.clear();
+                    allTracks.addAll(fetchedSongs);
+                    refreshGenreFilterOptions(allTracks);
+                    applyGenreFilter();
                     currentIndex = -1;
                     selectedTrackIndex = -1;
 
-                    if (tracks.isEmpty()) {
+                    if (allTracks.isEmpty()) {
                         trackListStatus.setVisibility(View.VISIBLE);
                         trackListStatus.setText("Home catalog is empty.");
                         nowPlayingText.setText("No track selected");
