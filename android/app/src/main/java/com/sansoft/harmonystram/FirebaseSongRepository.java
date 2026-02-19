@@ -13,10 +13,14 @@ import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 public class FirebaseSongRepository implements SongRepository, HomeCatalogRepository {
 
@@ -42,10 +46,10 @@ public class FirebaseSongRepository implements SongRepository, HomeCatalogReposi
             return new ArrayList<>();
         }
 
-        List<Song> songs = fetchSongs(maxResults);
-        cacheHomeSongs(songs);
         String normalizedQuery = query == null ? "" : query.trim().toLowerCase(Locale.US);
         if (normalizedQuery.isEmpty()) {
+            List<Song> songs = fetchSongs(maxResults);
+            cacheHomeSongs(songs);
             List<SearchResult> all = new ArrayList<>();
             for (Song song : songs) {
                 all.add(new SearchResult(song, SOURCE_FIREBASE));
@@ -53,18 +57,34 @@ public class FirebaseSongRepository implements SongRepository, HomeCatalogReposi
             return all;
         }
 
-        List<SearchResult> matches = new ArrayList<>();
-        for (Song song : songs) {
-            if (matches.size() >= maxResults) break;
-            String title = song.getTitle() == null ? "" : song.getTitle().toLowerCase(Locale.US);
-            String artist = song.getArtist() == null ? "" : song.getArtist().toLowerCase(Locale.US);
-            String id = song.getId() == null ? "" : song.getId().toLowerCase(Locale.US);
-
-            if (title.contains(normalizedQuery) || artist.contains(normalizedQuery) || id.contains(normalizedQuery)) {
-                matches.add(new SearchResult(song, SOURCE_FIREBASE));
-            }
+        int limit = Math.max(1, Math.min(maxResults, 50));
+        List<String> searchTerms = extractSearchTerms(normalizedQuery);
+        if (searchTerms.isEmpty()) {
+            return new ArrayList<>();
         }
-        return matches;
+
+        List<SearchCandidate> candidates = runKeywordSearchQuery(searchTerms, 50);
+        Collections.sort(candidates, new Comparator<SearchCandidate>() {
+            @Override
+            public int compare(SearchCandidate left, SearchCandidate right) {
+                if (left.matchScore != right.matchScore) {
+                    return Integer.compare(right.matchScore, left.matchScore);
+                }
+
+                String leftTitle = left.song.getTitle() == null ? "" : left.song.getTitle();
+                String rightTitle = right.song.getTitle() == null ? "" : right.song.getTitle();
+                return leftTitle.compareToIgnoreCase(rightTitle);
+            }
+        });
+
+        List<SearchResult> ranked = new ArrayList<>();
+        for (SearchCandidate candidate : candidates) {
+            if (ranked.size() >= limit) {
+                break;
+            }
+            ranked.add(new SearchResult(candidate.song, SOURCE_FIREBASE));
+        }
+        return ranked;
     }
 
     @Override
@@ -411,6 +431,117 @@ public class FirebaseSongRepository implements SongRepository, HomeCatalogReposi
         }
     }
 
+    private List<SearchCandidate> runKeywordSearchQuery(List<String> terms, int limit) throws Exception {
+        String endpoint = "https://firestore.googleapis.com/v1/projects/"
+                + BuildConfig.FIREBASE_PROJECT_ID
+                + "/databases/(default)/documents:runQuery?key="
+                + BuildConfig.FIREBASE_API_KEY;
+
+        JSONObject requestBody = new JSONObject();
+        JSONObject structuredQuery = new JSONObject();
+        structuredQuery.put("from", new JSONArray().put(new JSONObject().put("collectionId", "songs")));
+        structuredQuery.put("limit", limit);
+        structuredQuery.put("where", new JSONObject().put("fieldFilter", new JSONObject()
+                .put("field", new JSONObject().put("fieldPath", "search_keywords"))
+                .put("op", "ARRAY_CONTAINS_ANY")
+                .put("value", new JSONObject().put("arrayValue", new JSONObject().put("values", stringArrayValues(terms))))));
+        requestBody.put("structuredQuery", structuredQuery);
+
+        HttpURLConnection connection = (HttpURLConnection) new URL(endpoint).openConnection();
+        connection.setRequestMethod("POST");
+        connection.setConnectTimeout(8000);
+        connection.setReadTimeout(12000);
+        connection.setDoOutput(true);
+        connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+        connection.getOutputStream().write(requestBody.toString().getBytes("UTF-8"));
+
+        try {
+            int status = connection.getResponseCode();
+            if (status < 200 || status >= 300) {
+                throw new IllegalStateException("Firestore runQuery failed with HTTP " + status);
+            }
+
+            String payload = readFully(connection.getInputStream());
+            JSONArray response = new JSONArray(payload);
+            List<SearchCandidate> matches = new ArrayList<>();
+            for (int i = 0; i < response.length(); i++) {
+                JSONObject row = response.optJSONObject(i);
+                if (row == null) continue;
+                Song song = mapDocumentToSong(row.optJSONObject("document"));
+                if (song == null) continue;
+
+                Set<String> songKeywords = extractSearchKeywordsFromDocument(row.optJSONObject("document"));
+                int score = computeRelevanceScore(songKeywords, terms);
+                if (score > 0) {
+                    matches.add(new SearchCandidate(song, score));
+                }
+            }
+            return matches;
+        } finally {
+            connection.disconnect();
+        }
+    }
+
+    private List<String> extractSearchTerms(String normalizedQuery) {
+        String[] rawTerms = normalizedQuery.split("\\s+");
+        List<String> terms = new ArrayList<>();
+        for (String term : rawTerms) {
+            String clean = term == null ? "" : term.trim();
+            if (clean.isEmpty()) continue;
+            if (!terms.contains(clean)) {
+                terms.add(clean);
+            }
+            if (terms.size() >= 10) {
+                break;
+            }
+        }
+        return terms;
+    }
+
+    private JSONArray stringArrayValues(List<String> terms) throws JSONException {
+        JSONArray values = new JSONArray();
+        if (terms == null) return values;
+        for (String term : terms) {
+            if (term == null || term.trim().isEmpty()) continue;
+            values.put(new JSONObject().put("stringValue", term.trim()));
+        }
+        return values;
+    }
+
+    private Set<String> extractSearchKeywordsFromDocument(JSONObject document) {
+        Set<String> keywords = new HashSet<>();
+        if (document == null) return keywords;
+        JSONObject fields = document.optJSONObject("fields");
+        if (fields == null) return keywords;
+        JSONObject keywordField = fields.optJSONObject("search_keywords");
+        JSONObject arrayValue = keywordField == null ? null : keywordField.optJSONObject("arrayValue");
+        JSONArray values = arrayValue == null ? null : arrayValue.optJSONArray("values");
+        if (values == null) return keywords;
+
+        for (int i = 0; i < values.length(); i++) {
+            JSONObject item = values.optJSONObject(i);
+            if (item == null) continue;
+            String value = item.optString("stringValue", "").trim().toLowerCase(Locale.US);
+            if (!value.isEmpty()) {
+                keywords.add(value);
+            }
+        }
+        return keywords;
+    }
+
+    private int computeRelevanceScore(Set<String> songKeywords, List<String> searchTerms) {
+        if (songKeywords == null || songKeywords.isEmpty() || searchTerms == null || searchTerms.isEmpty()) {
+            return 0;
+        }
+        int score = 0;
+        for (String term : searchTerms) {
+            if (songKeywords.contains(term)) {
+                score++;
+            }
+        }
+        return score;
+    }
+
     private Song mapDocumentToSong(JSONObject document) {
         if (document == null) return null;
 
@@ -548,6 +679,16 @@ public class FirebaseSongRepository implements SongRepository, HomeCatalogReposi
         SongCacheBatch(String query, List<Song> songs) {
             this.query = query == null ? "" : query;
             this.songs = songs == null ? new ArrayList<>() : songs;
+        }
+    }
+
+    private static class SearchCandidate {
+        final Song song;
+        final int matchScore;
+
+        SearchCandidate(Song song, int matchScore) {
+            this.song = song;
+            this.matchScore = matchScore;
         }
     }
 
