@@ -159,7 +159,15 @@ public class PlaybackService extends Service {
 
         if (!hasNotificationPermission()) {
             if (isPlaying) {
+<<<<<<< codex/fix-app-crashing-on-startup-h2o8j5
                 stopSelf();
+=======
+                try {
+                    startForeground(NOTIFICATION_ID, notification);
+                } catch (SecurityException ignored) {
+                    stopSelf();
+                }
+>>>>>>> main
             }
             return;
         }
