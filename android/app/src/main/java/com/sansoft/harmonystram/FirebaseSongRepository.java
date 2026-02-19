@@ -198,13 +198,13 @@ public class FirebaseSongRepository implements SongRepository, HomeCatalogReposi
             for (Song song : songs) {
                 if (song == null) continue;
                 JSONObject songObj = new JSONObject();
-                songObj.put("id", song.getId());
-                songObj.put("title", song.getTitle());
-                songObj.put("artist", song.getArtist());
-                songObj.put("mediaUrl", song.getMediaUrl());
-                songObj.put("thumbnailUrl", song.getThumbnailUrl());
-                songObj.put("durationMs", song.getDurationMs());
-                songObj.put("genre", song.getGenre());
+                songObj.putOpt("id", song.getId());
+                songObj.putOpt("title", song.getTitle());
+                songObj.putOpt("artist", song.getArtist());
+                songObj.putOpt("mediaUrl", song.getMediaUrl());
+                songObj.putOpt("thumbnailUrl", song.getThumbnailUrl());
+                songObj.putOpt("durationMs", song.getDurationMs());
+                songObj.putOpt("genre", song.getGenre());
                 cacheArray.put(songObj);
             }
         }
@@ -287,6 +287,7 @@ public class FirebaseSongRepository implements SongRepository, HomeCatalogReposi
         String title = stringField(fields, "title", "Untitled");
         String artist = stringField(fields, "artist", "Unknown Artist");
         String thumbnail = stringField(fields, "thumbnailUrl", "");
+        String mediaUrl = stringField(fields, "mediaUrl", "");
         String videoId = stringField(fields, "videoId", "");
         String id = stringField(fields, "id", videoId);
         String genre = stringField(fields, "genre", "Music");
@@ -294,15 +295,26 @@ public class FirebaseSongRepository implements SongRepository, HomeCatalogReposi
             id = parseIdFromName(document.optString("name", ""));
         }
         if (videoId.isEmpty()) {
-            videoId = id;
+            videoId = extractYouTubeVideoIdFromUrl(mediaUrl);
         }
-        if (id.isEmpty() || videoId.isEmpty()) {
+        if (videoId.isEmpty()) {
+            videoId = isLikelyYouTubeVideoId(id) ? id : "";
+        }
+        if (id.isEmpty()) {
             return null;
         }
 
         long durationSeconds = longField(fields, "duration", 0L);
         long durationMs = durationSeconds > 0 ? durationSeconds * 1000L : longField(fields, "durationMs", 0L);
-        String mediaUrl = "https://www.youtube.com/watch?v=" + videoId;
+        if (mediaUrl.isEmpty() && !videoId.isEmpty()) {
+            mediaUrl = "https://www.youtube.com/watch?v=" + videoId;
+        }
+        if (thumbnail.isEmpty() && !videoId.isEmpty()) {
+            thumbnail = "https://i.ytimg.com/vi/" + videoId + "/hqdefault.jpg";
+        }
+        if (mediaUrl.isEmpty()) {
+            return null;
+        }
 
         return new Song(id, title, artist, mediaUrl, thumbnail, durationMs, genre);
     }
@@ -312,6 +324,38 @@ public class FirebaseSongRepository implements SongRepository, HomeCatalogReposi
         int slash = name.lastIndexOf('/');
         if (slash < 0 || slash >= name.length() - 1) return "";
         return name.substring(slash + 1);
+    }
+
+    private boolean isLikelyYouTubeVideoId(String value) {
+        if (value == null) return false;
+        String trimmed = value.trim();
+        return trimmed.matches("[A-Za-z0-9_-]{11}");
+    }
+
+    private String extractYouTubeVideoIdFromUrl(String mediaUrl) {
+        if (mediaUrl == null || mediaUrl.trim().isEmpty()) return "";
+        String normalized = mediaUrl.trim();
+
+        int watchIndex = normalized.indexOf("v=");
+        if (watchIndex >= 0) {
+            String candidate = normalized.substring(watchIndex + 2);
+            int amp = candidate.indexOf('&');
+            if (amp >= 0) candidate = candidate.substring(0, amp);
+            return isLikelyYouTubeVideoId(candidate) ? candidate : "";
+        }
+
+        String[] markers = new String[] {"youtu.be/", "youtube.com/embed/", "youtube.com/shorts/"};
+        for (String marker : markers) {
+            int index = normalized.indexOf(marker);
+            if (index < 0) continue;
+            String candidate = normalized.substring(index + marker.length());
+            int slash = candidate.indexOf('/');
+            if (slash >= 0) candidate = candidate.substring(0, slash);
+            int q = candidate.indexOf('?');
+            if (q >= 0) candidate = candidate.substring(0, q);
+            return isLikelyYouTubeVideoId(candidate) ? candidate : "";
+        }
+        return "";
     }
 
     private String stringField(JSONObject fields, String key, String fallback) {

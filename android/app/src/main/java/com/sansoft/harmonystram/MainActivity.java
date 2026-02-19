@@ -915,25 +915,42 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
     }
 
     private String extractYouTubeVideoId(String mediaUrl, String fallbackId) {
-        if (mediaUrl == null) {
-            return (fallbackId == null || fallbackId.trim().isEmpty()) ? null : fallbackId.trim();
+        String normalized = mediaUrl == null ? "" : mediaUrl.trim();
+        if (!normalized.isEmpty()) {
+            int watchIndex = normalized.indexOf("v=");
+            if (watchIndex >= 0) {
+                String candidate = normalized.substring(watchIndex + 2);
+                int amp = candidate.indexOf('&');
+                if (amp >= 0) candidate = candidate.substring(0, amp);
+                if (isLikelyYouTubeVideoId(candidate)) return candidate;
+            }
+            if (normalized.contains("youtu.be/")) {
+                String candidate = normalized.substring(normalized.indexOf("youtu.be/") + 9);
+                int q = candidate.indexOf('?');
+                if (q >= 0) candidate = candidate.substring(0, q);
+                if (isLikelyYouTubeVideoId(candidate)) return candidate;
+            }
+            String[] markers = new String[] {"youtube.com/embed/", "youtube.com/shorts/"};
+            for (String marker : markers) {
+                int index = normalized.indexOf(marker);
+                if (index < 0) continue;
+                String candidate = normalized.substring(index + marker.length());
+                int slash = candidate.indexOf('/');
+                if (slash >= 0) candidate = candidate.substring(0, slash);
+                int q = candidate.indexOf('?');
+                if (q >= 0) candidate = candidate.substring(0, q);
+                if (isLikelyYouTubeVideoId(candidate)) return candidate;
+            }
         }
-        String normalized = mediaUrl.trim();
-        int watchIndex = normalized.indexOf("v=");
-        if (watchIndex >= 0) {
-            String candidate = normalized.substring(watchIndex + 2);
-            int amp = candidate.indexOf('&');
-            if (amp >= 0) candidate = candidate.substring(0, amp);
-            if (!candidate.isEmpty()) return candidate;
-        }
-        if (normalized.contains("youtu.be/")) {
-            String candidate = normalized.substring(normalized.indexOf("youtu.be/") + 9);
-            int q = candidate.indexOf('?');
-            if (q >= 0) candidate = candidate.substring(0, q);
-            if (!candidate.isEmpty()) return candidate;
-        }
-        if (fallbackId != null && !fallbackId.trim().isEmpty()) return fallbackId.trim();
+
+        if (isLikelyYouTubeVideoId(fallbackId)) return fallbackId.trim();
         return null;
+    }
+
+    private boolean isLikelyYouTubeVideoId(String value) {
+        if (value == null) return false;
+        String trimmed = value.trim();
+        return trimmed.matches("[A-Za-z0-9_-]{11}");
     }
 
     private void playNext() {
