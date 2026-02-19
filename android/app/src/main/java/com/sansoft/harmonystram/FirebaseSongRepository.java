@@ -9,12 +9,16 @@ import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 public class FirebaseSongRepository implements SongRepository, HomeCatalogRepository {
 
     private static final String SOURCE_FIREBASE = "firebase";
+    private static final Object HOME_CACHE_LOCK = new Object();
+    private static final List<Song> HOME_CACHE = new ArrayList<>();
 
     @Override
     public List<SearchResult> search(String query, int maxResults, String source) throws Exception {
@@ -24,6 +28,7 @@ public class FirebaseSongRepository implements SongRepository, HomeCatalogReposi
         }
 
         List<Song> songs = fetchSongs(maxResults);
+        cacheHomeSongs(songs);
         String normalizedQuery = query == null ? "" : query.trim().toLowerCase(Locale.US);
         if (normalizedQuery.isEmpty()) {
             List<SearchResult> all = new ArrayList<>();
@@ -78,7 +83,76 @@ public class FirebaseSongRepository implements SongRepository, HomeCatalogReposi
 
     @Override
     public List<Song> loadHomeCatalog(int maxResults) throws Exception {
-        return fetchSongs(maxResults);
+        List<Song> cached = snapshotHomeCache();
+        if (!cached.isEmpty()) {
+            return filterSongsByPreferredGenre(cached, maxResults);
+        }
+
+        try {
+            List<Song> fetched = fetchSongs(Math.max(maxResults, 50));
+            cacheHomeSongs(fetched);
+            return filterSongsByPreferredGenre(fetched, maxResults);
+        } catch (Exception networkError) {
+            cached = snapshotHomeCache();
+            if (!cached.isEmpty()) {
+                return filterSongsByPreferredGenre(cached, maxResults);
+            }
+            throw networkError;
+        }
+    }
+
+    private List<Song> filterSongsByPreferredGenre(List<Song> songs, int maxResults) {
+        if (songs == null || songs.isEmpty()) return new ArrayList<>();
+        int limit = Math.max(1, maxResults);
+
+        Map<String, List<Song>> byGenre = new LinkedHashMap<>();
+        for (Song song : songs) {
+            String genre = song.getGenre() == null ? "" : song.getGenre().trim();
+            if (genre.isEmpty()) genre = "Music";
+            if (!byGenre.containsKey(genre)) {
+                byGenre.put(genre, new ArrayList<>());
+            }
+            byGenre.get(genre).add(song);
+        }
+
+        String preferred = "";
+        if (byGenre.containsKey("New Songs")) {
+            preferred = "New Songs";
+        } else {
+            int maxCount = -1;
+            for (Map.Entry<String, List<Song>> entry : byGenre.entrySet()) {
+                if (entry.getValue().size() > maxCount) {
+                    maxCount = entry.getValue().size();
+                    preferred = entry.getKey();
+                }
+            }
+        }
+
+        List<Song> filtered = new ArrayList<>();
+        List<Song> source = byGenre.get(preferred);
+        if (source == null || source.isEmpty()) {
+            source = songs;
+        }
+        for (Song song : source) {
+            filtered.add(song);
+            if (filtered.size() >= limit) break;
+        }
+        return filtered;
+    }
+
+    private void cacheHomeSongs(List<Song> songs) {
+        synchronized (HOME_CACHE_LOCK) {
+            HOME_CACHE.clear();
+            if (songs != null) {
+                HOME_CACHE.addAll(songs);
+            }
+        }
+    }
+
+    private List<Song> snapshotHomeCache() {
+        synchronized (HOME_CACHE_LOCK) {
+            return new ArrayList<>(HOME_CACHE);
+        }
     }
 
     private List<Song> fetchSongs(int maxResults) throws Exception {
@@ -128,6 +202,7 @@ public class FirebaseSongRepository implements SongRepository, HomeCatalogReposi
         String thumbnail = stringField(fields, "thumbnailUrl", "");
         String videoId = stringField(fields, "videoId", "");
         String id = stringField(fields, "id", videoId);
+        String genre = stringField(fields, "genre", "Music");
         if (id.isEmpty()) {
             id = parseIdFromName(document.optString("name", ""));
         }
@@ -142,7 +217,7 @@ public class FirebaseSongRepository implements SongRepository, HomeCatalogReposi
         long durationMs = durationSeconds > 0 ? durationSeconds * 1000L : longField(fields, "durationMs", 0L);
         String mediaUrl = "https://www.youtube.com/watch?v=" + videoId;
 
-        return new Song(id, title, artist, mediaUrl, thumbnail, durationMs);
+        return new Song(id, title, artist, mediaUrl, thumbnail, durationMs, genre);
     }
 
     private String parseIdFromName(String name) {

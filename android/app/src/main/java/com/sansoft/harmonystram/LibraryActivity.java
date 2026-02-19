@@ -13,6 +13,8 @@ import androidx.appcompat.app.AppCompatActivity;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class LibraryActivity extends AppCompatActivity {
 
@@ -32,6 +34,7 @@ public class LibraryActivity extends AppCompatActivity {
     private Button deletePlaylistButton;
 
     private final List<Playlist> playlists = new ArrayList<>();
+    private ExecutorService backgroundExecutor;
     private int selectedPlaylistIndex = -1;
     private int selectedSongIndex = -1;
 
@@ -42,6 +45,7 @@ public class LibraryActivity extends AppCompatActivity {
 
         playlistStorageRepository = new PlaylistStorageRepository(this);
         playlistSyncManager = new PlaylistSyncManager(this);
+        backgroundExecutor = Executors.newSingleThreadExecutor();
 
         playlistsList = findViewById(R.id.library_playlists_list);
         songsList = findViewById(R.id.library_songs_list);
@@ -105,8 +109,13 @@ public class LibraryActivity extends AppCompatActivity {
     }
 
     private void runSync() {
-        PlaylistSyncModels.SyncStatus status = playlistSyncManager.syncNow();
-        syncStateText.setText("Sync: " + status.state + " · " + status.detail);
+        if (backgroundExecutor == null) {
+            return;
+        }
+        backgroundExecutor.execute(() -> {
+            PlaylistSyncModels.SyncStatus status = playlistSyncManager.syncNow();
+            runOnUiThread(() -> syncStateText.setText("Sync: " + status.state + " · " + status.detail));
+        });
     }
 
     private void reloadPlaylists(String preferredPlaylistId) {
@@ -194,6 +203,14 @@ public class LibraryActivity extends AppCompatActivity {
             return null;
         }
         return playlists.get(selectedPlaylistIndex);
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (backgroundExecutor != null) {
+            backgroundExecutor.shutdownNow();
+        }
     }
 
     private int findPlaylistIndexById(String playlistId) {
