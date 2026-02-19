@@ -77,8 +77,36 @@ android {
                         ?: System.getenv("FIREBASE_API_KEY")
                         ?: "AIzaSyAbHGZu-NdtvQhV_IkWh0htVgsSoIHam-s"
         )
+        def firebaseAppId = (
+                project.findProperty("FIREBASE_APP_ID")
+                        ?: secretsProperties.getProperty("FIREBASE_APP_ID")
+                        ?: System.getenv("FIREBASE_APP_ID")
+                        ?: "1:312831088099:web:e9129a94070e9cff033cd6"
+        )
+        def firebaseAuthDomain = (
+                project.findProperty("FIREBASE_AUTH_DOMAIN")
+                        ?: secretsProperties.getProperty("FIREBASE_AUTH_DOMAIN")
+                        ?: System.getenv("FIREBASE_AUTH_DOMAIN")
+                        ?: "studio-8258640677-40b59.firebaseapp.com"
+        )
+        def firebaseMessagingSenderId = (
+                project.findProperty("FIREBASE_MESSAGING_SENDER_ID")
+                        ?: secretsProperties.getProperty("FIREBASE_MESSAGING_SENDER_ID")
+                        ?: System.getenv("FIREBASE_MESSAGING_SENDER_ID")
+                        ?: "312831088099"
+        )
+        def firebaseMeasurementId = (
+                project.findProperty("FIREBASE_MEASUREMENT_ID")
+                        ?: secretsProperties.getProperty("FIREBASE_MEASUREMENT_ID")
+                        ?: System.getenv("FIREBASE_MEASUREMENT_ID")
+                        ?: ""
+        )
         buildConfigField "String", "FIREBASE_PROJECT_ID", "\"${firebaseProjectId}\""
         buildConfigField "String", "FIREBASE_API_KEY", "\"${firebaseApiKey}\""
+        buildConfigField "String", "FIREBASE_APP_ID", "\"${firebaseAppId}\""
+        buildConfigField "String", "FIREBASE_AUTH_DOMAIN", "\"${firebaseAuthDomain}\""
+        buildConfigField "String", "FIREBASE_MESSAGING_SENDER_ID", "\"${firebaseMessagingSenderId}\""
+        buildConfigField "String", "FIREBASE_MEASUREMENT_ID", "\"${firebaseMeasurementId}\""
         def playlistSyncEnabledValue = (
                 project.findProperty("PLAYLIST_SYNC_ENABLED")
                         ?: System.getenv("PLAYLIST_SYNC_ENABLED")

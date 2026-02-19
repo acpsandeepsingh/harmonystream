@@ -381,7 +381,11 @@ public class FirestorePlaylistRemoteDataSource {
     }
 
     private boolean isFirebaseConfigured() {
-        return !safe(BuildConfig.FIREBASE_PROJECT_ID).isEmpty() && !safe(BuildConfig.FIREBASE_API_KEY).isEmpty();
+        return !safe(BuildConfig.FIREBASE_PROJECT_ID).isEmpty()
+                && !safe(BuildConfig.FIREBASE_API_KEY).isEmpty()
+                && !safe(BuildConfig.FIREBASE_APP_ID).isEmpty()
+                && !safe(BuildConfig.FIREBASE_AUTH_DOMAIN).isEmpty()
+                && !safe(BuildConfig.FIREBASE_MESSAGING_SENDER_ID).isEmpty();
     }
 
     private String firestoreDocumentEndpoint(String accountKey) {
