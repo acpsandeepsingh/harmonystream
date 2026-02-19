@@ -381,8 +381,8 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         View dialogView = getLayoutInflater().inflate(android.R.layout.simple_list_item_2, null);
         TextView text1 = dialogView.findViewById(android.R.id.text1);
         TextView text2 = dialogView.findViewById(android.R.id.text2);
-        text1.setText("Add a profile identity for native session");
-        text2.setText("Firebase auth wiring is planned next.");
+        text1.setText("Sign in with your account details");
+        text2.setText(firebaseConfigSummary());
 
         EditText emailInput = new EditText(this);
         emailInput.setHint("Email");
@@ -420,6 +420,28 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
                     Toast.makeText(this, "Profile saved locally", Toast.LENGTH_SHORT).show();
                 })
                 .show();
+    }
+
+    private String firebaseConfigSummary() {
+        String projectId = safeConfig(BuildConfig.FIREBASE_PROJECT_ID);
+        String authDomain = safeConfig(BuildConfig.FIREBASE_AUTH_DOMAIN);
+        String appId = safeConfig(BuildConfig.FIREBASE_APP_ID);
+        String senderId = safeConfig(BuildConfig.FIREBASE_MESSAGING_SENDER_ID);
+        String measurementId = safeConfig(BuildConfig.FIREBASE_MEASUREMENT_ID);
+
+        StringBuilder builder = new StringBuilder("Firebase configured: ");
+        builder.append("project=").append(projectId)
+                .append(", authDomain=").append(authDomain)
+                .append(", appId=").append(appId)
+                .append(", sender=").append(senderId);
+        if (!measurementId.isEmpty()) {
+            builder.append(", measurement=").append(measurementId);
+        }
+        return builder.toString();
+    }
+
+    private String safeConfig(String value) {
+        return value == null ? "" : value.trim();
     }
 
     private void showSignedInProfileDialog(NativeUserSessionStore.UserSession session) {
