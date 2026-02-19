@@ -377,10 +377,20 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
     }
 
     private void runPlaylistSyncQuietly() {
-        PlaylistSyncModels.SyncStatus status = playlistSyncManager.syncNow();
-        updateAccountStatusText();
-        String base = accountStatus.getText() == null ? "Account" : accountStatus.getText().toString();
-        accountStatus.setText(base + " · Sync " + status.state);
+        if (backgroundExecutor == null || playlistSyncManager == null) {
+            return;
+        }
+        backgroundExecutor.execute(() -> {
+            PlaylistSyncModels.SyncStatus status = playlistSyncManager.syncNow();
+            runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed()) {
+                    return;
+                }
+                updateAccountStatusText();
+                String base = accountStatus.getText() == null ? "Account" : accountStatus.getText().toString();
+                accountStatus.setText(base + " · Sync " + status.state);
+            });
+        });
     }
 
     private void showCreatePlaylistDialog() {
@@ -532,32 +542,37 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
             return;
         }
 
-        List<Playlist> playlists = playlistStorageRepository.getPlaylists();
-        if (playlists.isEmpty()) {
-            Toast.makeText(this, "Create a playlist first", Toast.LENGTH_SHORT).show();
-            return;
-        }
+        backgroundExecutor.execute(() -> {
+            playlistSyncManager.syncNow();
+            List<Playlist> playlists = playlistStorageRepository.getPlaylists();
+            runOnUiThread(() -> {
+                if (playlists.isEmpty()) {
+                    Toast.makeText(this, "Create a playlist first", Toast.LENGTH_SHORT).show();
+                    return;
+                }
 
-        String[] names = new String[playlists.size()];
-        for (int i = 0; i < playlists.size(); i++) {
-            names[i] = playlists.get(i).getName();
-        }
+                String[] names = new String[playlists.size()];
+                for (int i = 0; i < playlists.size(); i++) {
+                    names[i] = playlists.get(i).getName();
+                }
 
-        new AlertDialog.Builder(this)
-                .setTitle("Add to playlist")
-                .setItems(names, (dialog, which) -> {
-                    Playlist selectedPlaylist = playlists.get(which);
-                    boolean added = playlistStorageRepository.addSongToPlaylist(selectedPlaylist.getId(), selectedSong);
-                    if (added) {
-                        runPlaylistSyncQuietly();
-                    }
-                    Toast.makeText(
-                            this,
-                            added ? "Track added to " + selectedPlaylist.getName() : "Track already exists in playlist",
-                            Toast.LENGTH_SHORT
-                    ).show();
-                })
-                .show();
+                new AlertDialog.Builder(this)
+                        .setTitle("Add to playlist")
+                        .setItems(names, (dialog, which) -> {
+                            Playlist selectedPlaylist = playlists.get(which);
+                            boolean added = playlistStorageRepository.addSongToPlaylist(selectedPlaylist.getId(), selectedSong);
+                            if (added) {
+                                runPlaylistSyncQuietly();
+                            }
+                            Toast.makeText(
+                                    this,
+                                    added ? "Track added to " + selectedPlaylist.getName() : "Track already exists in playlist",
+                                    Toast.LENGTH_SHORT
+                            ).show();
+                        })
+                        .show();
+            });
+        });
     }
 
 
@@ -572,22 +587,27 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
     }
 
     private void showLibraryDialog() {
-        List<Playlist> playlists = playlistStorageRepository.getPlaylists();
-        if (playlists.isEmpty()) {
-            Toast.makeText(this, "No playlists yet", Toast.LENGTH_SHORT).show();
-            return;
-        }
+        backgroundExecutor.execute(() -> {
+            playlistSyncManager.syncNow();
+            List<Playlist> playlists = playlistStorageRepository.getPlaylists();
+            runOnUiThread(() -> {
+                if (playlists.isEmpty()) {
+                    Toast.makeText(this, "No playlists yet", Toast.LENGTH_SHORT).show();
+                    return;
+                }
 
-        String[] names = new String[playlists.size()];
-        for (int i = 0; i < playlists.size(); i++) {
-            Playlist playlist = playlists.get(i);
-            names[i] = playlist.getName() + " (" + playlist.getSongs().size() + ")";
-        }
+                String[] names = new String[playlists.size()];
+                for (int i = 0; i < playlists.size(); i++) {
+                    Playlist playlist = playlists.get(i);
+                    names[i] = playlist.getName() + " (" + playlist.getSongs().size() + ")";
+                }
 
-        new AlertDialog.Builder(this)
-                .setTitle("Library")
-                .setItems(names, (dialog, which) -> showPlaylistDetailDialog(playlists.get(which)))
-                .show();
+                new AlertDialog.Builder(this)
+                        .setTitle("Library")
+                        .setItems(names, (dialog, which) -> showPlaylistDetailDialog(playlists.get(which)))
+                        .show();
+            });
+        });
     }
 
     private void showPlaylistDetailDialog(Playlist playlist) {
