@@ -17,6 +17,7 @@ import androidx.appcompat.app.AppCompatActivity;
 
 public class WebAppActivity extends AppCompatActivity {
 
+    public static final String EXTRA_START_URL = "start_url";
     private static final String HOME_URL = "https://acpsandeepsingh.github.io/harmonystream/";
 
     private WebView webView;
@@ -45,8 +46,22 @@ public class WebAppActivity extends AppCompatActivity {
         if (savedInstanceState != null) {
             webView.restoreState(savedInstanceState);
         } else {
-            webView.loadUrl(HOME_URL);
+            String startUrl = getIntent().getStringExtra(EXTRA_START_URL);
+            if (isHttpUrl(startUrl)) {
+                webView.loadUrl(startUrl);
+            } else {
+                webView.loadUrl(HOME_URL);
+            }
         }
+    }
+
+    private boolean isHttpUrl(String url) {
+        if (url == null || url.trim().isEmpty()) {
+            return false;
+        }
+        Uri parsed = Uri.parse(url);
+        String scheme = parsed.getScheme();
+        return "http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme);
     }
 
     @Override

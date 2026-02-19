@@ -38,7 +38,7 @@ public class TrackAdapter extends RecyclerView.Adapter<TrackAdapter.TrackViewHol
     @Override
     public TrackViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
         View view = LayoutInflater.from(parent.getContext())
-                .inflate(android.R.layout.simple_list_item_2, parent, false);
+                .inflate(R.layout.item_track_modern, parent, false);
         return new TrackViewHolder(view);
     }
 
@@ -61,8 +61,8 @@ public class TrackAdapter extends RecyclerView.Adapter<TrackAdapter.TrackViewHol
 
         TrackViewHolder(@NonNull View itemView) {
             super(itemView);
-            title = itemView.findViewById(android.R.id.text1);
-            subtitle = itemView.findViewById(android.R.id.text2);
+            title = itemView.findViewById(R.id.track_title);
+            subtitle = itemView.findViewById(R.id.track_subtitle);
         }
     }
 }

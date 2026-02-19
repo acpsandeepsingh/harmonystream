@@ -5,7 +5,6 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -793,8 +792,8 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
 
         if (track.getMediaUrl().contains("youtube.com/watch")) {
             openYouTubeVideo(track.getMediaUrl());
-            nowPlayingText.setText("Opened in YouTube app: " + track.getTitle());
-            updatePlaybackDiagnostics("External playback: YouTube app");
+            nowPlayingText.setText("Opened in in-app player: " + track.getTitle());
+            updatePlaybackDiagnostics("Web playback: in-app YouTube view");
             syncPlaybackStateToNotification();
             return;
         }
@@ -811,11 +810,12 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
     }
 
     private void openYouTubeVideo(String videoUrl) {
-        Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(videoUrl));
+        Intent intent = new Intent(this, WebAppActivity.class);
+        intent.putExtra(WebAppActivity.EXTRA_START_URL, videoUrl);
         try {
             startActivity(intent);
         } catch (ActivityNotFoundException e) {
-            Toast.makeText(this, "No app found to open YouTube link", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Unable to open player", Toast.LENGTH_SHORT).show();
         }
     }
 
