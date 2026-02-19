@@ -44,12 +44,12 @@
                 android:layout_weight="1"
                 android:background="@drawable/bg_input"
                 android:hint="Search songs"
-                android:hintTextColor="#7F8BA8"
                 android:imeOptions="actionSearch"
                 android:inputType="text"
                 android:maxLines="1"
                 android:paddingHorizontal="12dp"
-                android:textColor="#EAF0FF" />
+                android:textColor="#EAF0FF"
+                android:textColorHint="#7F8BA8" />
 
             <Spinner
                 android:id="@+id/search_source_spinner"
