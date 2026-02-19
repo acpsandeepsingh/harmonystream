@@ -41,8 +41,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
     private static final int REQUEST_LIBRARY = 6001;
     private static final int REQUEST_PROFILE = 6002;
 
-    private static final String SOURCE_YOUTUBE = "youtube";
-    private static final String SOURCE_YOUTUBE_ALL = "youtube-all";
+    private static final String SOURCE_FIREBASE = "firebase";
     private static final int DEFAULT_SEARCH_MAX_RESULTS = 25;
 
     private static final int REPEAT_MODE_OFF = 0;
@@ -61,7 +60,6 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
     private EditText searchInput;
     private Spinner sourceSpinner;
     private Button searchButton;
-    private EditText songIdInput;
 
     private final List<Song> tracks = new ArrayList<>();
     private TrackAdapter trackAdapter;
@@ -71,8 +69,9 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
     private final List<Integer> activeQueueTrackIndexes = new ArrayList<>();
     private int currentQueueIndex = -1;
 
-    private final HomeCatalogRepository homeCatalogRepository = new YouTubeHomeCatalogRepository();
-    private final SongRepository searchRepository = new YouTubeRepository();
+    private final FirebaseSongRepository firebaseSongRepository = new FirebaseSongRepository();
+    private final HomeCatalogRepository homeCatalogRepository = firebaseSongRepository;
+    private final SongRepository searchRepository = firebaseSongRepository;
     private PlaylistStorageRepository playlistStorageRepository;
     private PlaylistSyncManager playlistSyncManager;
     private PlaybackSessionStore playbackSessionStore;
@@ -80,7 +79,6 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
     private ExecutorService backgroundExecutor;
     private PlaybackEventLogger playbackEventLogger;
     private PlaybackSoakGateEvaluator playbackSoakGateEvaluator;
-    private FirebaseSongRemoteDataSource firebaseSongRemoteDataSource;
 
     private final Handler stateSyncHandler = new Handler(Looper.getMainLooper());
     private final Runnable stateSyncRunnable = new Runnable() {
@@ -136,7 +134,6 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         searchInput = findViewById(R.id.search_query_input);
         sourceSpinner = findViewById(R.id.search_source_spinner);
         searchButton = findViewById(R.id.btn_search);
-        songIdInput = findViewById(R.id.song_id_input);
         playPauseButton = findViewById(R.id.btn_play_pause);
         repeatModeButton = findViewById(R.id.btn_repeat_mode);
         queueButton = findViewById(R.id.btn_queue);
@@ -148,12 +145,11 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         Button profileButton = findViewById(R.id.btn_profile);
         Button fullscreenButton = findViewById(R.id.btn_fullscreen);
         Button playbackDiagnosticsButton = findViewById(R.id.btn_playback_diagnostics);
-        Button importSongIdButton = findViewById(R.id.btn_import_song_id);
         RecyclerView trackList = findViewById(R.id.track_list);
 
         userSessionStore = new NativeUserSessionStore(this);
-        firebaseSongRemoteDataSource = new FirebaseSongRemoteDataSource();
         updateAccountStatusText();
+        runPlaylistSyncQuietly();
 
         setupSourceSpinner();
 
@@ -206,7 +202,6 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         });
 
         searchButton.setOnClickListener(v -> runSearchFromInput());
-        importSongIdButton.setOnClickListener(v -> importSongByIdFromInput());
         playPauseButton.setOnClickListener(v -> togglePlayPause());
         previousButton.setOnClickListener(v -> playPrevious());
         nextButton.setOnClickListener(v -> playNext());
@@ -239,79 +234,6 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         }
         handlePendingMediaControlAction(getIntent());
         stateSyncHandler.post(stateSyncRunnable);
-    }
-
-    private void importSongByIdFromInput() {
-        if (songIdInput == null) {
-            return;
-        }
-
-        String raw = songIdInput.getText() == null ? "" : songIdInput.getText().toString().trim();
-        if (raw.isEmpty()) {
-            Toast.makeText(this, "Enter a YouTube URL or video ID", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        String videoId = extractYouTubeVideoId(raw);
-        if (videoId.isEmpty()) {
-            Toast.makeText(this, "Invalid YouTube URL or video ID", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        trackListStatus.setVisibility(View.VISIBLE);
-        trackListStatus.setText("Importing song by ID...");
-
-        backgroundExecutor.execute(() -> {
-            try {
-                Song song = searchRepository.getVideoDetails(videoId);
-                boolean stored = firebaseSongRemoteDataSource.upsertSong(song, userSessionStore.getSession());
-
-                runOnUiThread(() -> {
-                    tracks.add(0, song);
-                    trackAdapter.setTracks(tracks);
-                    selectedTrackIndex = 0;
-                    songIdInput.setText("");
-                    trackListStatus.setVisibility(View.GONE);
-                    String syncNote = stored ? "Saved to Firebase." : "Added locally only.";
-                    Toast.makeText(this, "Imported " + song.getTitle() + ". " + syncNote, Toast.LENGTH_LONG).show();
-                });
-            } catch (Exception error) {
-                runOnUiThread(() -> {
-                    trackListStatus.setText("Import failed");
-                    Toast.makeText(this, "Could not import song: " + error.getMessage(), Toast.LENGTH_LONG).show();
-                });
-            }
-        });
-    }
-
-    private String extractYouTubeVideoId(String value) {
-        if (value == null) return "";
-        String input = value.trim();
-        if (input.matches("^[a-zA-Z0-9_-]{11}$")) {
-            return input;
-        }
-
-        try {
-            android.net.Uri uri = android.net.Uri.parse(input);
-            String host = uri.getHost();
-            if (host == null) {
-                return "";
-            }
-
-            if (host.contains("youtu.be")) {
-                String path = uri.getPath();
-                if (path == null) return "";
-                String id = path.replace("/", "").trim();
-                return id.matches("^[a-zA-Z0-9_-]{11}$") ? id : "";
-            }
-
-            String id = uri.getQueryParameter("v");
-            if (id != null && id.matches("^[a-zA-Z0-9_-]{11}$")) {
-                return id;
-            }
-        } catch (Exception ignored) {
-        }
-        return "";
     }
 
     @Override
@@ -413,7 +335,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         ArrayAdapter<String> sourceAdapter = new ArrayAdapter<>(
                 this,
                 android.R.layout.simple_spinner_item,
-                new String[]{SOURCE_YOUTUBE, SOURCE_YOUTUBE_ALL}
+                new String[]{SOURCE_FIREBASE}
         );
         sourceAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         sourceSpinner.setAdapter(sourceAdapter);
@@ -730,7 +652,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
 
         String selectedSource = sourceSpinner.getSelectedItem() != null
                 ? sourceSpinner.getSelectedItem().toString()
-                : SOURCE_YOUTUBE;
+                : SOURCE_FIREBASE;
 
         performSearch(query, selectedSource);
     }
