@@ -236,6 +236,14 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
                 syncPlaybackStateToNotification();
                 persistPlaybackSession();
             }
+
+            @Override
+            public void onPlayerError(androidx.media3.common.PlaybackException error) {
+                String message = error == null || error.getMessage() == null ? "Unknown playback error" : error.getMessage();
+                updatePlaybackDiagnostics("Playback error: " + message);
+                Toast.makeText(MainActivity.this, "Player error: " + message, Toast.LENGTH_LONG).show();
+                logPlaybackEvent("player_error", eventAttrs("message", message));
+            }
         });
 
         searchButton.setOnClickListener(v -> runSearchFromInput());
@@ -822,6 +830,9 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
             playlistStorageRepository = new PlaylistStorageRepository(this);
             playlistSyncManager = new PlaylistSyncManager(this);
             runPlaylistSyncQuietly();
+            if (resultCode == RESULT_OK) {
+                openLibraryScreen();
+            }
             return;
         }
 

@@ -36,15 +36,20 @@ public class FirebaseSongRemoteDataSource {
                 connection.setRequestProperty("Authorization", "Bearer " + session.getIdToken());
             }
 
+            String resolvedVideoId = extractYouTubeVideoId(song.getMediaUrl(), song.getId());
             JSONObject fields = new JSONObject();
             fields.put("id", stringField(song.getId()));
-            fields.put("videoId", stringField(song.getId()));
+            fields.put("songId", stringField(song.getId()));
+            fields.put("videoId", stringField(resolvedVideoId));
             fields.put("title", stringField(song.getTitle()));
             fields.put("artist", stringField(song.getArtist()));
             fields.put("album", stringField(""));
+            fields.put("mediaUrl", stringField(song.getMediaUrl()));
+            fields.put("audioUrl", stringField(song.getMediaUrl()));
             fields.put("thumbnailUrl", stringField(song.getThumbnailUrl()));
             fields.put("duration", integerField(song.getDurationMs() / 1000L));
-            fields.put("genre", stringField("Music"));
+            fields.put("durationMs", integerField(song.getDurationMs()));
+            fields.put("genre", stringField(safe(song.getGenre()).isEmpty() ? "Music" : song.getGenre()));
             fields.put("year", integerField(java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)));
             fields.put("title_lowercase", stringField(safe(song.getTitle()).toLowerCase()));
             fields.put("title_keywords", stringArrayField(safe(song.getTitle()).toLowerCase().split("\\s+")));
@@ -118,6 +123,38 @@ public class FirebaseSongRemoteDataSource {
         JSONObject field = new JSONObject();
         field.put("arrayValue", arrayValue);
         return field;
+    }
+
+    private String extractYouTubeVideoId(String mediaUrl, String fallbackId) {
+        String normalized = safe(mediaUrl);
+        if (!normalized.isEmpty()) {
+            int watchIndex = normalized.indexOf("v=");
+            if (watchIndex >= 0) {
+                String candidate = normalized.substring(watchIndex + 2);
+                int amp = candidate.indexOf('&');
+                if (amp >= 0) candidate = candidate.substring(0, amp);
+                if (isLikelyYouTubeVideoId(candidate)) return candidate;
+            }
+
+            String[] markers = new String[]{"youtu.be/", "youtube.com/embed/", "youtube.com/shorts/"};
+            for (String marker : markers) {
+                int idx = normalized.indexOf(marker);
+                if (idx < 0) continue;
+                String candidate = normalized.substring(idx + marker.length());
+                int slash = candidate.indexOf('/');
+                if (slash >= 0) candidate = candidate.substring(0, slash);
+                int q = candidate.indexOf('?');
+                if (q >= 0) candidate = candidate.substring(0, q);
+                if (isLikelyYouTubeVideoId(candidate)) return candidate;
+            }
+        }
+
+        String fallback = safe(fallbackId);
+        return isLikelyYouTubeVideoId(fallback) ? fallback : "";
+    }
+
+    private boolean isLikelyYouTubeVideoId(String value) {
+        return value != null && value.trim().matches("[A-Za-z0-9_-]{11}");
     }
 
     private String encode(String value) {

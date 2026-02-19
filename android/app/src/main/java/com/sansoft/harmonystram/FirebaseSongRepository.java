@@ -4,6 +4,7 @@ import android.content.Context;
 import android.content.SharedPreferences;
 
 import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
@@ -197,15 +198,19 @@ public class FirebaseSongRepository implements SongRepository, HomeCatalogReposi
         if (songs != null) {
             for (Song song : songs) {
                 if (song == null) continue;
-                JSONObject songObj = new JSONObject();
-                songObj.putOpt("id", song.getId());
-                songObj.putOpt("title", song.getTitle());
-                songObj.putOpt("artist", song.getArtist());
-                songObj.putOpt("mediaUrl", song.getMediaUrl());
-                songObj.putOpt("thumbnailUrl", song.getThumbnailUrl());
-                songObj.putOpt("durationMs", song.getDurationMs());
-                songObj.putOpt("genre", song.getGenre());
-                cacheArray.put(songObj);
+                try {
+                    JSONObject songObj = new JSONObject();
+                    songObj.putOpt("id", song.getId());
+                    songObj.putOpt("title", song.getTitle());
+                    songObj.putOpt("artist", song.getArtist());
+                    songObj.putOpt("mediaUrl", song.getMediaUrl());
+                    songObj.putOpt("thumbnailUrl", song.getThumbnailUrl());
+                    songObj.putOpt("durationMs", song.getDurationMs());
+                    songObj.putOpt("genre", song.getGenre());
+                    cacheArray.put(songObj);
+                } catch (JSONException ignored) {
+                    // Skip malformed entries so cache writes never break playback flows.
+                }
             }
         }
 
@@ -284,13 +289,13 @@ public class FirebaseSongRepository implements SongRepository, HomeCatalogReposi
         JSONObject fields = document.optJSONObject("fields");
         if (fields == null) return null;
 
-        String title = stringField(fields, "title", "Untitled");
-        String artist = stringField(fields, "artist", "Unknown Artist");
-        String thumbnail = stringField(fields, "thumbnailUrl", "");
-        String mediaUrl = stringField(fields, "mediaUrl", "");
-        String videoId = stringField(fields, "videoId", "");
-        String id = stringField(fields, "id", videoId);
-        String genre = stringField(fields, "genre", "Music");
+        String title = firstNonEmptyField(fields, "Untitled", "title", "name", "trackTitle");
+        String artist = firstNonEmptyField(fields, "Unknown Artist", "artist", "artistName", "singer");
+        String thumbnail = firstNonEmptyField(fields, "", "thumbnailUrl", "imageUrl", "artworkUrl", "coverUrl");
+        String mediaUrl = firstNonEmptyField(fields, "", "mediaUrl", "audioUrl", "streamUrl", "url");
+        String videoId = firstNonEmptyField(fields, "", "videoId", "youtubeId", "ytId");
+        String id = firstNonEmptyField(fields, videoId, "id", "songId", "trackId");
+        String genre = firstNonEmptyField(fields, "Music", "genre", "category");
         if (id.isEmpty()) {
             id = parseIdFromName(document.optString("name", ""));
         }
@@ -306,6 +311,9 @@ public class FirebaseSongRepository implements SongRepository, HomeCatalogReposi
 
         long durationSeconds = longField(fields, "duration", 0L);
         long durationMs = durationSeconds > 0 ? durationSeconds * 1000L : longField(fields, "durationMs", 0L);
+        if (durationMs <= 0) {
+            durationMs = longField(fields, "lengthMs", 0L);
+        }
         if (mediaUrl.isEmpty() && !videoId.isEmpty()) {
             mediaUrl = "https://www.youtube.com/watch?v=" + videoId;
         }
@@ -361,20 +369,48 @@ public class FirebaseSongRepository implements SongRepository, HomeCatalogReposi
     private String stringField(JSONObject fields, String key, String fallback) {
         JSONObject field = fields.optJSONObject(key);
         if (field == null) return fallback;
+        if (field.has("nullValue")) return fallback;
         String value = field.optString("stringValue", "").trim();
+        if (value.isEmpty()) {
+            value = field.optString("integerValue", "").trim();
+        }
+        if (value.isEmpty()) {
+            value = field.optString("doubleValue", "").trim();
+        }
+        if (value.isEmpty() && field.has("booleanValue")) {
+            value = String.valueOf(field.optBoolean("booleanValue", false));
+        }
         return value.isEmpty() ? fallback : value;
     }
 
     private long longField(JSONObject fields, String key, long fallback) {
         JSONObject field = fields.optJSONObject(key);
         if (field == null) return fallback;
+        if (field.has("nullValue")) return fallback;
         String value = field.optString("integerValue", "").trim();
+        if (value.isEmpty()) {
+            value = field.optString("doubleValue", "").trim();
+        }
+        if (value.isEmpty()) {
+            value = field.optString("stringValue", "").trim();
+        }
         if (value.isEmpty()) return fallback;
         try {
-            return Long.parseLong(value);
+            return (long) Double.parseDouble(value);
         } catch (NumberFormatException ignored) {
             return fallback;
         }
+    }
+
+    private String firstNonEmptyField(JSONObject fields, String fallback, String... keys) {
+        if (fields == null || keys == null) return fallback;
+        for (String key : keys) {
+            String value = stringField(fields, key, "");
+            if (!value.isEmpty()) {
+                return value;
+            }
+        }
+        return fallback;
     }
 
     private String baseDocumentsEndpoint() {
