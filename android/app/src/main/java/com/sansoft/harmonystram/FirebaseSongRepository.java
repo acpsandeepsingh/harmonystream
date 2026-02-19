@@ -25,6 +25,7 @@ public class FirebaseSongRepository implements SongRepository, HomeCatalogReposi
     private static final List<Song> HOME_CACHE = new ArrayList<>();
     private static final String PREFS_NAME = "firebase_song_repository";
     private static final String KEY_HOME_CACHE = "home_cache";
+    private static final String[] HOME_GENRES = new String[] {"New Songs", "Bollywood", "Punjabi", "Indi-Pop", "Classical", "Sufi", "Ghazal"};
 
     private final SharedPreferences prefs;
 
@@ -99,59 +100,186 @@ public class FirebaseSongRepository implements SongRepository, HomeCatalogReposi
     public List<Song> loadHomeCatalog(int maxResults) throws Exception {
         List<Song> cached = snapshotHomeCache();
         if (!cached.isEmpty()) {
-            return filterSongsByPreferredGenre(cached, maxResults);
+            return limitSongs(cached, maxResults);
         }
 
         try {
+            List<Song> fetchedFromGenreCache = fetchSongsFromGenreCache(Math.max(maxResults, 50));
+            if (!fetchedFromGenreCache.isEmpty()) {
+                cacheHomeSongs(fetchedFromGenreCache);
+                return limitSongs(fetchedFromGenreCache, maxResults);
+            }
+
             List<Song> fetched = fetchSongs(Math.max(maxResults, 50));
             cacheHomeSongs(fetched);
-            return filterSongsByPreferredGenre(fetched, maxResults);
+            return limitSongs(fetched, maxResults);
         } catch (Exception networkError) {
             cached = snapshotHomeCache();
             if (!cached.isEmpty()) {
-                return filterSongsByPreferredGenre(cached, maxResults);
+                return limitSongs(cached, maxResults);
             }
             throw networkError;
         }
     }
 
-    private List<Song> filterSongsByPreferredGenre(List<Song> songs, int maxResults) {
+    private List<Song> limitSongs(List<Song> songs, int maxResults) {
         if (songs == null || songs.isEmpty()) return new ArrayList<>();
         int limit = Math.max(1, maxResults);
-
-        Map<String, List<Song>> byGenre = new LinkedHashMap<>();
+        List<Song> filtered = new ArrayList<>();
         for (Song song : songs) {
-            String genre = song.getGenre() == null ? "" : song.getGenre().trim();
-            if (genre.isEmpty()) genre = "Music";
-            if (!byGenre.containsKey(genre)) {
-                byGenre.put(genre, new ArrayList<>());
+            filtered.add(song);
+            if (filtered.size() >= limit) {
+                break;
             }
-            byGenre.get(genre).add(song);
         }
+        return filtered;
+    }
 
-        String preferred = "";
-        if (byGenre.containsKey("New Songs")) {
-            preferred = "New Songs";
-        } else {
-            int maxCount = -1;
-            for (Map.Entry<String, List<Song>> entry : byGenre.entrySet()) {
-                if (entry.getValue().size() > maxCount) {
-                    maxCount = entry.getValue().size();
-                    preferred = entry.getKey();
+    private List<Song> fetchSongsFromGenreCache(int maxResults) {
+        int limit = Math.max(1, maxResults);
+        Map<String, Song> uniqueSongs = new LinkedHashMap<>();
+
+        for (String genre : HOME_GENRES) {
+            for (String docId : buildCandidateGenreDocIds(genre)) {
+                try {
+                    SongCacheBatch batch = fetchGenreCacheDocument(docId);
+                    if (batch.songs.isEmpty()) {
+                        continue;
+                    }
+
+                    for (Song song : batch.songs) {
+                        if (song == null || song.getId() == null || song.getId().trim().isEmpty()) continue;
+                        String normalizedGenre = song.getGenre() == null || song.getGenre().trim().isEmpty()
+                                ? genre
+                                : song.getGenre().trim();
+                        uniqueSongs.put(song.getId(), new Song(
+                                song.getId(),
+                                song.getTitle(),
+                                song.getArtist(),
+                                song.getMediaUrl(),
+                                song.getThumbnailUrl(),
+                                song.getDurationMs(),
+                                normalizedGenre
+                        ));
+                        if (uniqueSongs.size() >= limit) {
+                            return new ArrayList<>(uniqueSongs.values());
+                        }
+                    }
+                    break;
+                } catch (Exception ignored) {
+                    // Try next candidate document id.
                 }
             }
         }
 
-        List<Song> filtered = new ArrayList<>();
-        List<Song> source = byGenre.get(preferred);
-        if (source == null || source.isEmpty()) {
-            source = songs;
+        return new ArrayList<>(uniqueSongs.values());
+    }
+
+    private List<String> buildCandidateGenreDocIds(String genre) {
+        String normalized = genre == null ? "" : genre.trim().toLowerCase(Locale.US);
+        String kebab = normalized.replace("&", "and").replaceAll("[^a-z0-9]+", "-").replaceAll("-+", "-").replaceAll("(^-|-$)", "");
+        String compact = normalized.replaceAll("[^a-z0-9]", "");
+
+        List<String> candidates = new ArrayList<>();
+        candidates.add("genre-" + kebab);
+        candidates.add("genre-" + compact);
+        candidates.add(kebab);
+        candidates.add(compact);
+        return candidates;
+    }
+
+    private SongCacheBatch fetchGenreCacheDocument(String docId) throws Exception {
+        String endpoint = baseApiCacheEndpoint() + "/" + encode(docId) + "?key=" + BuildConfig.FIREBASE_API_KEY;
+        HttpURLConnection connection = (HttpURLConnection) new URL(endpoint).openConnection();
+        connection.setRequestMethod("GET");
+        connection.setConnectTimeout(8000);
+        connection.setReadTimeout(12000);
+
+        try {
+            int status = connection.getResponseCode();
+            if (status == 404) {
+                return new SongCacheBatch(docId, new ArrayList<>());
+            }
+            if (status < 200 || status >= 300) {
+                throw new IllegalStateException("Genre cache request failed with HTTP " + status);
+            }
+
+            String payload = readFully(connection.getInputStream());
+            JSONObject document = new JSONObject(payload);
+            return parseSongCacheBatch(document, docId);
+        } finally {
+            connection.disconnect();
         }
-        for (Song song : source) {
-            filtered.add(song);
-            if (filtered.size() >= limit) break;
+    }
+
+    private SongCacheBatch parseSongCacheBatch(JSONObject document, String fallbackDocId) {
+        JSONObject fields = document == null ? null : document.optJSONObject("fields");
+        if (fields == null) {
+            return new SongCacheBatch(fallbackDocId, new ArrayList<>());
         }
-        return filtered;
+
+        String query = stringField(fields, "query", fallbackDocId);
+        JSONObject songsField = fields.optJSONObject("songs");
+        if (songsField == null) {
+            return new SongCacheBatch(query, new ArrayList<>());
+        }
+
+        JSONObject arrayValue = songsField.optJSONObject("arrayValue");
+        JSONArray values = arrayValue == null ? null : arrayValue.optJSONArray("values");
+        List<Song> songs = new ArrayList<>();
+        if (values == null) {
+            return new SongCacheBatch(query, songs);
+        }
+
+        for (int i = 0; i < values.length(); i++) {
+            JSONObject item = values.optJSONObject(i);
+            if (item == null) continue;
+            JSONObject mapValue = item.optJSONObject("mapValue");
+            JSONObject songFields = mapValue == null ? null : mapValue.optJSONObject("fields");
+            if (songFields == null) continue;
+
+            Song song = mapSongFromCacheFields(songFields);
+            if (song != null) {
+                songs.add(song);
+            }
+        }
+
+        return new SongCacheBatch(query, songs);
+    }
+
+    private Song mapSongFromCacheFields(JSONObject fields) {
+        String id = firstNonEmptyField(fields, "", "id", "videoId", "songId", "trackId");
+        String videoId = firstNonEmptyField(fields, "", "videoId", "youtubeId", "ytId");
+        if (id.isEmpty()) {
+            id = videoId;
+        }
+        if (id.isEmpty()) {
+            return null;
+        }
+
+        String title = firstNonEmptyField(fields, "Untitled", "title", "name", "trackTitle");
+        String artist = firstNonEmptyField(fields, "Unknown Artist", "artist", "artistName", "singer");
+        String genre = firstNonEmptyField(fields, "Music", "genre", "category");
+        String thumbnail = firstNonEmptyField(fields, "", "thumbnailUrl", "imageUrl", "artworkUrl", "coverUrl");
+        String mediaUrl = firstNonEmptyField(fields, "", "mediaUrl", "streamUrl", "audioUrl", "url");
+        if (mediaUrl.isEmpty()) {
+            String resolvedVideoId = videoId.isEmpty() ? (isLikelyYouTubeVideoId(id) ? id : "") : videoId;
+            if (!resolvedVideoId.isEmpty()) {
+                mediaUrl = "https://www.youtube.com/watch?v=" + resolvedVideoId;
+            }
+        }
+
+        if (thumbnail.isEmpty()) {
+            String resolvedVideoId = videoId.isEmpty() ? (isLikelyYouTubeVideoId(id) ? id : "") : videoId;
+            if (!resolvedVideoId.isEmpty()) {
+                thumbnail = "https://i.ytimg.com/vi/" + resolvedVideoId + "/hqdefault.jpg";
+            }
+        }
+
+        long durationSeconds = longField(fields, "duration", 0L);
+        long durationMs = durationSeconds > 0 ? durationSeconds * 1000L : longField(fields, "durationMs", 0L);
+
+        return new Song(id, title, artist, mediaUrl, thumbnail, durationMs, genre);
     }
 
     private void cacheHomeSongs(List<Song> songs) {
@@ -411,6 +539,22 @@ public class FirebaseSongRepository implements SongRepository, HomeCatalogReposi
             }
         }
         return fallback;
+    }
+
+    private static class SongCacheBatch {
+        final String query;
+        final List<Song> songs;
+
+        SongCacheBatch(String query, List<Song> songs) {
+            this.query = query == null ? "" : query;
+            this.songs = songs == null ? new ArrayList<>() : songs;
+        }
+    }
+
+    private String baseApiCacheEndpoint() {
+        return "https://firestore.googleapis.com/v1/projects/"
+                + BuildConfig.FIREBASE_PROJECT_ID
+                + "/databases/(default)/documents/api_cache";
     }
 
     private String baseDocumentsEndpoint() {
