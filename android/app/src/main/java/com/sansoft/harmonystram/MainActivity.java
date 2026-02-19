@@ -1577,14 +1577,21 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         serviceIntent.setAction(PlaybackService.ACTION_UPDATE_STATE);
         serviceIntent.putExtra("title", track.getTitle());
         serviceIntent.putExtra("artist", track.getArtist());
-        serviceIntent.putExtra("playing", player != null && player.isPlaying());
+
+        boolean isPlayingNow = player != null && player.isPlaying();
+        serviceIntent.putExtra("playing", isPlayingNow);
         serviceIntent.putExtra("position_ms", player != null ? Math.max(0L, player.getCurrentPosition()) : 0L);
         serviceIntent.putExtra("duration_ms", player != null ? Math.max(0L, player.getDuration()) : 0L);
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(serviceIntent);
-        } else {
-            startService(serviceIntent);
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && isPlayingNow) {
+                startForegroundService(serviceIntent);
+            } else {
+                startService(serviceIntent);
+            }
+        } catch (RuntimeException runtimeError) {
+            updatePlaybackDiagnostics("Notification sync unavailable: " + runtimeError.getClass().getSimpleName());
+            logPlaybackEvent("notification_sync_failed", eventAttrs("reason", runtimeError.getClass().getSimpleName()));
         }
     }
 
