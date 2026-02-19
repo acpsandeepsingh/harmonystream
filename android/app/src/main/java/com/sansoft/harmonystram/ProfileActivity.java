@@ -13,6 +13,7 @@ public class ProfileActivity extends AppCompatActivity {
 
     private NativeUserSessionStore userSessionStore;
     private PlaylistSyncManager playlistSyncManager;
+    private FirebaseNativeAuthRepository firebaseAuthRepository;
 
     private TextView statusText;
     private TextView syncStateText;
@@ -22,8 +23,11 @@ public class ProfileActivity extends AppCompatActivity {
 
     private EditText loginEmailInput;
     private EditText loginDisplayNameInput;
+    private EditText loginPasswordInput;
     private EditText signupEmailInput;
     private EditText signupDisplayNameInput;
+    private EditText signupPasswordInput;
+    private EditText signupConfirmPasswordInput;
     private EditText settingsDisplayNameInput;
 
     @Override
@@ -33,6 +37,7 @@ public class ProfileActivity extends AppCompatActivity {
 
         userSessionStore = new NativeUserSessionStore(this);
         playlistSyncManager = new PlaylistSyncManager(this);
+        firebaseAuthRepository = new FirebaseNativeAuthRepository();
 
         statusText = findViewById(R.id.profile_status_text);
         syncStateText = findViewById(R.id.profile_sync_state_text);
@@ -42,8 +47,11 @@ public class ProfileActivity extends AppCompatActivity {
 
         loginEmailInput = findViewById(R.id.profile_login_email_input);
         loginDisplayNameInput = findViewById(R.id.profile_login_display_name_input);
+        loginPasswordInput = findViewById(R.id.profile_login_password_input);
         signupEmailInput = findViewById(R.id.profile_signup_email_input);
         signupDisplayNameInput = findViewById(R.id.profile_signup_display_name_input);
+        signupPasswordInput = findViewById(R.id.profile_signup_password_input);
+        signupConfirmPasswordInput = findViewById(R.id.profile_signup_confirm_password_input);
         settingsDisplayNameInput = findViewById(R.id.profile_settings_display_name_input);
 
         Button showLoginButton = findViewById(R.id.btn_profile_show_login);
@@ -84,26 +92,53 @@ public class ProfileActivity extends AppCompatActivity {
 
     private void loginFromForm() {
         String email = safeText(loginEmailInput);
+        String password = safeText(loginPasswordInput);
         if (email.isEmpty()) {
             loginEmailInput.setError("Email is required");
             return;
         }
-
-        String displayName = safeText(loginDisplayNameInput);
-        if (displayName.isEmpty()) {
-            displayName = deriveDisplayName(email);
+        if (password.isEmpty()) {
+            loginPasswordInput.setError("Password is required");
+            return;
         }
 
-        userSessionStore.signIn(email, displayName);
-        Toast.makeText(this, "Signed in locally", Toast.LENGTH_SHORT).show();
-        refreshUi();
-        showSection(settingsSection);
+        String displayName = safeText(loginDisplayNameInput);
+        String preferredDisplayName = displayName;
+        setBusy(true);
+        new Thread(() -> {
+            try {
+                FirebaseNativeAuthRepository.AuthResult result = firebaseAuthRepository.signIn(email, password);
+                String resolvedDisplayName = preferredDisplayName.isEmpty() ? result.displayName : preferredDisplayName;
+                userSessionStore.signIn(result.email, resolvedDisplayName, result.uid, result.idToken, result.refreshToken);
+                runOnUiThread(() -> {
+                    setBusy(false);
+                    Toast.makeText(this, "Signed in with Firebase", Toast.LENGTH_SHORT).show();
+                    refreshUi();
+                    showSection(settingsSection);
+                });
+            } catch (Exception error) {
+                runOnUiThread(() -> {
+                    setBusy(false);
+                    Toast.makeText(this, "Login failed: " + error.getMessage(), Toast.LENGTH_LONG).show();
+                });
+            }
+        }).start();
     }
 
     private void signupFromForm() {
         String email = safeText(signupEmailInput);
+        String password = safeText(signupPasswordInput);
+        String confirmPassword = safeText(signupConfirmPasswordInput);
         if (email.isEmpty()) {
             signupEmailInput.setError("Email is required");
+            return;
+        }
+        if (password.length() < 6) {
+            signupPasswordInput.setError("Password must be at least 6 characters");
+            return;
+        }
+        if (!password.equals(confirmPassword)) {
+            signupConfirmPasswordInput.setError("Passwords do not match");
             return;
         }
 
@@ -112,10 +147,25 @@ public class ProfileActivity extends AppCompatActivity {
             displayName = deriveDisplayName(email);
         }
 
-        userSessionStore.signIn(email, displayName);
-        Toast.makeText(this, "Account created locally", Toast.LENGTH_SHORT).show();
-        refreshUi();
-        showSection(settingsSection);
+        String finalDisplayName = displayName;
+        setBusy(true);
+        new Thread(() -> {
+            try {
+                FirebaseNativeAuthRepository.AuthResult result = firebaseAuthRepository.signUp(email, password, finalDisplayName);
+                userSessionStore.signIn(result.email, result.displayName, result.uid, result.idToken, result.refreshToken);
+                runOnUiThread(() -> {
+                    setBusy(false);
+                    Toast.makeText(this, "Account created in Firebase", Toast.LENGTH_SHORT).show();
+                    refreshUi();
+                    showSection(settingsSection);
+                });
+            } catch (Exception error) {
+                runOnUiThread(() -> {
+                    setBusy(false);
+                    Toast.makeText(this, "Signup failed: " + error.getMessage(), Toast.LENGTH_LONG).show();
+                });
+            }
+        }).start();
     }
 
     private void updateDisplayName() {
@@ -130,9 +180,26 @@ public class ProfileActivity extends AppCompatActivity {
             return;
         }
 
-        userSessionStore.updateDisplayName(displayName);
-        Toast.makeText(this, "Display name updated", Toast.LENGTH_SHORT).show();
-        refreshUi();
+        NativeUserSessionStore.UserSession session = userSessionStore.getSession();
+        setBusy(true);
+        new Thread(() -> {
+            try {
+                if (session.getIdToken() != null && !session.getIdToken().isEmpty()) {
+                    firebaseAuthRepository.updateDisplayName(session.getIdToken(), displayName);
+                }
+                userSessionStore.updateDisplayName(displayName);
+                runOnUiThread(() -> {
+                    setBusy(false);
+                    Toast.makeText(this, "Display name updated", Toast.LENGTH_SHORT).show();
+                    refreshUi();
+                });
+            } catch (Exception error) {
+                runOnUiThread(() -> {
+                    setBusy(false);
+                    Toast.makeText(this, "Update failed: " + error.getMessage(), Toast.LENGTH_LONG).show();
+                });
+            }
+        }).start();
     }
 
     private void signOut() {
@@ -143,9 +210,18 @@ public class ProfileActivity extends AppCompatActivity {
     }
 
     private void runManualSync() {
+        setBusy(true);
         PlaylistSyncModels.SyncStatus status = playlistSyncManager.syncNow();
+        setBusy(false);
         syncStateText.setText("Sync: " + status.state + " · " + status.detail);
         Toast.makeText(this, "Sync status: " + status.state, Toast.LENGTH_SHORT).show();
+    }
+
+    private void setBusy(boolean busy) {
+        findViewById(R.id.btn_profile_login_submit).setEnabled(!busy);
+        findViewById(R.id.btn_profile_signup_submit).setEnabled(!busy);
+        findViewById(R.id.btn_profile_update_display_name).setEnabled(!busy);
+        findViewById(R.id.btn_profile_sync_now).setEnabled(!busy);
     }
 
     private void refreshUi() {

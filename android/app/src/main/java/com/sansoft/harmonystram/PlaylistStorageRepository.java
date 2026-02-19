@@ -289,6 +289,10 @@ public class PlaylistStorageRepository {
         }
 
         String email = safe(session.getEmail());
+        String uid = safe(session.getUid());
+        if (!uid.isEmpty()) {
+            return "user:" + uid;
+        }
         return email.isEmpty() ? ACCOUNT_GUEST : "user:" + email;
     }
 

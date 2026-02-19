@@ -27,9 +27,11 @@ public class FirestorePlaylistRemoteDataSource {
     private static final String KEY_USERS = "users";
 
     private final SharedPreferences prefs;
+    private final NativeUserSessionStore userSessionStore;
 
     public FirestorePlaylistRemoteDataSource(Context context) {
         this.prefs = context.getApplicationContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        this.userSessionStore = new NativeUserSessionStore(context.getApplicationContext());
     }
 
     public synchronized PlaylistSyncModels.PlaylistSnapshot pull(String accountKey) {
@@ -61,6 +63,7 @@ public class FirestorePlaylistRemoteDataSource {
             connection.setRequestMethod("GET");
             connection.setConnectTimeout(6000);
             connection.setReadTimeout(10000);
+            attachAuthHeader(connection);
 
             int status = connection.getResponseCode();
             if (status == HttpURLConnection.HTTP_NOT_FOUND) {
@@ -97,6 +100,7 @@ public class FirestorePlaylistRemoteDataSource {
             connection.setReadTimeout(10000);
             connection.setDoOutput(true);
             connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+            attachAuthHeader(connection);
 
             JSONObject payload = buildFirestorePayload(accountKey, snapshot);
             try (OutputStream output = connection.getOutputStream();
@@ -407,6 +411,15 @@ public class FirestorePlaylistRemoteDataSource {
             }
         }
         return builder.toString();
+    }
+
+    private void attachAuthHeader(HttpURLConnection connection) {
+        NativeUserSessionStore.UserSession session = userSessionStore.getSession();
+        if (session == null) return;
+        String idToken = safe(session.getIdToken());
+        if (!idToken.isEmpty()) {
+            connection.setRequestProperty("Authorization", "Bearer " + idToken);
+        }
     }
 
     private JSONObject stringField(String value) throws JSONException {
