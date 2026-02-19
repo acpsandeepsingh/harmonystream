@@ -292,7 +292,7 @@ public class FirebaseSongRepository implements SongRepository, HomeCatalogReposi
         String title = firstNonEmptyField(fields, "Untitled", "title", "name", "trackTitle");
         String artist = firstNonEmptyField(fields, "Unknown Artist", "artist", "artistName", "singer");
         String thumbnail = firstNonEmptyField(fields, "", "thumbnailUrl", "imageUrl", "artworkUrl", "coverUrl");
-        String mediaUrl = firstNonEmptyField(fields, "", "mediaUrl", "audioUrl", "streamUrl", "url");
+        String mediaUrl = firstNonEmptyField(fields, "", "streamUrl", "audioUrl", "mediaUrl", "url");
         String videoId = firstNonEmptyField(fields, "", "videoId", "youtubeId", "ytId");
         String id = firstNonEmptyField(fields, videoId, "id", "songId", "trackId");
         String genre = firstNonEmptyField(fields, "Music", "genre", "category");
