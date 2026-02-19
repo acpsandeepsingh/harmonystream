@@ -46,6 +46,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
 
     private static final int REQUEST_LIBRARY = 6001;
     private static final int REQUEST_PROFILE = 6002;
+    private static final int REQUEST_FULLSCREEN_PLAYER = 6003;
 
     private static final String SOURCE_FIREBASE = "firebase";
     private static final String SOURCE_YOUTUBE = "youtube";
@@ -1552,8 +1553,20 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         intent.putExtra("repeat_label", getRepeatModeLabel());
         intent.putExtra("playback_state", player != null && player.isPlaying() ? "Playing" : "Paused");
         intent.putExtra("buffering_state", player != null ? playbackStateLabel(player.getPlaybackState()) : "idle");
-        intent.putExtra("source_type", isYouTubeExternalTrack(currentSong) ? "YouTube in-app player" : "Native queue");
-        startActivity(intent);
+        String youtubeVideoId = extractYouTubeVideoId(currentSong.getMediaUrl(), currentSong.getId());
+        intent.putExtra("youtube_video_id", youtubeVideoId == null ? "" : youtubeVideoId);
+        intent.putExtra("source_type", youtubeVideoId != null ? "YouTube in-app player" : "Native queue");
+        startActivityForResult(intent, REQUEST_FULLSCREEN_PLAYER);
+    }
+
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQUEST_FULLSCREEN_PLAYER && resultCode == RESULT_OK && data != null
+                && data.getBooleanExtra("request_toggle_play_pause", false)) {
+            togglePlayPause();
+        }
     }
 
     private void showPlaybackDiagnosticsDialog() {
