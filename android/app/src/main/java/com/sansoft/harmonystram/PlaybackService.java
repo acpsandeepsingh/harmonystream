@@ -1,5 +1,6 @@
 package com.sansoft.harmonystram;
 
+import android.Manifest;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -15,6 +16,7 @@ import android.util.Base64;
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
+import androidx.core.content.ContextCompat;
 import androidx.media.app.NotificationCompat.MediaStyle;
 
 public class PlaybackService extends Service {
@@ -155,12 +157,33 @@ public class PlaybackService extends Service {
 
         Notification notification = builder.build();
 
-        if (isPlaying) {
-            startForeground(NOTIFICATION_ID, notification);
-        } else {
-            stopForeground(false);
-            NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, notification);
+        if (!hasNotificationPermission()) {
+            if (isPlaying) {
+                stopSelf();
+            }
+            return;
         }
+
+        try {
+            if (isPlaying) {
+                startForeground(NOTIFICATION_ID, notification);
+            } else {
+                stopForeground(false);
+                NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, notification);
+            }
+        } catch (SecurityException ignored) {
+            if (isPlaying) {
+                stopSelf();
+            }
+        }
+    }
+
+    private boolean hasNotificationPermission() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            return true;
+        }
+        return ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                == android.content.pm.PackageManager.PERMISSION_GRANTED;
     }
 
     private void createNotificationChannel() {
