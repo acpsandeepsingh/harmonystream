@@ -14,6 +14,7 @@ public class ProfileActivity extends AppCompatActivity {
     private NativeUserSessionStore userSessionStore;
     private PlaylistSyncManager playlistSyncManager;
     private FirebaseNativeAuthRepository firebaseAuthRepository;
+    private volatile boolean syncInProgress = false;
 
     private TextView statusText;
     private TextView syncStateText;
@@ -80,8 +81,26 @@ public class ProfileActivity extends AppCompatActivity {
     }
 
     private void refreshSyncState() {
-        PlaylistSyncModels.SyncStatus status = playlistSyncManager.syncNow();
-        syncStateText.setText("Sync: " + status.state + " · " + status.detail);
+        if (syncInProgress) {
+            syncStateText.setText("Sync: in-progress · Loading latest playlists...");
+            return;
+        }
+
+        syncInProgress = true;
+        syncStateText.setText("Sync: in-progress · Loading latest playlists...");
+        new Thread(() -> {
+            PlaylistSyncModels.SyncStatus status;
+            try {
+                status = playlistSyncManager.syncNow();
+            } catch (Exception error) {
+                status = new PlaylistSyncModels.SyncStatus("error", "Sync failed: " + error.getMessage());
+            }
+            PlaylistSyncModels.SyncStatus finalStatus = status;
+            runOnUiThread(() -> {
+                syncInProgress = false;
+                syncStateText.setText("Sync: " + finalStatus.state + " · " + finalStatus.detail);
+            });
+        }).start();
     }
 
     private void showSection(View section) {
@@ -172,11 +191,25 @@ public class ProfileActivity extends AppCompatActivity {
 
 
     private void completeLoginFlow() {
+        syncInProgress = true;
+        syncStateText.setText("Sync: in-progress · Loading latest playlists...");
         new Thread(() -> {
-            PlaylistSyncModels.SyncStatus status = playlistSyncManager.syncNow();
+            PlaylistSyncModels.SyncStatus status;
+            try {
+                status = playlistSyncManager.syncNow();
+            } catch (Exception error) {
+                status = new PlaylistSyncModels.SyncStatus("error", "Sync failed: " + error.getMessage());
+            }
+            PlaylistSyncModels.SyncStatus finalStatus = status;
             runOnUiThread(() -> {
-                syncStateText.setText("Sync: " + status.state + " · " + status.detail);
+                syncInProgress = false;
+                syncStateText.setText("Sync: " + finalStatus.state + " · " + finalStatus.detail);
+                if ("error".equals(finalStatus.state)) {
+                    Toast.makeText(this, finalStatus.detail, Toast.LENGTH_LONG).show();
+                    return;
+                }
                 setResult(RESULT_OK);
+                finish();
             });
         }).start();
     }
@@ -223,11 +256,29 @@ public class ProfileActivity extends AppCompatActivity {
     }
 
     private void runManualSync() {
+        if (syncInProgress) {
+            Toast.makeText(this, "Sync already in progress", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
         setBusy(true);
-        PlaylistSyncModels.SyncStatus status = playlistSyncManager.syncNow();
-        setBusy(false);
-        syncStateText.setText("Sync: " + status.state + " · " + status.detail);
-        Toast.makeText(this, "Sync status: " + status.state, Toast.LENGTH_SHORT).show();
+        syncInProgress = true;
+        syncStateText.setText("Sync: in-progress · Loading latest playlists...");
+        new Thread(() -> {
+            PlaylistSyncModels.SyncStatus status;
+            try {
+                status = playlistSyncManager.syncNow();
+            } catch (Exception error) {
+                status = new PlaylistSyncModels.SyncStatus("error", "Sync failed: " + error.getMessage());
+            }
+            PlaylistSyncModels.SyncStatus finalStatus = status;
+            runOnUiThread(() -> {
+                setBusy(false);
+                syncInProgress = false;
+                syncStateText.setText("Sync: " + finalStatus.state + " · " + finalStatus.detail);
+                Toast.makeText(this, "Sync status: " + finalStatus.state, Toast.LENGTH_SHORT).show();
+            });
+        }).start();
     }
 
     private void setBusy(boolean busy) {
