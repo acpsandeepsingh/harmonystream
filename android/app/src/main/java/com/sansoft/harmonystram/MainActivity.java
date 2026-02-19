@@ -31,6 +31,8 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.YouTubePlayer;
 import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.PlayerConstants;
 import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.listeners.AbstractYouTubePlayerListener;
+import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.options.IFramePlayerOptions;
+import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.utils.YouTubePlayerUtils;
 import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.views.YouTubePlayerView;
 
 import java.util.ArrayList;
@@ -82,6 +84,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
     private YouTubePlayer embeddedYouTubePlayer;
     private String pendingYouTubeVideoId;
     private String activeYouTubeVideoId;
+    private boolean youtubeIsPlaying;
     private boolean youtubeFallbackActivated;
 
     private FirebaseSongRepository firebaseSongRepository;
@@ -195,13 +198,38 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         playerView = findViewById(R.id.player_view);
         youtubePlayerView = findViewById(R.id.youtube_player_view);
         getLifecycle().addObserver(youtubePlayerView);
-        youtubePlayerView.addYouTubePlayerListener(new AbstractYouTubePlayerListener() {
+        IFramePlayerOptions iFramePlayerOptions = new IFramePlayerOptions.Builder()
+                .controls(0)
+                .build();
+        youtubePlayerView.initialize(new AbstractYouTubePlayerListener() {
             @Override
             public void onReady(YouTubePlayer youTubePlayer) {
                 embeddedYouTubePlayer = youTubePlayer;
                 if (pendingYouTubeVideoId != null && !pendingYouTubeVideoId.isEmpty()) {
-                    embeddedYouTubePlayer.loadVideo(pendingYouTubeVideoId, 0f);
+                    YouTubePlayerUtils.loadOrCueVideo(embeddedYouTubePlayer, getLifecycle(), pendingYouTubeVideoId, 0f);
+                    youtubeIsPlaying = true;
+                    playPauseButton.setText("Pause");
                     pendingYouTubeVideoId = null;
+                }
+            }
+
+            @Override
+            public void onStateChange(YouTubePlayer youTubePlayer, PlayerConstants.PlayerState state) {
+                if (state == null) return;
+                switch (state) {
+                    case PLAYING:
+                        youtubeIsPlaying = true;
+                        playPauseButton.setText("Pause");
+                        syncPlaybackStateToNotification();
+                        break;
+                    case PAUSED:
+                    case ENDED:
+                        youtubeIsPlaying = false;
+                        playPauseButton.setText("Play");
+                        syncPlaybackStateToNotification();
+                        break;
+                    default:
+                        break;
                 }
             }
 
@@ -214,7 +242,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
                     fallbackToExternalYouTube(activeYouTubeVideoId, reason);
                 }
             }
-        });
+        }, true, iFramePlayerOptions);
         playerView.setPlayer(player);
         applyTvFocusPolish();
         applyRepeatModeToPlayer();
@@ -1019,13 +1047,14 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
 
     private void playInEmbeddedYouTubePlayer(String videoId, Song track) {
         activeYouTubeVideoId = videoId;
+        youtubeIsPlaying = true;
         youtubeFallbackActivated = false;
         if (player != null && player.isPlaying()) {
             player.pause();
         }
         showEmbeddedYouTubePlayer();
         if (embeddedYouTubePlayer != null) {
-            embeddedYouTubePlayer.loadVideo(videoId, 0f);
+            YouTubePlayerUtils.loadOrCueVideo(embeddedYouTubePlayer, getLifecycle(), videoId, 0f);
         } else {
             pendingYouTubeVideoId = videoId;
         }
@@ -1064,6 +1093,8 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
     }
 
     private void showNativePlayer() {
+        youtubeIsPlaying = false;
+        activeYouTubeVideoId = null;
         if (youtubePlayerView != null) youtubePlayerView.setVisibility(View.GONE);
         if (playerView != null) playerView.setVisibility(View.VISIBLE);
     }
@@ -1157,14 +1188,16 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
                 return;
             }
 
-            boolean shouldPause = "Pause".contentEquals(playPauseButton.getText());
-            if (shouldPause) {
+            if (youtubeIsPlaying) {
                 embeddedYouTubePlayer.pause();
                 playPauseButton.setText("Play");
+                youtubeIsPlaying = false;
             } else {
                 embeddedYouTubePlayer.play();
                 playPauseButton.setText("Pause");
+                youtubeIsPlaying = true;
             }
+            syncPlaybackStateToNotification();
             persistPlaybackSession();
             return;
         }
