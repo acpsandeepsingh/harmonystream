@@ -72,36 +72,6 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:orientation="horizontal">
-
-            <EditText
-                android:id="@+id/song_id_input"
-                android:layout_width="0dp"
-                android:layout_height="44dp"
-                android:layout_weight="1"
-                android:background="@drawable/bg_input"
-                android:hint="YouTube URL or Song ID"
-                android:inputType="textUri"
-                android:maxLines="1"
-                android:paddingHorizontal="12dp"
-                android:textColor="#EAF0FF"
-                android:textColorHint="#7F8BA8" />
-
-            <Button
-                android:id="@+id/btn_import_song_id"
-                android:layout_width="wrap_content"
-                android:layout_height="44dp"
-                android:layout_marginStart="8dp"
-                android:background="@drawable/bg_button_primary"
-                android:text="Import ID"
-                android:textAllCaps="false"
-                android:textColor="#FFFFFF" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
             android:layout_marginTop="10dp"
             android:orientation="horizontal">
 
