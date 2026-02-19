@@ -115,6 +115,7 @@ public class ProfileActivity extends AppCompatActivity {
                     Toast.makeText(this, "Signed in with Firebase", Toast.LENGTH_SHORT).show();
                     refreshUi();
                     showSection(settingsSection);
+                    completeLoginFlow();
                 });
             } catch (Exception error) {
                 runOnUiThread(() -> {
@@ -158,6 +159,7 @@ public class ProfileActivity extends AppCompatActivity {
                     Toast.makeText(this, "Account created in Firebase", Toast.LENGTH_SHORT).show();
                     refreshUi();
                     showSection(settingsSection);
+                    completeLoginFlow();
                 });
             } catch (Exception error) {
                 runOnUiThread(() -> {
@@ -165,6 +167,17 @@ public class ProfileActivity extends AppCompatActivity {
                     Toast.makeText(this, "Signup failed: " + error.getMessage(), Toast.LENGTH_LONG).show();
                 });
             }
+        }).start();
+    }
+
+
+    private void completeLoginFlow() {
+        new Thread(() -> {
+            PlaylistSyncModels.SyncStatus status = playlistSyncManager.syncNow();
+            runOnUiThread(() -> {
+                syncStateText.setText("Sync: " + status.state + " · " + status.detail);
+                setResult(RESULT_OK);
+            });
         }).start();
     }
 
