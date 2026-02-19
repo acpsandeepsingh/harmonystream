@@ -1,6 +1,5 @@
 package com.sansoft.harmonystram;
 
-import android.content.ActivityNotFoundException;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -29,6 +28,10 @@ import androidx.media3.ui.PlayerView;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.YouTubePlayer;
+import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.listeners.AbstractYouTubePlayerListener;
+import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.views.YouTubePlayerView;
+
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -42,6 +45,8 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
     private static final int REQUEST_PROFILE = 6002;
 
     private static final String SOURCE_FIREBASE = "firebase";
+    private static final String SOURCE_YOUTUBE = "youtube";
+    private static final String SOURCE_YOUTUBE_ALL = "youtube-all";
     private static final int DEFAULT_SEARCH_MAX_RESULTS = 25;
 
     private static final int REPEAT_MODE_OFF = 0;
@@ -50,6 +55,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
 
     private ExoPlayer player;
     private PlayerView playerView;
+    private YouTubePlayerView youtubePlayerView;
     private Button playPauseButton;
     private Button repeatModeButton;
     private Button queueButton;
@@ -68,10 +74,27 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
     private int repeatMode = REPEAT_MODE_OFF;
     private final List<Integer> activeQueueTrackIndexes = new ArrayList<>();
     private int currentQueueIndex = -1;
+    private YouTubePlayer embeddedYouTubePlayer;
+    private String pendingYouTubeVideoId;
 
     private final FirebaseSongRepository firebaseSongRepository = new FirebaseSongRepository();
+    private final YouTubeRepository youTubeRepository = new YouTubeRepository();
     private final HomeCatalogRepository homeCatalogRepository = firebaseSongRepository;
-    private final SongRepository searchRepository = firebaseSongRepository;
+    private final SongRepository searchRepository = new SongRepository() {
+        @Override
+        public List<SearchResult> search(String query, int maxResults, String source) throws Exception {
+            String normalized = source == null ? SOURCE_FIREBASE : source.trim().toLowerCase();
+            if (SOURCE_YOUTUBE.equals(normalized) || SOURCE_YOUTUBE_ALL.equals(normalized)) {
+                return youTubeRepository.search(query, maxResults, normalized);
+            }
+            return firebaseSongRepository.search(query, maxResults, SOURCE_FIREBASE);
+        }
+
+        @Override
+        public Song getVideoDetails(String videoId) throws Exception {
+            return firebaseSongRepository.getVideoDetails(videoId);
+        }
+    };
     private PlaylistStorageRepository playlistStorageRepository;
     private PlaylistSyncManager playlistSyncManager;
     private PlaybackSessionStore playbackSessionStore;
@@ -159,6 +182,18 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
 
         player = new ExoPlayer.Builder(this).build();
         playerView = findViewById(R.id.player_view);
+        youtubePlayerView = findViewById(R.id.youtube_player_view);
+        getLifecycle().addObserver(youtubePlayerView);
+        youtubePlayerView.addYouTubePlayerListener(new AbstractYouTubePlayerListener() {
+            @Override
+            public void onReady(YouTubePlayer youTubePlayer) {
+                embeddedYouTubePlayer = youTubePlayer;
+                if (pendingYouTubeVideoId != null && !pendingYouTubeVideoId.isEmpty()) {
+                    embeddedYouTubePlayer.loadVideo(pendingYouTubeVideoId, 0f);
+                    pendingYouTubeVideoId = null;
+                }
+            }
+        });
         playerView.setPlayer(player);
         applyTvFocusPolish();
         applyRepeatModeToPlayer();
@@ -289,7 +324,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         if (currentIndex >= 0) {
             Song currentSong = tracks.get(currentIndex);
             if (isYouTubeExternalTrack(currentSong)) {
-                nowPlayingText.setText("Last session track opens in YouTube app: " + currentSong.getTitle());
+                nowPlayingText.setText("Last session track ready in in-app YouTube player: " + currentSong.getTitle());
             } else {
                 int mediaWindowIndex;
                 if (session.hasQueueSnapshot()) {
@@ -335,7 +370,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         ArrayAdapter<String> sourceAdapter = new ArrayAdapter<>(
                 this,
                 android.R.layout.simple_spinner_item,
-                new String[]{SOURCE_FIREBASE}
+                new String[]{SOURCE_FIREBASE, SOURCE_YOUTUBE, SOURCE_YOUTUBE_ALL}
         );
         sourceAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         sourceSpinner.setAdapter(sourceAdapter);
@@ -813,11 +848,11 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         selectedTrackIndex = index;
         Song track = tracks.get(index);
 
-        if (track.getMediaUrl().contains("youtube.com/watch")) {
-            openYouTubeVideo(track.getMediaUrl());
-            nowPlayingText.setText("Opened in in-app player: " + track.getTitle());
-            updatePlaybackDiagnostics("Web playback: in-app YouTube view");
+        String videoId = extractYouTubeVideoId(track.getMediaUrl(), track.getId());
+        if (videoId != null) {
+            playInEmbeddedYouTubePlayer(videoId, track);
             syncPlaybackStateToNotification();
+            persistPlaybackSession();
             return;
         }
 
@@ -832,14 +867,51 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         persistPlaybackSession();
     }
 
-    private void openYouTubeVideo(String videoUrl) {
-        Intent intent = new Intent(this, WebAppActivity.class);
-        intent.putExtra(WebAppActivity.EXTRA_START_URL, videoUrl);
-        try {
-            startActivity(intent);
-        } catch (ActivityNotFoundException e) {
-            Toast.makeText(this, "Unable to open player", Toast.LENGTH_SHORT).show();
+    private void playInEmbeddedYouTubePlayer(String videoId, Song track) {
+        if (player != null && player.isPlaying()) {
+            player.pause();
         }
+        showEmbeddedYouTubePlayer();
+        if (embeddedYouTubePlayer != null) {
+            embeddedYouTubePlayer.loadVideo(videoId, 0f);
+        } else {
+            pendingYouTubeVideoId = videoId;
+        }
+        nowPlayingText.setText("Now Playing: " + track.getTitle() + " • " + track.getArtist());
+        updatePlaybackDiagnostics("YouTube playback in app player");
+        playPauseButton.setText("Pause");
+    }
+
+    private void showEmbeddedYouTubePlayer() {
+        if (youtubePlayerView != null) youtubePlayerView.setVisibility(View.VISIBLE);
+        if (playerView != null) playerView.setVisibility(View.GONE);
+    }
+
+    private void showNativePlayer() {
+        if (youtubePlayerView != null) youtubePlayerView.setVisibility(View.GONE);
+        if (playerView != null) playerView.setVisibility(View.VISIBLE);
+    }
+
+    private String extractYouTubeVideoId(String mediaUrl, String fallbackId) {
+        if (mediaUrl == null) {
+            return (fallbackId == null || fallbackId.trim().isEmpty()) ? null : fallbackId.trim();
+        }
+        String normalized = mediaUrl.trim();
+        int watchIndex = normalized.indexOf("v=");
+        if (watchIndex >= 0) {
+            String candidate = normalized.substring(watchIndex + 2);
+            int amp = candidate.indexOf('&');
+            if (amp >= 0) candidate = candidate.substring(0, amp);
+            if (!candidate.isEmpty()) return candidate;
+        }
+        if (normalized.contains("youtu.be/")) {
+            String candidate = normalized.substring(normalized.indexOf("youtu.be/") + 9);
+            int q = candidate.indexOf('?');
+            if (q >= 0) candidate = candidate.substring(0, q);
+            if (!candidate.isEmpty()) return candidate;
+        }
+        if (fallbackId != null && !fallbackId.trim().isEmpty()) return fallbackId.trim();
+        return null;
     }
 
     private void playNext() {
@@ -881,6 +953,29 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         if (tracks.isEmpty()) return;
         logPlaybackEvent("toggle_play_pause", eventAttrs("is_playing", String.valueOf(player.isPlaying())));
 
+        Song currentTrackForToggle = (currentIndex >= 0 && currentIndex < tracks.size()) ? tracks.get(currentIndex) : null;
+        if (currentTrackForToggle != null
+                && isYouTubeExternalTrack(currentTrackForToggle)
+                && youtubePlayerView != null
+                && youtubePlayerView.getVisibility() == View.VISIBLE) {
+            if (embeddedYouTubePlayer == null) {
+                String currentVideoId = extractYouTubeVideoId(currentTrackForToggle.getMediaUrl(), currentTrackForToggle.getId());
+                pendingYouTubeVideoId = currentVideoId;
+                return;
+            }
+
+            boolean shouldPause = "Pause".contentEquals(playPauseButton.getText());
+            if (shouldPause) {
+                embeddedYouTubePlayer.pause();
+                playPauseButton.setText("Play");
+            } else {
+                embeddedYouTubePlayer.play();
+                playPauseButton.setText("Pause");
+            }
+            persistPlaybackSession();
+            return;
+        }
+
         if (player.isPlaying()) {
             player.pause();
         } else {
@@ -890,8 +985,13 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
                 return;
             }
             Song currentTrack = tracks.get(currentIndex);
-            if (currentTrack.getMediaUrl().contains("youtube.com/watch")) {
-                openYouTubeVideo(currentTrack.getMediaUrl());
+            String currentVideoId = extractYouTubeVideoId(currentTrack.getMediaUrl(), currentTrack.getId());
+            if (currentVideoId != null && playerView.getVisibility() != View.VISIBLE) {
+                if (embeddedYouTubePlayer != null) {
+                    embeddedYouTubePlayer.play();
+                } else {
+                    pendingYouTubeVideoId = currentVideoId;
+                }
                 return;
             }
 
@@ -909,7 +1009,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
     }
 
     private boolean isYouTubeExternalTrack(Song song) {
-        return song != null && song.getMediaUrl() != null && song.getMediaUrl().contains("youtube.com/watch");
+        return song != null && extractYouTubeVideoId(song.getMediaUrl(), song.getId()) != null;
     }
 
     private int buildAndApplyNativeQueue(int targetTrackIndex, boolean autoplay) {
@@ -947,6 +1047,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         }
 
         currentQueueIndex = targetWindowIndex;
+        showNativePlayer();
         player.setMediaItems(mediaItems, targetWindowIndex, C.TIME_UNSET);
         logPlaybackEvent("native_queue_applied", eventAttrs("media_items", String.valueOf(mediaItems.size()), "queue_index", String.valueOf(currentQueueIndex)));
         player.prepare();
@@ -998,6 +1099,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         }
 
         currentQueueIndex = safeQueueIndex;
+        showNativePlayer();
         player.setMediaItems(mediaItems, safeQueueIndex, C.TIME_UNSET);
         player.prepare();
         if (autoplay) {
@@ -1205,7 +1307,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         intent.putExtra("repeat_label", getRepeatModeLabel());
         intent.putExtra("playback_state", player != null && player.isPlaying() ? "Playing" : "Paused");
         intent.putExtra("buffering_state", player != null ? playbackStateLabel(player.getPlaybackState()) : "idle");
-        intent.putExtra("source_type", isYouTubeExternalTrack(currentSong) ? "YouTube app" : "Native queue");
+        intent.putExtra("source_type", isYouTubeExternalTrack(currentSong) ? "YouTube in-app player" : "Native queue");
         startActivity(intent);
     }
 
@@ -1364,6 +1466,9 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         if (player != null) {
             player.release();
             player = null;
+        }
+        if (youtubePlayerView != null) {
+            youtubePlayerView.release();
         }
     }
 }
