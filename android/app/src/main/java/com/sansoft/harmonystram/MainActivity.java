@@ -29,6 +29,7 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.YouTubePlayer;
+import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.PlayerConstants;
 import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.listeners.AbstractYouTubePlayerListener;
 import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.views.YouTubePlayerView;
 
@@ -80,6 +81,8 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
     private int currentQueueIndex = -1;
     private YouTubePlayer embeddedYouTubePlayer;
     private String pendingYouTubeVideoId;
+    private String activeYouTubeVideoId;
+    private boolean youtubeFallbackActivated;
 
     private FirebaseSongRepository firebaseSongRepository;
     private final YouTubeRepository youTubeRepository = new YouTubeRepository();
@@ -199,6 +202,16 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
                 if (pendingYouTubeVideoId != null && !pendingYouTubeVideoId.isEmpty()) {
                     embeddedYouTubePlayer.loadVideo(pendingYouTubeVideoId, 0f);
                     pendingYouTubeVideoId = null;
+                }
+            }
+
+            @Override
+            public void onError(YouTubePlayer youTubePlayer, PlayerConstants.PlayerError error) {
+                String reason = error == null ? "UNKNOWN" : error.name();
+                updatePlaybackDiagnostics("YouTube error: " + reason);
+                logPlaybackEvent("youtube_player_error", eventAttrs("reason", reason));
+                if (activeYouTubeVideoId != null && !activeYouTubeVideoId.isEmpty()) {
+                    fallbackToExternalYouTube(activeYouTubeVideoId, reason);
                 }
             }
         });
@@ -1005,6 +1018,8 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
     }
 
     private void playInEmbeddedYouTubePlayer(String videoId, Song track) {
+        activeYouTubeVideoId = videoId;
+        youtubeFallbackActivated = false;
         if (player != null && player.isPlaying()) {
             player.pause();
         }
@@ -1017,6 +1032,30 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         nowPlayingText.setText("Now Playing: " + track.getTitle() + " • " + track.getArtist());
         updatePlaybackDiagnostics("YouTube playback in app player");
         playPauseButton.setText("Pause");
+    }
+
+    private void fallbackToExternalYouTube(String videoId, String reason) {
+        if (youtubeFallbackActivated || videoId == null || videoId.isEmpty()) {
+            return;
+        }
+        youtubeFallbackActivated = true;
+        updatePlaybackDiagnostics("Opening external YouTube (reason: " + reason + ")");
+
+        Intent appIntent = new Intent(Intent.ACTION_VIEW, android.net.Uri.parse("vnd.youtube:" + videoId));
+        if (appIntent.resolveActivity(getPackageManager()) != null) {
+            startActivity(appIntent);
+            Toast.makeText(this, "This video cannot play inline. Opened in YouTube app.", Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        Intent webIntent = new Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://www.youtube.com/watch?v=" + videoId));
+        if (webIntent.resolveActivity(getPackageManager()) != null) {
+            startActivity(webIntent);
+            Toast.makeText(this, "This video cannot play inline. Opened in browser.", Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        Toast.makeText(this, "Unable to open YouTube externally for this video.", Toast.LENGTH_LONG).show();
     }
 
     private void showEmbeddedYouTubePlayer() {
