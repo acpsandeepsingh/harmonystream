@@ -1,5 +1,8 @@
 package com.sansoft.harmonystram;
 
+import android.content.Context;
+import android.content.SharedPreferences;
+
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -19,6 +22,16 @@ public class FirebaseSongRepository implements SongRepository, HomeCatalogReposi
     private static final String SOURCE_FIREBASE = "firebase";
     private static final Object HOME_CACHE_LOCK = new Object();
     private static final List<Song> HOME_CACHE = new ArrayList<>();
+    private static final String PREFS_NAME = "firebase_song_repository";
+    private static final String KEY_HOME_CACHE = "home_cache";
+
+    private final SharedPreferences prefs;
+
+    public FirebaseSongRepository(Context context) {
+        Context appContext = context.getApplicationContext();
+        this.prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        warmMemoryCacheFromDisk();
+    }
 
     @Override
     public List<SearchResult> search(String query, int maxResults, String source) throws Exception {
@@ -147,12 +160,86 @@ public class FirebaseSongRepository implements SongRepository, HomeCatalogReposi
                 HOME_CACHE.addAll(songs);
             }
         }
+        cacheHomeSongsToDisk(songs);
     }
 
     private List<Song> snapshotHomeCache() {
         synchronized (HOME_CACHE_LOCK) {
-            return new ArrayList<>(HOME_CACHE);
+            if (!HOME_CACHE.isEmpty()) {
+                return new ArrayList<>(HOME_CACHE);
+            }
         }
+        List<Song> diskCached = readHomeSongsFromDisk();
+        if (!diskCached.isEmpty()) {
+            synchronized (HOME_CACHE_LOCK) {
+                HOME_CACHE.clear();
+                HOME_CACHE.addAll(diskCached);
+            }
+        }
+        return diskCached;
+    }
+
+    private void warmMemoryCacheFromDisk() {
+        synchronized (HOME_CACHE_LOCK) {
+            if (!HOME_CACHE.isEmpty()) {
+                return;
+            }
+            HOME_CACHE.addAll(readHomeSongsFromDisk());
+        }
+    }
+
+    private void cacheHomeSongsToDisk(List<Song> songs) {
+        if (prefs == null) {
+            return;
+        }
+
+        JSONArray cacheArray = new JSONArray();
+        if (songs != null) {
+            for (Song song : songs) {
+                if (song == null) continue;
+                JSONObject songObj = new JSONObject();
+                songObj.put("id", song.getId());
+                songObj.put("title", song.getTitle());
+                songObj.put("artist", song.getArtist());
+                songObj.put("mediaUrl", song.getMediaUrl());
+                songObj.put("thumbnailUrl", song.getThumbnailUrl());
+                songObj.put("durationMs", song.getDurationMs());
+                songObj.put("genre", song.getGenre());
+                cacheArray.put(songObj);
+            }
+        }
+
+        prefs.edit().putString(KEY_HOME_CACHE, cacheArray.toString()).apply();
+    }
+
+    private List<Song> readHomeSongsFromDisk() {
+        List<Song> songs = new ArrayList<>();
+        if (prefs == null) {
+            return songs;
+        }
+
+        String raw = prefs.getString(KEY_HOME_CACHE, "[]");
+        try {
+            JSONArray array = new JSONArray(raw);
+            for (int i = 0; i < array.length(); i++) {
+                JSONObject songObj = array.optJSONObject(i);
+                if (songObj == null) continue;
+                String id = songObj.optString("id", "");
+                if (id.isEmpty()) continue;
+                songs.add(new Song(
+                        id,
+                        songObj.optString("title", "Untitled"),
+                        songObj.optString("artist", "Unknown Artist"),
+                        songObj.optString("mediaUrl", ""),
+                        songObj.optString("thumbnailUrl", ""),
+                        songObj.optLong("durationMs", 0L),
+                        songObj.optString("genre", "Music")
+                ));
+            }
+        } catch (Exception ignored) {
+            return new ArrayList<>();
+        }
+        return songs;
     }
 
     private List<Song> fetchSongs(int maxResults) throws Exception {

@@ -77,9 +77,9 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
     private YouTubePlayer embeddedYouTubePlayer;
     private String pendingYouTubeVideoId;
 
-    private final FirebaseSongRepository firebaseSongRepository = new FirebaseSongRepository();
+    private FirebaseSongRepository firebaseSongRepository;
     private final YouTubeRepository youTubeRepository = new YouTubeRepository();
-    private final HomeCatalogRepository homeCatalogRepository = firebaseSongRepository;
+    private HomeCatalogRepository homeCatalogRepository;
     private final SongRepository searchRepository = new SongRepository() {
         @Override
         public List<SearchResult> search(String query, int maxResults, String source) throws Exception {
@@ -144,6 +144,8 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         setContentView(R.layout.activity_main);
 
         backgroundExecutor = Executors.newSingleThreadExecutor();
+        firebaseSongRepository = new FirebaseSongRepository(this);
+        homeCatalogRepository = firebaseSongRepository;
         playlistStorageRepository = new PlaylistStorageRepository(this);
         playlistSyncManager = new PlaylistSyncManager(this);
         playbackSessionStore = new PlaybackSessionStore(this);

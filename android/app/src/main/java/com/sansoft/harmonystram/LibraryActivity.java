@@ -85,8 +85,7 @@ public class LibraryActivity extends AppCompatActivity {
             Song selectedSong = songs.get(selectedSongIndex);
             playlistStorageRepository.removeSongFromPlaylist(selectedPlaylist.getId(), selectedSong);
             Toast.makeText(this, "Track removed", Toast.LENGTH_SHORT).show();
-            runSync();
-            reloadPlaylists(selectedPlaylist.getId());
+            runSync(() -> reloadPlaylists(selectedPlaylist.getId()));
         });
 
         deletePlaylistButton.setOnClickListener(v -> {
@@ -98,23 +97,35 @@ public class LibraryActivity extends AppCompatActivity {
 
             playlistStorageRepository.deletePlaylist(selectedPlaylist.getId());
             Toast.makeText(this, "Playlist deleted", Toast.LENGTH_SHORT).show();
-            runSync();
-            reloadPlaylists(null);
+            runSync(() -> reloadPlaylists(null));
         });
 
         closeButton.setOnClickListener(v -> finish());
 
-        runSync();
-        reloadPlaylists(null);
+        runSync(() -> reloadPlaylists(null));
     }
 
-    private void runSync() {
+    @Override
+    protected void onResume() {
+        super.onResume();
+        runSync(() -> reloadPlaylists(null));
+    }
+
+    private void runSync(Runnable onComplete) {
         if (backgroundExecutor == null) {
             return;
         }
         backgroundExecutor.execute(() -> {
             PlaylistSyncModels.SyncStatus status = playlistSyncManager.syncNow();
-            runOnUiThread(() -> syncStateText.setText("Sync: " + status.state + " · " + status.detail));
+            runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed()) {
+                    return;
+                }
+                syncStateText.setText("Sync: " + status.state + " · " + status.detail);
+                if (onComplete != null) {
+                    onComplete.run();
+                }
+            });
         });
     }
 
