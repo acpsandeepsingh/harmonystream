@@ -56,6 +56,22 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
+declare global {
+  interface Window {
+    HarmonyNative?: {
+      play?: () => void;
+      pause?: () => void;
+      next?: () => void;
+      previous?: () => void;
+      seek?: (positionMs: number) => void;
+      setQueue?: (queueJson: string) => void;
+      updateState?: (title: string, artist: string, playing: boolean, positionMs: number, durationMs: number, artworkBase64: string) => void;
+      getState?: () => void;
+    };
+    __harmonyNativeApplyCommand?: (action: string) => void;
+  }
+}
+
 
 const PortraitPlayer = React.memo(function PortraitPlayer({
   currentTrack,
@@ -424,10 +440,34 @@ export function MusicPlayer() {
     const userAgent = navigator.userAgent || '';
     const isAndroidUa = /Android/i.test(userAgent);
     const isFileProtocol = window.location.protocol === 'file:';
+    const isWebViewAssetHost = window.location.hostname === 'appassets.androidplatform.net';
+    const hasNativeBridge = typeof window.HarmonyNative !== 'undefined';
 
-    // Android APK runs from local file:// assets; keep this behavior Android-app-only.
-    return isAndroidUa && isFileProtocol;
+    return isAndroidUa && (isFileProtocol || isWebViewAssetHost || hasNativeBridge);
   }, []);
+
+  const applyNativeCommand = useCallback((action: string) => {
+    if (!action) return;
+    switch (action) {
+      case 'com.sansoft.harmonystram.PLAY':
+        setGlobalIsPlaying(true);
+        break;
+      case 'com.sansoft.harmonystram.PAUSE':
+        setGlobalIsPlaying(false);
+        break;
+      case 'com.sansoft.harmonystram.PLAY_PAUSE':
+        setGlobalIsPlaying(!isGlobalPlaying);
+        break;
+      case 'com.sansoft.harmonystram.NEXT':
+        globalPlayNext();
+        break;
+      case 'com.sansoft.harmonystram.PREVIOUS':
+        globalPlayPrev();
+        break;
+      default:
+        break;
+    }
+  }, [setGlobalIsPlaying, globalPlayNext, globalPlayPrev, isGlobalPlaying]);
 
   useEffect(() => {
     if (isQueueOpen && currentTrack) {
@@ -883,6 +923,51 @@ export function MusicPlayer() {
       }
     }
   }, [currentTime, duration]);
+
+  useEffect(() => {
+    if (!isAndroidAppRuntime || typeof window === 'undefined') return;
+
+    window.__harmonyNativeApplyCommand = applyNativeCommand;
+    const commandListener = (event: Event) => {
+      const detail = (event as CustomEvent<{ action?: string }>).detail;
+      applyNativeCommand(detail?.action ?? '');
+    };
+
+    window.addEventListener('nativePlaybackCommand', commandListener as EventListener);
+    window.HarmonyNative?.getState?.();
+
+    return () => {
+      window.removeEventListener('nativePlaybackCommand', commandListener as EventListener);
+      window.__harmonyNativeApplyCommand = undefined;
+    };
+  }, [isAndroidAppRuntime, applyNativeCommand]);
+
+  useEffect(() => {
+    if (!isAndroidAppRuntime || !currentTrack) return;
+    const positionMs = Math.max(0, Math.floor(currentTime * 1000));
+    const durationMs = Math.max(0, Math.floor(duration * 1000));
+
+    window.HarmonyNative?.updateState?.(
+      currentTrack.title,
+      currentTrack.artist,
+      isGlobalPlaying,
+      positionMs,
+      durationMs,
+      ''
+    );
+  }, [isAndroidAppRuntime, currentTrack, isGlobalPlaying, currentTime, duration]);
+
+  useEffect(() => {
+    if (!isAndroidAppRuntime) return;
+    const queueForNative = playlist.map((song) => ({
+      id: song.id,
+      title: song.title,
+      artist: song.artist,
+      videoId: song.videoId,
+      thumbnailUrl: song.thumbnailUrl,
+    }));
+    window.HarmonyNative?.setQueue?.(JSON.stringify(queueForNative));
+  }, [isAndroidAppRuntime, playlist]);
   
   if (!currentTrack) {
     return null;
@@ -979,7 +1064,7 @@ export function MusicPlayer() {
             >
               <YouTube
                   videoId={currentTrack.videoId}
-                  opts={{ playerVars: { playsinline: 1, controls: 0, modestbranding: 1, rel: 0, iv_load_policy: 3, objectFit: 'cover', autoplay: 1 } }}
+                  opts={{ playerVars: { playsinline: 1, controls: 0, modestbranding: 1, rel: 0, iv_load_policy: 3, autoplay: 1, origin: typeof window !== 'undefined' ? window.location.origin : undefined } }}
                   onReady={onReady}
                   onStateChange={onStateChange}
                   onError={onError}
@@ -1101,7 +1186,7 @@ export function MusicPlayer() {
           <div className="relative aspect-video">
                 <YouTube
                   videoId={currentTrack.videoId}
-                  opts={{ playerVars: { playsinline: 1, controls: 0, modestbranding: 1, rel: 0, iv_load_policy: 3, start: currentTime, autoplay: 1 } }}
+                  opts={{ playerVars: { playsinline: 1, controls: 0, modestbranding: 1, rel: 0, iv_load_policy: 3, start: currentTime, autoplay: 1, origin: typeof window !== 'undefined' ? window.location.origin : undefined } }}
                   onReady={(e: YouTubeEvent) => {
                       e.target.setVolume(volume);
                       if (isGlobalPlaying) e.target.playVideo();
