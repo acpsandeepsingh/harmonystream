@@ -7,9 +7,9 @@ const nextConfig = {
   output: 'export',
   images: { unoptimized: true },
   trailingSlash: true,
-  // Relative assets are required for the standalone Android WebView build.
+  // Android WebViewAssetLoader expects app assets on the appassets origin.
   ...(isAndroidBuild && {
-    assetPrefix: './',
+    assetPrefix: 'https://appassets.androidplatform.net',
   }),
 
   // Only use basePath for web builds (GitHub Pages)

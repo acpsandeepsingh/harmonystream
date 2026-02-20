@@ -357,15 +357,11 @@ public class WebAppActivity extends AppCompatActivity {
         public void onPageFinished(WebView view, String url) {
             super.onPageFinished(view, url);
             loadingIndicator.setVisibility(View.GONE);
-            if (url != null && url.startsWith("https://appassets.androidplatform.net/assets/web/offline_shell")) {
-                return;
-            }
-            if (BUNDLED_HOME_URL.equals(url)) {
-                loadingFallbackShell = false;
-                return;
-            }
             if (url != null && url.contains("appassets.androidplatform.net")) {
                 loadingFallbackShell = false;
+                return;
+            }
+            if (url == null || "about:blank".equals(url)) {
                 return;
             }
             loadFallbackShell(webView);
