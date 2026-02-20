@@ -126,9 +126,10 @@ jobs:
         run: |
           set -e
           test -d android || (echo "android project folder is missing" && exit 1)
-          mkdir -p android/app/src/main/assets
+          mkdir -p android/app/src/main/assets/public
           rm -rf android/app/src/main/assets/*
-          cp -R out/. android/app/src/main/assets/
+          mkdir -p android/app/src/main/assets/public
+          cp -R out/. android/app/src/main/assets/public/
 
       - name: Configure Android SDK path
         run: |
