@@ -22,6 +22,7 @@
             android:name=".WebAppActivity"
             android:label="@string/title_activity_main"
             android:theme="@style/AppTheme.NoActionBarLaunch"
+            android:supportsPictureInPicture="true"
             android:exported="true">
 
             <intent-filter>

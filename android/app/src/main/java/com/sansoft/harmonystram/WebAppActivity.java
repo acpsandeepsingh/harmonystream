@@ -2,6 +2,7 @@ package com.sansoft.harmonystram;
 
 import android.Manifest;
 import android.annotation.SuppressLint;
+import android.app.PictureInPictureParams;
 import android.content.res.AssetManager;
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -15,6 +16,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
+import android.util.Rational;
 import android.view.View;
 import android.webkit.JavascriptInterface;
 import android.webkit.ConsoleMessage;
@@ -77,6 +79,7 @@ public class WebAppActivity extends AppCompatActivity {
     private String mainFrameStartedUrl;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final Runnable mainFrameTimeoutRunnable = this::handleMainFrameTimeout;
+    private boolean playbackActive;
 
     private final BroadcastReceiver serviceStateReceiver = new BroadcastReceiver() {
         @Override
@@ -88,7 +91,8 @@ public class WebAppActivity extends AppCompatActivity {
             try {
                 payload.put("title", intent.getStringExtra("title"));
                 payload.put("artist", intent.getStringExtra("artist"));
-                payload.put("playing", intent.getBooleanExtra("playing", false));
+                playbackActive = intent.getBooleanExtra("playing", false);
+                payload.put("playing", playbackActive);
                 payload.put("position_ms", intent.getLongExtra("position_ms", 0));
                 payload.put("duration_ms", intent.getLongExtra("duration_ms", 0));
             } catch (JSONException ignored) {
@@ -189,6 +193,27 @@ public class WebAppActivity extends AppCompatActivity {
         }
 
         dispatchPendingMediaAction(getIntent().getStringExtra(PlaybackService.EXTRA_PENDING_MEDIA_ACTION));
+        playbackActive = PlaybackService.readSnapshot(this).playing;
+    }
+
+    @Override
+    protected void onUserLeaveHint() {
+        super.onUserLeaveHint();
+        maybeEnterPictureInPicture();
+    }
+
+    private void maybeEnterPictureInPicture() {
+        if (!playbackActive || Build.VERSION.SDK_INT < Build.VERSION_CODES.O || isInPictureInPictureMode()) {
+            return;
+        }
+
+        PictureInPictureParams params = new PictureInPictureParams.Builder()
+                .setAspectRatio(new Rational(16, 9))
+                .build();
+        try {
+            enterPictureInPictureMode(params);
+        } catch (IllegalStateException ignored) {
+        }
     }
 
     @Override
@@ -572,6 +597,7 @@ public class WebAppActivity extends AppCompatActivity {
             serviceIntent.putExtra("title", title == null ? "HarmonyStream" : title);
             serviceIntent.putExtra("artist", artist == null ? "" : artist);
             serviceIntent.putExtra("playing", playing);
+            serviceIntent.putExtra("should_foreground", playing);
             serviceIntent.putExtra("position_ms", Math.max(0L, positionMs));
             serviceIntent.putExtra("duration_ms", Math.max(0L, durationMs));
             if (artworkBase64 != null) {
@@ -612,7 +638,9 @@ public class WebAppActivity extends AppCompatActivity {
                 || PlaybackService.ACTION_PLAY_PAUSE.equals(action)
                 || PlaybackService.ACTION_NEXT.equals(action)
                 || PlaybackService.ACTION_PREVIOUS.equals(action)
-                || PlaybackService.ACTION_SEEK.equals(action);
+                || PlaybackService.ACTION_SEEK.equals(action)
+                || (PlaybackService.ACTION_UPDATE_STATE.equals(action)
+                && intent.getBooleanExtra("should_foreground", false));
 
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && needsForegroundStart) {
