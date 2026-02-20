@@ -50,6 +50,7 @@ public class WebAppActivity extends AppCompatActivity {
     private static final String BUNDLED_HOME_URL = "https://appassets.androidplatform.net/";
     private static final String BUNDLED_HOME_URL_BASE_PATH = "https://appassets.androidplatform.net/harmonystream/index.html";
     private static final String FALLBACK_SHELL_URL = "https://appassets.androidplatform.net/assets/web/offline_shell.html";
+    private static final String FALLBACK_SHELL_ASSET_PATH = "web/offline_shell.html";
     private static final String BUNDLED_HOME_ASSET_PATH = "public/index.html";
     private static final String BUNDLED_HOME_ASSET_PATH_BASE_PATH = "public/harmonystream/index.html";
     private static final String EMBEDDED_FALLBACK_HTML = "<!doctype html><html><head><meta charset=\"utf-8\" />"
@@ -122,7 +123,7 @@ public class WebAppActivity extends AppCompatActivity {
 
         WebViewAssetLoader assetLoader = new WebViewAssetLoader.Builder()
                 .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
-                .addPathHandler("/_next/", new PublicAssetsPathHandler("_next/"))
+                .addPathHandler("/_next/", new MultiPathAssetsHandler(new String[]{"public/_next/", "_next/", "public/harmonystream/_next/", "harmonystream/_next/"}))
                 .addPathHandler("/harmonystream/_next/", new MultiPathAssetsHandler(new String[]{"public/_next/", "_next/", "public/harmonystream/_next/", "harmonystream/_next/"}))
                 .addPathHandler("/harmonystream/", new PublicAssetsPathHandler("harmonystream/"))
                 .addPathHandler("/", new PublicRoutesPathHandler())
@@ -287,7 +288,7 @@ public class WebAppActivity extends AppCompatActivity {
         logContentInfo("startup.fallbackShellUrl=" + FALLBACK_SHELL_URL);
         logContentInfo("startup.expectedAsset[1]=" + BUNDLED_HOME_ASSET_PATH);
         logContentInfo("startup.expectedAsset[2]=" + BUNDLED_HOME_ASSET_PATH_BASE_PATH);
-        logContentInfo("startup.expectedAsset[3]=assets/web/offline_shell.html");
+        logContentInfo("startup.expectedAsset[3]=" + FALLBACK_SHELL_ASSET_PATH);
         logContentInfo("startup.expectedRequestPattern[1]=https://appassets.androidplatform.net/");
         logContentInfo("startup.expectedRequestPattern[2]=https://appassets.androidplatform.net/_next/");
         logContentInfo("startup.expectedRequestPattern[3]=https://appassets.androidplatform.net/harmonystream/");
@@ -299,7 +300,7 @@ public class WebAppActivity extends AppCompatActivity {
         logContentInfo("Startup diagnostics requestedStartUrl=" + requestedStartUrl);
         logAssetPresence(BUNDLED_HOME_ASSET_PATH);
         logAssetPresence(BUNDLED_HOME_ASSET_PATH_BASE_PATH);
-        logAssetPresence("assets/web/offline_shell.html");
+        logAssetPresence(FALLBACK_SHELL_ASSET_PATH);
     }
 
     private void logAssetPresence(String assetPath) {
@@ -712,4 +713,3 @@ public class WebAppActivity extends AppCompatActivity {
         });
     }
 }
-
