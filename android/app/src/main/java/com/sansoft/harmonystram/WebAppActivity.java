@@ -607,10 +607,26 @@ public class WebAppActivity extends AppCompatActivity {
     }
 
     private void startPlaybackService(Intent intent) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            ContextCompat.startForegroundService(this, intent);
-        } else {
-            startService(intent);
+        String action = intent == null ? null : intent.getAction();
+        boolean needsForegroundStart = PlaybackService.ACTION_PLAY.equals(action)
+                || PlaybackService.ACTION_PLAY_PAUSE.equals(action)
+                || PlaybackService.ACTION_NEXT.equals(action)
+                || PlaybackService.ACTION_PREVIOUS.equals(action)
+                || PlaybackService.ACTION_SEEK.equals(action);
+
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && needsForegroundStart) {
+                ContextCompat.startForegroundService(this, intent);
+            } else {
+                startService(intent);
+            }
+        } catch (IllegalStateException illegalStateException) {
+            Log.w(TAG, "startService denied in background for action=" + action + "; retrying as foreground service", illegalStateException);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                ContextCompat.startForegroundService(this, intent);
+            } else {
+                throw illegalStateException;
+            }
         }
     }
 
