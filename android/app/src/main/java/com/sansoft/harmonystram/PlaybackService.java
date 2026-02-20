@@ -99,7 +99,7 @@ public class PlaybackService extends Service {
             case ACTION_PLAY:
             case ACTION_PAUSE:
             case ACTION_NEXT:
-                dispatchActionToUi(action);
+                dispatchActionToUi(action, intent);
                 break;
             case ACTION_SEEK:
                 currentPositionMs = Math.max(0L, intent.getLongExtra("position_ms", currentPositionMs));
@@ -156,13 +156,13 @@ public class PlaybackService extends Service {
         return PendingIntent.getActivity(this, 2000, launchIntent, flags);
     }
 
-    private void dispatchActionToUi(String action) {
-        dispatchActionToUi(action, null);
-    }
-
     private void dispatchActionToUi(String action, @Nullable Intent sourceIntent) {
-        pendingMediaAction = action;
-        persistState();
+        boolean fromWebBridge = sourceIntent != null && "web".equals(sourceIntent.getStringExtra("source"));
+        if (!fromWebBridge) {
+            pendingMediaAction = action;
+            persistState();
+        }
+
         Intent intent = new Intent(ACTION_MEDIA_CONTROL);
         intent.setPackage(getPackageName());
         intent.putExtra("action", action);
@@ -174,7 +174,10 @@ public class PlaybackService extends Service {
                 intent.putExtra("queue_json", valueOrDefault(sourceIntent.getStringExtra("queue_json"), "[]"));
             }
         }
-        sendBroadcast(intent);
+
+        if (!fromWebBridge) {
+            sendBroadcast(intent);
+        }
     }
 
     private void applyStateUpdate(Intent intent) {

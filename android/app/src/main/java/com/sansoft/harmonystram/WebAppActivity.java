@@ -173,6 +173,7 @@ public class WebAppActivity extends AppCompatActivity {
             Intent stateIntent = new Intent(WebAppActivity.this, PlaybackService.class);
             stateIntent.setAction(PlaybackService.ACTION_SEEK);
             stateIntent.putExtra("position_ms", Math.max(0L, positionMs));
+            stateIntent.putExtra("source", "web");
             startService(stateIntent);
         }
 
@@ -183,8 +184,10 @@ public class WebAppActivity extends AppCompatActivity {
             try {
                 JSONArray queue = new JSONArray(queueJson == null ? "[]" : queueJson);
                 queueIntent.putExtra("queue_json", queue.toString());
+                queueIntent.putExtra("source", "web");
             } catch (JSONException ignored) {
                 queueIntent.putExtra("queue_json", "[]");
+                queueIntent.putExtra("source", "web");
             }
             startService(queueIntent);
         }
@@ -199,6 +202,7 @@ public class WebAppActivity extends AppCompatActivity {
         private void sendCommand(String action) {
             Intent serviceIntent = new Intent(WebAppActivity.this, PlaybackService.class);
             serviceIntent.setAction(action);
+            serviceIntent.putExtra("source", "web");
             startService(serviceIntent);
         }
     }
