@@ -136,7 +136,7 @@ public class PlaybackService extends Service {
     }
 
     private PendingIntent createContentIntent() {
-        Intent launchIntent = new Intent(this, MainActivity.class);
+        Intent launchIntent = new Intent(this, WebAppActivity.class);
         launchIntent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         int flags = PendingIntent.FLAG_UPDATE_CURRENT;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
