@@ -238,6 +238,7 @@ public class WebAppActivity extends AppCompatActivity {
     private void configureSystemBars() {
         getWindow().setStatusBarColor(Color.rgb(11, 18, 32));
         getWindow().setNavigationBarColor(Color.rgb(11, 18, 32));
+<<<<<<< codex/fix-status-bar-flickering-issue-40qk3p
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             getWindow().setStatusBarContrastEnforced(false);
             getWindow().setNavigationBarContrastEnforced(false);
@@ -250,6 +251,8 @@ public class WebAppActivity extends AppCompatActivity {
                                 | android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS);
             }
         }
+=======
+>>>>>>> main
     }
 
     private PictureInPictureParams buildPipParams(boolean playing) {
@@ -291,6 +294,7 @@ public class WebAppActivity extends AppCompatActivity {
         return new RemoteAction(Icon.createWithResource(this, iconRes), title, title, pendingIntent);
     }
 
+<<<<<<< codex/fix-status-bar-flickering-issue-40qk3p
     @Override
     protected void onResume() {
         super.onResume();
@@ -333,6 +337,8 @@ public class WebAppActivity extends AppCompatActivity {
         return snapshot != null && snapshot.playing;
     }
 
+=======
+>>>>>>> main
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
