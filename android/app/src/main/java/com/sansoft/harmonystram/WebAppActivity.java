@@ -50,6 +50,7 @@ public class WebAppActivity extends AppCompatActivity {
             + "<p>Bundled app shell is active. Build web assets into <code>android/app/src/main/assets/public</code>"
             + " to load the full web player UI offline.</p></main></body></html>";
     private static final String TAG = "HarmonyWebAppActivity";
+    private static final String LOGCAT_HINT_TAG = "HarmonyContentDebug";
     private static final long MAIN_FRAME_TIMEOUT_MS = 15000L;
 
     private WebView webView;
@@ -127,16 +128,20 @@ public class WebAppActivity extends AppCompatActivity {
         });
         webView.setWebViewClient(new HarmonyWebViewClient(assetLoader));
 
+        logStartupDiagnostics(getIntent());
+
         if (savedInstanceState != null) {
             webView.restoreState(savedInstanceState);
         } else {
             String startUrl = getIntent().getStringExtra(EXTRA_START_URL);
             if (startUrl != null && startUrl.startsWith("https://appassets.androidplatform.net/assets/")) {
                 Log.i(TAG, "Loading explicit start URL: " + startUrl);
+                logStartupLoadPlan(startUrl, startUrl);
                 webView.loadUrl(startUrl);
             } else {
                 String resolvedUrl = resolveBundledEntryUrl();
                 Log.i(TAG, "Loading resolved entry URL: " + resolvedUrl);
+                logStartupLoadPlan(resolvedUrl, startUrl);
                 webView.loadUrl(resolvedUrl);
             }
         }
@@ -243,16 +248,67 @@ public class WebAppActivity extends AppCompatActivity {
         view.loadUrl(FALLBACK_SHELL_URL);
     }
 
+    private String contentLogPrefix() {
+        return "pkg=" + getPackageName() + " ";
+    }
+
+    private void logContentInfo(String message) {
+        Log.i(LOGCAT_HINT_TAG, contentLogPrefix() + message);
+    }
+
+    private void logContentWarn(String message) {
+        Log.w(LOGCAT_HINT_TAG, contentLogPrefix() + message);
+    }
+
+    private void logContentError(String message) {
+        Log.e(LOGCAT_HINT_TAG, contentLogPrefix() + message);
+    }
+
+    private void logStartupLoadPlan(String selectedUrl, String requestedStartUrl) {
+        logContentInfo("STARTUP_LOAD_REPORT_BEGIN");
+        logContentInfo("startup.requestedStartUrl=" + requestedStartUrl);
+        logContentInfo("startup.selectedMainFrameUrl=" + selectedUrl);
+        logContentInfo("startup.fallbackShellUrl=" + FALLBACK_SHELL_URL);
+        logContentInfo("startup.expectedAsset[1]=" + BUNDLED_HOME_ASSET_PATH);
+        logContentInfo("startup.expectedAsset[2]=" + BUNDLED_HOME_ASSET_PATH_BASE_PATH);
+        logContentInfo("startup.expectedAsset[3]=assets/web/offline_shell.html");
+        logContentInfo("startup.expectedRequestPattern[1]=https://appassets.androidplatform.net/");
+        logContentInfo("startup.expectedRequestPattern[2]=https://appassets.androidplatform.net/_next/");
+        logContentInfo("startup.expectedRequestPattern[3]=https://appassets.androidplatform.net/harmonystream/");
+        logContentInfo("STARTUP_LOAD_REPORT_END");
+    }
+
+    private void logStartupDiagnostics(Intent launchIntent) {
+        String requestedStartUrl = launchIntent == null ? null : launchIntent.getStringExtra(EXTRA_START_URL);
+        logContentInfo("Startup diagnostics requestedStartUrl=" + requestedStartUrl);
+        logAssetPresence(BUNDLED_HOME_ASSET_PATH);
+        logAssetPresence(BUNDLED_HOME_ASSET_PATH_BASE_PATH);
+        logAssetPresence("assets/web/offline_shell.html");
+    }
+
+    private void logAssetPresence(String assetPath) {
+        try {
+            getAssets().open(assetPath).close();
+            logContentInfo("Asset available: " + assetPath);
+        } catch (Exception exception) {
+            logContentError("Asset missing: " + assetPath + " reason=" + exception.getClass().getSimpleName());
+        }
+    }
+
     private String resolveBundledEntryUrl() {
         AssetManager assets = getAssets();
         try {
             assets.open(BUNDLED_HOME_ASSET_PATH).close();
+            logContentInfo("Resolved bundled entry from asset: " + BUNDLED_HOME_ASSET_PATH);
             return BUNDLED_HOME_URL;
         } catch (Exception ignored) {
+            logContentWarn("Missing bundled entry asset: " + BUNDLED_HOME_ASSET_PATH);
             try {
                 assets.open(BUNDLED_HOME_ASSET_PATH_BASE_PATH).close();
+                logContentInfo("Resolved bundled entry from base-path asset: " + BUNDLED_HOME_ASSET_PATH_BASE_PATH);
                 return BUNDLED_HOME_URL_BASE_PATH;
             } catch (Exception ignoredBasePathBuild) {
+                logContentError("Missing base-path bundled entry asset: " + BUNDLED_HOME_ASSET_PATH_BASE_PATH + "; falling back to offline shell");
                 return FALLBACK_SHELL_URL;
             }
         }
@@ -280,6 +336,7 @@ public class WebAppActivity extends AppCompatActivity {
                 }
                 return new WebResourceResponse(mime, "UTF-8", getAssets().open(assetPath));
             } catch (Exception ignored) {
+                logContentWarn("Asset miss (public assets): " + assetPath + " requestedPath=" + path);
                 return null;
             }
         }
@@ -312,6 +369,7 @@ public class WebAppActivity extends AppCompatActivity {
                 }
                 return new WebResourceResponse(mime, "UTF-8", getAssets().open(assetPath));
             } catch (Exception ignored) {
+                logContentWarn("Asset miss (public route): " + assetPath + " requestedPath=" + path);
                 return null;
             }
         }
@@ -410,7 +468,18 @@ public class WebAppActivity extends AppCompatActivity {
 
         @Override
         public android.webkit.WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
-            return assetLoader.shouldInterceptRequest(request.getUrl());
+            if (request == null || request.getUrl() == null) {
+                return null;
+            }
+            android.net.Uri requestUri = request.getUrl();
+            android.webkit.WebResourceResponse response = assetLoader.shouldInterceptRequest(requestUri);
+            String requestMethod = request.getMethod();
+            if (response == null) {
+                logContentWarn("No intercept match for request: " + requestUri + " method=" + requestMethod);
+            } else {
+                logContentInfo("Intercepted request: " + requestUri + " method=" + requestMethod);
+            }
+            return response;
         }
 
         @Override
