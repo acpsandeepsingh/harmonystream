@@ -12,7 +12,9 @@
     "cap:sync:android": "npm run build:android && npx cap sync android",
     "apk:debug": "npm run android:sdk:prepare && npm run cap:sync:android && ./android/gradlew -p android assembleDebug",
     "build:android": "BUILD_TARGET=android NODE_ENV=production next build",
-    "android:sdk:prepare": "./scripts.ensure-android-sdk.sh"
+    "android:sdk:prepare": "./scripts.ensure-android-sdk.sh",
+    "logcat:content": "adb logcat -v time HarmonyContentDebug:V HarmonyWebAppActivity:V chromium:W AndroidRuntime:E *:S",
+    "logcat:content:clear": "adb logcat -c && npm run logcat:content"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.1.0",
