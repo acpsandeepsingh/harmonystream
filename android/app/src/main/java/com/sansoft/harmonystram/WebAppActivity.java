@@ -11,6 +11,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
 import android.webkit.JavascriptInterface;
+import android.webkit.MimeTypeMap;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
@@ -22,6 +23,7 @@ import android.widget.ProgressBar;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.webkit.WebViewAssetLoader;
+import androidx.webkit.WebResourceErrorCompat;
 import androidx.webkit.WebViewClientCompat;
 
 import org.json.JSONArray;
@@ -32,8 +34,10 @@ public class WebAppActivity extends AppCompatActivity {
 
     public static final String EXTRA_START_URL = "start_url";
     private static final String BUNDLED_HOME_URL = "https://appassets.androidplatform.net/assets/public/index.html";
-    private static final String FALLBACK_SHELL_FILE_URL = "file:///android_asset/web/offline_shell.html";
+    private static final String BUNDLED_HOME_URL_BASE_PATH = "https://appassets.androidplatform.net/harmonystream/index.html";
+    private static final String FALLBACK_SHELL_URL = "https://appassets.androidplatform.net/assets/web/offline_shell.html";
     private static final String BUNDLED_HOME_ASSET_PATH = "public/index.html";
+    private static final String BUNDLED_HOME_ASSET_PATH_BASE_PATH = "public/harmonystream/index.html";
 
     private WebView webView;
     private ProgressBar loadingIndicator;
@@ -86,6 +90,8 @@ public class WebAppActivity extends AppCompatActivity {
 
         WebViewAssetLoader assetLoader = new WebViewAssetLoader.Builder()
                 .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
+                .addPathHandler("/_next/", new PublicAssetsPathHandler("_next/"))
+                .addPathHandler("/harmonystream/", new PublicAssetsPathHandler("harmonystream/"))
                 .build();
 
         webView.addJavascriptInterface(new NativePlaybackBridge(), "HarmonyNative");
@@ -165,7 +171,39 @@ public class WebAppActivity extends AppCompatActivity {
             assets.open(BUNDLED_HOME_ASSET_PATH).close();
             return BUNDLED_HOME_URL;
         } catch (Exception ignored) {
-            return FALLBACK_SHELL_FILE_URL;
+            try {
+                assets.open(BUNDLED_HOME_ASSET_PATH_BASE_PATH).close();
+                return BUNDLED_HOME_URL_BASE_PATH;
+            } catch (Exception ignoredBasePathBuild) {
+                return FALLBACK_SHELL_URL;
+            }
+        }
+    }
+
+    private class PublicAssetsPathHandler implements WebViewAssetLoader.PathHandler {
+        private final String assetPrefix;
+
+        PublicAssetsPathHandler(String assetPrefix) {
+            this.assetPrefix = assetPrefix;
+        }
+
+        @Override
+        public WebResourceResponse handle(String path) {
+            String normalizedPath = path == null ? "" : path;
+            if (normalizedPath.startsWith("/")) {
+                normalizedPath = normalizedPath.substring(1);
+            }
+            String assetPath = "public/" + assetPrefix + normalizedPath;
+            try {
+                String extension = MimeTypeMap.getFileExtensionFromUrl(assetPath);
+                String mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension);
+                if (mime == null) {
+                    mime = "application/octet-stream";
+                }
+                return new WebResourceResponse(mime, "UTF-8", getAssets().open(assetPath));
+            } catch (Exception ignored) {
+                return null;
+            }
         }
     }
 
@@ -275,10 +313,10 @@ public class WebAppActivity extends AppCompatActivity {
         }
 
         @Override
-        public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
+        public void onReceivedError(WebView view, WebResourceRequest request, WebResourceErrorCompat error) {
             super.onReceivedError(view, request, error);
             if (request != null && request.isForMainFrame()) {
-                view.loadUrl(FALLBACK_SHELL_FILE_URL);
+                view.loadUrl(FALLBACK_SHELL_URL);
             }
         }
 
@@ -286,7 +324,7 @@ public class WebAppActivity extends AppCompatActivity {
         public void onReceivedHttpError(WebView view, WebResourceRequest request, WebResourceResponse errorResponse) {
             super.onReceivedHttpError(view, request, errorResponse);
             if (request != null && request.isForMainFrame() && errorResponse != null && errorResponse.getStatusCode() >= 400) {
-                view.loadUrl(FALLBACK_SHELL_FILE_URL);
+                view.loadUrl(FALLBACK_SHELL_URL);
             }
         }
 
