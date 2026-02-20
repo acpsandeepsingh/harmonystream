@@ -146,8 +146,21 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
                 case PlaybackService.ACTION_PLAY_PAUSE:
                     togglePlayPause();
                     break;
+                case PlaybackService.ACTION_PLAY:
+                    setPlaybackEnabled(true);
+                    break;
+                case PlaybackService.ACTION_PAUSE:
+                    setPlaybackEnabled(false);
+                    break;
                 case PlaybackService.ACTION_NEXT:
                     playNext();
+                    break;
+                case PlaybackService.ACTION_SEEK:
+                    long targetPositionMs = Math.max(0L, intent.getLongExtra("position_ms", 0L));
+                    seekPlayback(targetPositionMs);
+                    break;
+                case PlaybackService.ACTION_SET_QUEUE:
+                    // Queue ownership stays in native runtime; this keeps contract compatibility.
                     break;
                 default:
                     break;
@@ -1275,6 +1288,30 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
             }
             player.play();
         }
+        syncPlaybackStateToNotification();
+        persistPlaybackSession();
+    }
+
+    private void setPlaybackEnabled(boolean shouldPlay) {
+        if (player == null || tracks.isEmpty()) {
+            return;
+        }
+        if (shouldPlay == player.isPlaying()) {
+            return;
+        }
+        togglePlayPause();
+    }
+
+    private void seekPlayback(long targetPositionMs) {
+        if (player == null || currentIndex < 0 || currentIndex >= tracks.size()) {
+            return;
+        }
+        long boundedPositionMs = Math.max(0L, targetPositionMs);
+        long durationMs = Math.max(0L, player.getDuration());
+        if (durationMs > 0L) {
+            boundedPositionMs = Math.min(durationMs, boundedPositionMs);
+        }
+        player.seekTo(boundedPositionMs);
         syncPlaybackStateToNotification();
         persistPlaybackSession();
     }
