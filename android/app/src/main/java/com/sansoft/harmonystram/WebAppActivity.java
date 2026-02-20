@@ -347,6 +347,20 @@ public class WebAppActivity extends AppCompatActivity {
         }
 
         @Override
+        public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
+            super.onReceivedError(view, request, error);
+            if (request != null && request.isForMainFrame()) {
+                loadFallbackShell(view);
+            }
+        }
+
+        @Override
+        public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
+            super.onReceivedError(view, errorCode, description, failingUrl);
+            loadFallbackShell(view);
+        }
+
+        @Override
         public void onReceivedHttpError(WebView view, WebResourceRequest request, WebResourceResponse errorResponse) {
             super.onReceivedHttpError(view, request, errorResponse);
             if (request != null && request.isForMainFrame() && errorResponse != null && errorResponse.getStatusCode() >= 400) {
@@ -365,7 +379,6 @@ public class WebAppActivity extends AppCompatActivity {
             super.onPageFinished(view, url);
             loadingIndicator.setVisibility(View.GONE);
             if (url != null && url.startsWith("https://appassets.androidplatform.net/assets/web/offline_shell")) {
-                loadingFallbackShell = false;
                 return;
             }
             if (BUNDLED_HOME_URL.equals(url)) {
