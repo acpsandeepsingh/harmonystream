@@ -333,33 +333,12 @@ public class WebAppActivity extends AppCompatActivity {
 
         @Override
         public void onReceivedError(WebView view, WebResourceRequest request, WebResourceErrorCompat error) {
-            super.onReceivedError(view, request, error);
-            if (request != null && request.isForMainFrame()) {
+                if (request != null && request.isForMainFrame()) {
                 loadFallbackShell(view);
             }
         }
 
-
-        @Override
-        public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
-            super.onReceivedError(view, errorCode, description, failingUrl);
-            loadFallbackShell(view);
-        }
-
-        @Override
-        public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
-            super.onReceivedError(view, request, error);
-            if (request != null && request.isForMainFrame()) {
-                loadFallbackShell(view);
-            }
-        }
-
-        @Override
-        public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
-            super.onReceivedError(view, errorCode, description, failingUrl);
-            loadFallbackShell(view);
-        }
-
+       
         @Override
         public void onReceivedHttpError(WebView view, WebResourceRequest request, WebResourceResponse errorResponse) {
             super.onReceivedHttpError(view, request, errorResponse);
