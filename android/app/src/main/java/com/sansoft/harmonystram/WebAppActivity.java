@@ -34,6 +34,15 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
 public class WebAppActivity extends AppCompatActivity {
 
     public static final String EXTRA_START_URL = "start_url";
@@ -50,6 +59,7 @@ public class WebAppActivity extends AppCompatActivity {
             + "<p>Bundled app shell is active. Build web assets into <code>android/app/src/main/assets/public</code>"
             + " to load the full web player UI offline.</p></main></body></html>";
     private static final String TAG = "HarmonyWebAppActivity";
+    private static final String LOGCAT_HINT_TAG = "HarmonyContentDebug";
     private static final long MAIN_FRAME_TIMEOUT_MS = 15000L;
 
     private WebView webView;
@@ -127,16 +137,20 @@ public class WebAppActivity extends AppCompatActivity {
         });
         webView.setWebViewClient(new HarmonyWebViewClient(assetLoader));
 
+        logStartupDiagnostics(getIntent());
+
         if (savedInstanceState != null) {
             webView.restoreState(savedInstanceState);
         } else {
             String startUrl = getIntent().getStringExtra(EXTRA_START_URL);
             if (startUrl != null && startUrl.startsWith("https://appassets.androidplatform.net/assets/")) {
                 Log.i(TAG, "Loading explicit start URL: " + startUrl);
+                logStartupLoadPlan(startUrl, startUrl);
                 webView.loadUrl(startUrl);
             } else {
                 String resolvedUrl = resolveBundledEntryUrl();
                 Log.i(TAG, "Loading resolved entry URL: " + resolvedUrl);
+                logStartupLoadPlan(resolvedUrl, startUrl);
                 webView.loadUrl(resolvedUrl);
             }
         }
@@ -243,16 +257,125 @@ public class WebAppActivity extends AppCompatActivity {
         view.loadUrl(FALLBACK_SHELL_URL);
     }
 
+    private String contentLogPrefix() {
+        return "pkg=" + getPackageName() + " ";
+    }
+
+    private void logContentInfo(String message) {
+        Log.i(LOGCAT_HINT_TAG, contentLogPrefix() + message);
+    }
+
+    private void logContentWarn(String message) {
+        Log.w(LOGCAT_HINT_TAG, contentLogPrefix() + message);
+    }
+
+    private void logContentError(String message) {
+        Log.e(LOGCAT_HINT_TAG, contentLogPrefix() + message);
+    }
+
+    private void logStartupLoadPlan(String selectedUrl, String requestedStartUrl) {
+        logContentInfo("STARTUP_LOAD_REPORT_BEGIN");
+        logContentInfo("startup.requestedStartUrl=" + requestedStartUrl);
+        logContentInfo("startup.selectedMainFrameUrl=" + selectedUrl);
+        logContentInfo("startup.fallbackShellUrl=" + FALLBACK_SHELL_URL);
+        logContentInfo("startup.expectedAsset[1]=" + BUNDLED_HOME_ASSET_PATH);
+        logContentInfo("startup.expectedAsset[2]=" + BUNDLED_HOME_ASSET_PATH_BASE_PATH);
+        logContentInfo("startup.expectedAsset[3]=web/offline_shell.html");
+        logContentInfo("startup.expectedRequestPattern[1]=https://appassets.androidplatform.net/");
+        logContentInfo("startup.expectedRequestPattern[2]=https://appassets.androidplatform.net/_next/");
+        logContentInfo("startup.expectedRequestPattern[3]=https://appassets.androidplatform.net/harmonystream/");
+        logContentInfo("STARTUP_LOAD_REPORT_END");
+    }
+
+    private void logStartupDiagnostics(Intent launchIntent) {
+        String requestedStartUrl = launchIntent == null ? null : launchIntent.getStringExtra(EXTRA_START_URL);
+        logContentInfo("Startup diagnostics requestedStartUrl=" + requestedStartUrl);
+        logAssetPresence(BUNDLED_HOME_ASSET_PATH);
+        logAssetPresence(BUNDLED_HOME_ASSET_PATH_BASE_PATH);
+        logAssetPresence("web/offline_shell.html");
+        logIndexReferenceDiagnostics(BUNDLED_HOME_ASSET_PATH);
+    }
+
+    private void logAssetPresence(String assetPath) {
+        try {
+            getAssets().open(assetPath).close();
+            logContentInfo("Asset available: " + assetPath);
+        } catch (Exception exception) {
+            logContentError("Asset missing: " + assetPath + " reason=" + exception.getClass().getSimpleName());
+        }
+    }
+
+    private void logIndexReferenceDiagnostics(String entryAssetPath) {
+        try {
+            String html = readAssetText(entryAssetPath);
+            LinkedHashSet<String> referencedAssets = extractAssetReferences(html);
+            logContentInfo("Index diagnostics entry=" + entryAssetPath + " referencesFound=" + referencedAssets.size());
+            int checked = 0;
+            List<String> missingRefs = new ArrayList<>();
+            for (String reference : referencedAssets) {
+                if (!reference.startsWith("/_next/") && !reference.startsWith("/harmonystream/") && !reference.startsWith("/_next/static/")) {
+                    continue;
+                }
+                checked++;
+                String assetPath = reference.startsWith("/") ? "public" + reference : "public/" + reference;
+                if (!assetExists(assetPath)) {
+                    missingRefs.add(assetPath);
+                    logContentError("Referenced asset missing: " + assetPath + " from=" + entryAssetPath);
+                }
+            }
+            logContentInfo("Index diagnostics checkedRefs=" + checked + " missingRefs=" + missingRefs.size());
+        } catch (Exception exception) {
+            logContentError("Index diagnostics failed for " + entryAssetPath + " reason=" + exception.getClass().getSimpleName());
+        }
+    }
+
+    private String readAssetText(String assetPath) throws Exception {
+        try (InputStream inputStream = getAssets().open(assetPath); ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
+            byte[] buffer = new byte[4096];
+            int read;
+            while ((read = inputStream.read(buffer)) != -1) {
+                outputStream.write(buffer, 0, read);
+            }
+            return outputStream.toString(StandardCharsets.UTF_8.name());
+        }
+    }
+
+    private LinkedHashSet<String> extractAssetReferences(String html) {
+        LinkedHashSet<String> references = new LinkedHashSet<>();
+        Matcher matcher = Pattern.compile("(?:src|href)=\"([^\"]+)\"").matcher(html == null ? "" : html);
+        while (matcher.find()) {
+            String value = matcher.group(1);
+            if (value == null || value.isEmpty() || value.startsWith("http://") || value.startsWith("https://") || value.startsWith("data:")) {
+                continue;
+            }
+            references.add(value);
+        }
+        return references;
+    }
+
+    private boolean assetExists(String assetPath) {
+        try {
+            getAssets().open(assetPath).close();
+            return true;
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
     private String resolveBundledEntryUrl() {
         AssetManager assets = getAssets();
         try {
             assets.open(BUNDLED_HOME_ASSET_PATH).close();
+            logContentInfo("Resolved bundled entry from asset: " + BUNDLED_HOME_ASSET_PATH);
             return BUNDLED_HOME_URL;
         } catch (Exception ignored) {
+            logContentWarn("Missing bundled entry asset: " + BUNDLED_HOME_ASSET_PATH);
             try {
                 assets.open(BUNDLED_HOME_ASSET_PATH_BASE_PATH).close();
+                logContentInfo("Resolved bundled entry from base-path asset: " + BUNDLED_HOME_ASSET_PATH_BASE_PATH);
                 return BUNDLED_HOME_URL_BASE_PATH;
             } catch (Exception ignoredBasePathBuild) {
+                logContentError("Missing base-path bundled entry asset: " + BUNDLED_HOME_ASSET_PATH_BASE_PATH + "; falling back to offline shell");
                 return FALLBACK_SHELL_URL;
             }
         }
@@ -280,6 +403,7 @@ public class WebAppActivity extends AppCompatActivity {
                 }
                 return new WebResourceResponse(mime, "UTF-8", getAssets().open(assetPath));
             } catch (Exception ignored) {
+                logContentWarn("Asset miss (public assets): " + assetPath + " requestedPath=" + path);
                 return null;
             }
         }
@@ -312,6 +436,7 @@ public class WebAppActivity extends AppCompatActivity {
                 }
                 return new WebResourceResponse(mime, "UTF-8", getAssets().open(assetPath));
             } catch (Exception ignored) {
+                logContentWarn("Asset miss (public route): " + assetPath + " requestedPath=" + path);
                 return null;
             }
         }
@@ -410,7 +535,18 @@ public class WebAppActivity extends AppCompatActivity {
 
         @Override
         public android.webkit.WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
-            return assetLoader.shouldInterceptRequest(request.getUrl());
+            if (request == null || request.getUrl() == null) {
+                return null;
+            }
+            android.net.Uri requestUri = request.getUrl();
+            android.webkit.WebResourceResponse response = assetLoader.shouldInterceptRequest(requestUri);
+            String requestMethod = request.getMethod();
+            if (response == null) {
+                logContentWarn("No intercept match for request: " + requestUri + " method=" + requestMethod);
+            } else {
+                logContentInfo("Intercepted request: " + requestUri + " method=" + requestMethod);
+            }
+            return response;
         }
 
         @Override
@@ -429,6 +565,7 @@ public class WebAppActivity extends AppCompatActivity {
                 CharSequence errorDescription = error == null ? "unknown" : error.getDescription();
                 int errorCode = error == null ? -1 : error.getErrorCode();
                 Log.e(TAG, "Main-frame error code=" + errorCode + " url=" + request.getUrl() + " description=" + errorDescription);
+                logContentError("Main-frame error code=" + errorCode + " url=" + request.getUrl() + " description=" + errorDescription);
                 loadFallbackShell(view);
             }
         }
@@ -439,6 +576,7 @@ public class WebAppActivity extends AppCompatActivity {
             super.onReceivedHttpError(view, request, errorResponse);
             if (request != null && request.isForMainFrame() && errorResponse != null && errorResponse.getStatusCode() >= 400) {
                 Log.e(TAG, "Main-frame HTTP error code=" + errorResponse.getStatusCode() + " url=" + request.getUrl());
+                logContentError("Main-frame HTTP error code=" + errorResponse.getStatusCode() + " url=" + request.getUrl());
                 loadFallbackShell(view);
             }
         }
@@ -451,6 +589,7 @@ public class WebAppActivity extends AppCompatActivity {
             mainFrameStartedUrl = url;
             scheduleMainFrameTimeout();
             Log.d(TAG, "Page started: " + url);
+            logContentInfo("Page started: " + url);
         }
 
         @Override
@@ -460,16 +599,19 @@ public class WebAppActivity extends AppCompatActivity {
             clearMainFrameTimeout();
             loadingIndicator.setVisibility(View.GONE);
             Log.d(TAG, "Page finished: " + url);
+            logContentInfo("Page finished: " + url);
             if (url != null && url.contains("appassets.androidplatform.net")) {
                 loadingFallbackShell = false;
                 return;
             }
             if (url == null || "about:blank".equals(url)) {
                 Log.w(TAG, "Main-frame finished with blank URL; forcing fallback shell");
+                logContentWarn("Main-frame finished with blank URL; forcing fallback shell");
                 loadFallbackShell(webView);
                 return;
             }
             Log.w(TAG, "Main-frame finished with non-appassets URL " + url + "; forcing fallback shell");
+            logContentWarn("Main-frame finished with non-appassets URL " + url + "; forcing fallback shell");
             loadFallbackShell(webView);
         }
     }
