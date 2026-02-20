@@ -49,6 +49,36 @@ public class PlaybackService extends Service {
     private static final String KEY_DURATION_MS = "duration_ms";
     private static final String KEY_PENDING_MEDIA_ACTION = "pending_media_action";
 
+    public static class PlaybackSnapshot {
+        public final String title;
+        public final String artist;
+        public final boolean playing;
+        public final long positionMs;
+        public final long durationMs;
+
+        PlaybackSnapshot(String title, String artist, boolean playing, long positionMs, long durationMs) {
+            this.title = title;
+            this.artist = artist;
+            this.playing = playing;
+            this.positionMs = positionMs;
+            this.durationMs = durationMs;
+        }
+    }
+
+    public static PlaybackSnapshot readSnapshot(android.content.Context context) {
+        SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, android.content.Context.MODE_PRIVATE);
+        String title = prefs.getString(KEY_TITLE, "HarmonyStream");
+        String artist = prefs.getString(KEY_ARTIST, "");
+        boolean playing = prefs.getBoolean(KEY_PLAYING, false);
+        long positionMs = Math.max(0, prefs.getLong(KEY_POSITION_MS, 0));
+        long durationMs = Math.max(0, prefs.getLong(KEY_DURATION_MS, 0));
+        return new PlaybackSnapshot(title == null || title.isEmpty() ? "HarmonyStream" : title,
+                artist == null ? "" : artist,
+                playing,
+                positionMs,
+                durationMs);
+    }
+
     private String currentTitle = "HarmonyStream";
     private String currentArtist = "";
     private boolean isPlaying = false;
@@ -82,6 +112,7 @@ public class PlaybackService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent == null || intent.getAction() == null) {
+            ensureForegroundIfPlaying();
             updateNotification();
             return START_STICKY;
         }
@@ -99,6 +130,16 @@ public class PlaybackService extends Service {
             case ACTION_PLAY:
             case ACTION_PAUSE:
             case ACTION_NEXT:
+                if (ACTION_PLAY.equals(action)) {
+                    isPlaying = true;
+                } else if (ACTION_PAUSE.equals(action)) {
+                    isPlaying = false;
+                } else if (ACTION_PLAY_PAUSE.equals(action)) {
+                    isPlaying = !isPlaying;
+                }
+                persistState();
+                updateNotification();
+                broadcastState();
                 dispatchActionToUi(action, intent);
                 break;
             case ACTION_SEEK:
@@ -216,6 +257,24 @@ public class PlaybackService extends Service {
         stateIntent.putExtra("position_ms", currentPositionMs);
         stateIntent.putExtra("duration_ms", currentDurationMs);
         sendBroadcast(stateIntent);
+        PlaybackWidgetProvider.requestRefresh(this);
+    }
+
+    private void ensureForegroundIfPlaying() {
+        if (!isPlaying) {
+            return;
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
+                    .setSmallIcon(android.R.drawable.ic_media_play)
+                    .setContentTitle(currentTitle)
+                    .setContentText(currentArtist)
+                    .setContentIntent(createContentIntent())
+                    .setOnlyAlertOnce(true)
+                    .setOngoing(true)
+                    .build();
+            startForeground(NOTIFICATION_ID, notification);
+        }
     }
 
     private void updateNotification() {
@@ -301,6 +360,7 @@ public class PlaybackService extends Service {
                 .putLong(KEY_DURATION_MS, currentDurationMs)
                 .putString(KEY_PENDING_MEDIA_ACTION, pendingMediaAction)
                 .apply();
+        PlaybackWidgetProvider.requestRefresh(this);
     }
 
     private void restoreState() {

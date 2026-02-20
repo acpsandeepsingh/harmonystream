@@ -205,6 +205,7 @@ public class WebAppActivity extends AppCompatActivity {
         } catch (JSONException ignored) {
         }
         dispatchToWeb("window.dispatchEvent(new CustomEvent('nativePlaybackCommand', { detail: " + payload + " }));");
+        dispatchToWeb("window.__harmonyNativeApplyCommand && window.__harmonyNativeApplyCommand(" + JSONObject.quote(action) + ");");
         clearPendingMediaAction();
     }
 
@@ -558,6 +559,22 @@ public class WebAppActivity extends AppCompatActivity {
         }
 
         @JavascriptInterface
+        public void updateState(String title, String artist, boolean playing, long positionMs, long durationMs, String artworkBase64) {
+            Intent serviceIntent = new Intent(WebAppActivity.this, PlaybackService.class);
+            serviceIntent.setAction(PlaybackService.ACTION_UPDATE_STATE);
+            serviceIntent.putExtra("title", title == null ? "HarmonyStream" : title);
+            serviceIntent.putExtra("artist", artist == null ? "" : artist);
+            serviceIntent.putExtra("playing", playing);
+            serviceIntent.putExtra("position_ms", Math.max(0L, positionMs));
+            serviceIntent.putExtra("duration_ms", Math.max(0L, durationMs));
+            if (artworkBase64 != null) {
+                serviceIntent.putExtra("artwork_base64", artworkBase64);
+            }
+            serviceIntent.putExtra("source", "web");
+            startService(serviceIntent);
+        }
+
+        @JavascriptInterface
         public void getState() {
             Intent stateIntent = new Intent(WebAppActivity.this, PlaybackService.class);
             stateIntent.setAction(PlaybackService.ACTION_GET_STATE);
@@ -686,6 +703,7 @@ public class WebAppActivity extends AppCompatActivity {
             Log.d(TAG, "Page finished: " + url);
             logContentInfo("Page finished: " + url);
             runDomProbe(view, "onPageFinished");
+            installPlaybackBridgeShim(view);
             if (url != null && url.contains("appassets.androidplatform.net")) {
                 loadingFallbackShell = false;
                 return;
@@ -700,6 +718,37 @@ public class WebAppActivity extends AppCompatActivity {
             logContentWarn("Main-frame finished with non-appassets URL " + url + "; forcing fallback shell");
             loadFallbackShell(webView);
         }
+    }
+
+
+    private void installPlaybackBridgeShim(WebView view) {
+        if (view == null) {
+            return;
+        }
+        String js = "(function(){try{if(window.__harmonyNativeShimInstalled){return 'already';}"
+                + "window.__harmonyNativeShimInstalled=true;"
+                + "function send(){try{if(!window.HarmonyNative||!window.HarmonyNative.updateState){return;}"
+                + "var media=document.querySelector('audio,video');"
+                + "var title=document.title||'HarmonyStream';"
+                + "var artist='';"
+                + "var playing=!!(media&&!media.paused);"
+                + "var position=media?Math.floor((media.currentTime||0)*1000):0;"
+                + "var duration=media&&isFinite(media.duration)?Math.floor(media.duration*1000):0;"
+                + "window.HarmonyNative.updateState(String(title),String(artist),playing,position,duration,'');"
+                + "}catch(e){}}"
+                + "function bindMedia(media){if(!media||media.__harmonyBound){return;}media.__harmonyBound=true;"
+                + "['play','pause','timeupdate','loadedmetadata','ended','seeking'].forEach(function(ev){media.addEventListener(ev,send,{passive:true});});}"
+                + "function scan(){var media=document.querySelector('audio,video');bindMedia(media);send();}"
+                + "window.__harmonyNativeApplyCommand=function(action){try{var media=document.querySelector('audio,video');if(!media){return;}"
+                + "if(action==='"+PlaybackService.ACTION_PLAY+"'){media.play();}"
+                + "if(action==='"+PlaybackService.ACTION_PAUSE+"'){media.pause();}"
+                + "if(action==='"+PlaybackService.ACTION_PLAY_PAUSE+"'){if(media.paused){media.play();}else{media.pause();}}"
+                + "if(action==='"+PlaybackService.ACTION_NEXT+"'){if(navigator.mediaSession&&navigator.mediaSession.metadata){document.dispatchEvent(new KeyboardEvent('keydown',{key:'MediaTrackNext'}));}}"
+                + "if(action==='"+PlaybackService.ACTION_PREVIOUS+"'){if(navigator.mediaSession&&navigator.mediaSession.metadata){document.dispatchEvent(new KeyboardEvent('keydown',{key:'MediaTrackPrevious'}));}}"
+                + "setTimeout(send,200);"
+                + "}catch(e){}};"
+                + "setInterval(scan,1200);scan();return 'installed';}catch(e){return 'err:'+String(e);}})();";
+        view.evaluateJavascript(js, value -> Log.d(TAG, "Native playback shim: " + value));
     }
 
     private void runDomProbe(WebView view, String stage) {
