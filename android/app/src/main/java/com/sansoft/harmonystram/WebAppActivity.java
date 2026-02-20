@@ -336,18 +336,21 @@ public class WebAppActivity extends AppCompatActivity {
             if (normalizedPath.startsWith("/")) {
                 normalizedPath = normalizedPath.substring(1);
             }
-            String assetPath = "public/" + assetPrefix + normalizedPath;
-            try {
-                String extension = MimeTypeMap.getFileExtensionFromUrl(assetPath);
-                String mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension);
-                if (mime == null) {
-                    mime = "application/octet-stream";
-                }
-                return new WebResourceResponse(mime, "UTF-8", getAssets().open(assetPath));
-            } catch (Exception ignored) {
-                Log.w(LOGCAT_HINT_TAG, "Asset miss (public assets): " + assetPath + " requestedPath=" + path);
-                return null;
+            String publicAssetPath = "public/" + assetPrefix + normalizedPath;
+            String rootAssetPath = assetPrefix + normalizedPath;
+            String extension = MimeTypeMap.getFileExtensionFromUrl(publicAssetPath);
+            String mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension);
+            if (mime == null) {
+                mime = "application/octet-stream";
             }
+
+            InputStream assetStream = openAssetWithFallback(publicAssetPath, rootAssetPath);
+            if (assetStream != null) {
+                return new WebResourceResponse(mime, "UTF-8", assetStream);
+            }
+
+            Log.w(LOGCAT_HINT_TAG, "Asset miss (public assets): " + publicAssetPath + " requestedPath=" + path);
+            return null;
         }
     }
 
@@ -370,15 +373,35 @@ public class WebAppActivity extends AppCompatActivity {
                 assetPath = "public/" + normalizedPath + "/index.html";
             }
 
+            String extension = MimeTypeMap.getFileExtensionFromUrl(assetPath);
+            String mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension);
+            if (mime == null) {
+                mime = "application/octet-stream";
+            }
+
+            String rootAssetPath = assetPath.startsWith("public/") ? assetPath.substring("public/".length()) : assetPath;
+            InputStream assetStream = openAssetWithFallback(assetPath, rootAssetPath);
+            if (assetStream != null) {
+                return new WebResourceResponse(mime, "UTF-8", assetStream);
+            }
+
+            Log.w(LOGCAT_HINT_TAG, "Asset miss (public route): " + assetPath + " requestedPath=" + path);
+            return null;
+        }
+    }
+
+    private InputStream openAssetWithFallback(String primaryPath, String fallbackPath) {
+        try {
+            return getAssets().open(primaryPath);
+        } catch (Exception ignoredPrimary) {
+            if (fallbackPath == null || fallbackPath.isEmpty() || fallbackPath.equals(primaryPath)) {
+                return null;
+            }
+
             try {
-                String extension = MimeTypeMap.getFileExtensionFromUrl(assetPath);
-                String mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension);
-                if (mime == null) {
-                    mime = "application/octet-stream";
-                }
-                return new WebResourceResponse(mime, "UTF-8", getAssets().open(assetPath));
-            } catch (Exception ignored) {
-                Log.w(LOGCAT_HINT_TAG, "Asset miss (public route): " + assetPath + " requestedPath=" + path);
+                Log.i(LOGCAT_HINT_TAG, "Falling back to root asset path: " + fallbackPath + " (primary missing: " + primaryPath + ")");
+                return getAssets().open(fallbackPath);
+            } catch (Exception ignoredFallback) {
                 return null;
             }
         }
