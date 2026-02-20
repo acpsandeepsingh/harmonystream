@@ -108,10 +108,10 @@ public class WebAppActivity extends AppCompatActivity {
 
     private class NativePlaybackBridge {
         @JavascriptInterface
-        public void play() { sendCommand(PlaybackService.ACTION_PLAY_PAUSE); }
+        public void play() { sendCommand(PlaybackService.ACTION_PLAY); }
 
         @JavascriptInterface
-        public void pause() { sendCommand(PlaybackService.ACTION_PLAY_PAUSE); }
+        public void pause() { sendCommand(PlaybackService.ACTION_PAUSE); }
 
         @JavascriptInterface
         public void next() { sendCommand(PlaybackService.ACTION_NEXT); }
@@ -122,18 +122,22 @@ public class WebAppActivity extends AppCompatActivity {
         @JavascriptInterface
         public void seek(long positionMs) {
             Intent stateIntent = new Intent(WebAppActivity.this, PlaybackService.class);
-            stateIntent.setAction(PlaybackService.ACTION_UPDATE_STATE);
+            stateIntent.setAction(PlaybackService.ACTION_SEEK);
             stateIntent.putExtra("position_ms", Math.max(0L, positionMs));
             startService(stateIntent);
         }
 
         @JavascriptInterface
         public void setQueue(String queueJson) {
+            Intent queueIntent = new Intent(WebAppActivity.this, PlaybackService.class);
+            queueIntent.setAction(PlaybackService.ACTION_SET_QUEUE);
             try {
-                JSONArray ignored = new JSONArray(queueJson == null ? "[]" : queueJson);
-                // Queue ownership remains in active native playback controller; this call is a contract hook.
+                JSONArray queue = new JSONArray(queueJson == null ? "[]" : queueJson);
+                queueIntent.putExtra("queue_json", queue.toString());
             } catch (JSONException ignored) {
+                queueIntent.putExtra("queue_json", "[]");
             }
+            startService(queueIntent);
         }
 
         @JavascriptInterface

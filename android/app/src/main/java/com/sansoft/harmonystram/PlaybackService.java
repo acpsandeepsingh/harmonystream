@@ -30,7 +30,11 @@ public class PlaybackService extends Service {
     public static final String ACTION_UPDATE_STATE = "com.sansoft.harmonystram.UPDATE_STATE";
     public static final String ACTION_PREVIOUS = "com.sansoft.harmonystram.PREVIOUS";
     public static final String ACTION_PLAY_PAUSE = "com.sansoft.harmonystram.PLAY_PAUSE";
+    public static final String ACTION_PLAY = "com.sansoft.harmonystram.PLAY";
+    public static final String ACTION_PAUSE = "com.sansoft.harmonystram.PAUSE";
     public static final String ACTION_NEXT = "com.sansoft.harmonystram.NEXT";
+    public static final String ACTION_SEEK = "com.sansoft.harmonystram.SEEK";
+    public static final String ACTION_SET_QUEUE = "com.sansoft.harmonystram.SET_QUEUE";
     public static final String ACTION_MEDIA_CONTROL = "com.sansoft.harmonystram.MEDIA_CONTROL";
     public static final String ACTION_GET_STATE = "com.sansoft.harmonystram.GET_STATE";
     public static final String ACTION_STATE_CHANGED = "com.sansoft.harmonystram.STATE_CHANGED";
@@ -82,28 +86,30 @@ public class PlaybackService extends Service {
         String action = intent.getAction();
         switch (action) {
             case ACTION_UPDATE_STATE:
-                currentTitle = valueOrDefault(intent.getStringExtra("title"), "HarmonyStream");
-                currentArtist = valueOrDefault(intent.getStringExtra("artist"), "");
-                isPlaying = intent.getBooleanExtra("playing", false);
-                currentPositionMs = Math.max(0, intent.getLongExtra("position_ms", 0));
-                currentDurationMs = Math.max(0, intent.getLongExtra("duration_ms", 0));
-
-                String artworkBase64 = intent.getStringExtra("artwork_base64");
-                if (artworkBase64 != null && !artworkBase64.isEmpty()) {
-                    try {
-                        byte[] data = Base64.decode(artworkBase64, Base64.DEFAULT);
-                        artworkBitmap = BitmapFactory.decodeByteArray(data, 0, data.length);
-                    } catch (Exception ignored) {
-                    }
-                }
+                applyStateUpdate(intent);
                 persistState();
                 updateNotification();
                 broadcastState();
                 break;
             case ACTION_PREVIOUS:
             case ACTION_PLAY_PAUSE:
+            case ACTION_PLAY:
+            case ACTION_PAUSE:
             case ACTION_NEXT:
                 dispatchActionToUi(action);
+                break;
+            case ACTION_SEEK:
+                currentPositionMs = Math.max(0L, intent.getLongExtra("position_ms", currentPositionMs));
+                if (currentDurationMs > 0L) {
+                    currentPositionMs = Math.min(currentDurationMs, currentPositionMs);
+                }
+                persistState();
+                updateNotification();
+                broadcastState();
+                dispatchActionToUi(action, intent);
+                break;
+            case ACTION_SET_QUEUE:
+                dispatchActionToUi(action, intent);
                 break;
             case ACTION_GET_STATE:
                 broadcastState();
@@ -140,10 +146,49 @@ public class PlaybackService extends Service {
     }
 
     private void dispatchActionToUi(String action) {
+        dispatchActionToUi(action, null);
+    }
+
+    private void dispatchActionToUi(String action, @Nullable Intent sourceIntent) {
         Intent intent = new Intent(ACTION_MEDIA_CONTROL);
         intent.setPackage(getPackageName());
         intent.putExtra("action", action);
+        if (sourceIntent != null) {
+            if (sourceIntent.hasExtra("position_ms")) {
+                intent.putExtra("position_ms", Math.max(0L, sourceIntent.getLongExtra("position_ms", 0L)));
+            }
+            if (sourceIntent.hasExtra("queue_json")) {
+                intent.putExtra("queue_json", valueOrDefault(sourceIntent.getStringExtra("queue_json"), "[]"));
+            }
+        }
         sendBroadcast(intent);
+    }
+
+    private void applyStateUpdate(Intent intent) {
+        if (intent.hasExtra("title")) {
+            currentTitle = valueOrDefault(intent.getStringExtra("title"), currentTitle);
+        }
+        if (intent.hasExtra("artist")) {
+            currentArtist = valueOrDefault(intent.getStringExtra("artist"), currentArtist);
+        }
+        if (intent.hasExtra("playing")) {
+            isPlaying = intent.getBooleanExtra("playing", isPlaying);
+        }
+        if (intent.hasExtra("position_ms")) {
+            currentPositionMs = Math.max(0L, intent.getLongExtra("position_ms", currentPositionMs));
+        }
+        if (intent.hasExtra("duration_ms")) {
+            currentDurationMs = Math.max(0L, intent.getLongExtra("duration_ms", currentDurationMs));
+        }
+
+        String artworkBase64 = intent.getStringExtra("artwork_base64");
+        if (artworkBase64 != null && !artworkBase64.isEmpty()) {
+            try {
+                byte[] data = Base64.decode(artworkBase64, Base64.DEFAULT);
+                artworkBitmap = BitmapFactory.decodeByteArray(data, 0, data.length);
+            } catch (Exception ignored) {
+            }
+        }
     }
 
     private void broadcastState() {
