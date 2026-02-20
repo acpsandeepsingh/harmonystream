@@ -1,6 +1,7 @@
 package com.sansoft.harmonystram;
 
 import android.annotation.SuppressLint;
+import android.content.res.AssetManager;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -11,7 +12,9 @@ import android.os.Bundle;
 import android.view.View;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
+import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.widget.ProgressBar;
@@ -29,7 +32,8 @@ public class WebAppActivity extends AppCompatActivity {
 
     public static final String EXTRA_START_URL = "start_url";
     private static final String BUNDLED_HOME_URL = "https://appassets.androidplatform.net/assets/public/index.html";
-    private static final String FALLBACK_SHELL_URL = "https://appassets.androidplatform.net/assets/web/offline_shell.html";
+    private static final String FALLBACK_SHELL_FILE_URL = "file:///android_asset/web/offline_shell.html";
+    private static final String BUNDLED_HOME_ASSET_PATH = "public/index.html";
 
     private WebView webView;
     private ProgressBar loadingIndicator;
@@ -95,7 +99,7 @@ public class WebAppActivity extends AppCompatActivity {
             if (startUrl != null && startUrl.startsWith("https://appassets.androidplatform.net/assets/")) {
                 webView.loadUrl(startUrl);
             } else {
-                webView.loadUrl(BUNDLED_HOME_URL);
+                webView.loadUrl(resolveBundledEntryUrl());
             }
         }
 
@@ -153,6 +157,16 @@ public class WebAppActivity extends AppCompatActivity {
     private void dispatchToWeb(String js) {
         if (webView == null) return;
         webView.post(() -> webView.evaluateJavascript(js, null));
+    }
+
+    private String resolveBundledEntryUrl() {
+        AssetManager assets = getAssets();
+        try {
+            assets.open(BUNDLED_HOME_ASSET_PATH).close();
+            return BUNDLED_HOME_URL;
+        } catch (Exception ignored) {
+            return FALLBACK_SHELL_FILE_URL;
+        }
     }
 
     private class NativePlaybackBridge {
@@ -261,6 +275,22 @@ public class WebAppActivity extends AppCompatActivity {
         }
 
         @Override
+        public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
+            super.onReceivedError(view, request, error);
+            if (request != null && request.isForMainFrame()) {
+                view.loadUrl(FALLBACK_SHELL_FILE_URL);
+            }
+        }
+
+        @Override
+        public void onReceivedHttpError(WebView view, WebResourceRequest request, WebResourceResponse errorResponse) {
+            super.onReceivedHttpError(view, request, errorResponse);
+            if (request != null && request.isForMainFrame() && errorResponse != null && errorResponse.getStatusCode() >= 400) {
+                view.loadUrl(FALLBACK_SHELL_FILE_URL);
+            }
+        }
+
+        @Override
         public void onPageStarted(WebView view, String url, Bitmap favicon) {
             super.onPageStarted(view, url, favicon);
             loadingIndicator.setVisibility(View.VISIBLE);
@@ -276,7 +306,7 @@ public class WebAppActivity extends AppCompatActivity {
             if (url != null && url.contains("appassets.androidplatform.net")) {
                 return;
             }
-            webView.loadUrl(FALLBACK_SHELL_URL);
+            webView.loadUrl(FALLBACK_SHELL_FILE_URL);
         }
     }
 }
