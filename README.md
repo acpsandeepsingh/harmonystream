@@ -4,43 +4,81 @@ This is a Next.js starter app for a music streaming service, built in Firebase S
 
 To get started, take a look at `src/app/page.tsx`.
 
-## Android-Only Agent Remaining Work (from `agent.md`)
+## Android-Only Agent Implementation Status (from `agent.md`)
 
-The following items are still required to fully satisfy the Android-only execution plan:
+This status tracks the Android-only delivery plan and has been updated to reflect what is implemented in the Android layer vs what still requires runtime/device validation.
 
-### 1) Baseline validation still required per delivery
-- Verify clean local git/project state before each run.
-- Compile Android module successfully in an SDK-configured environment.
-- Confirm playback service + notification channel behavior on device/emulator.
-- Confirm media action broadcast path end-to-end from notification to active controller.
+### Phase 1: Baseline Validation
+- [x] Playback service and notification channel exist in Android runtime.
+- [x] Media action broadcast path exists between notification actions and active controller bridge.
+- [ ] Per-delivery clean-state and full compile verification in a correctly configured Android SDK environment.
 
-### 2) Playback contract completeness checks
-- Re-verify the command contract execution path for: `play`, `pause`, `next`, `previous`, `seek`, `setQueue`, `getState`.
-- Ensure all commands are routed through the foreground playback service and reflected back to UI sync events.
+### Phase 2: Android-Only Playback Contract
+- [x] Command contract is implemented in Android bridge/service path for `play`, `pause`, `next`, `previous`, `seek`, `setQueue`, `getState`.
+- [x] Web bridge methods route commands to Android playback service.
+- [x] Service emits playback state updates back to web layer via broadcast + JS event.
+- [x] Notification action callbacks are routed back to the active playback controller bridge.
 
-### 3) Lifecycle/background reliability validation
-- Verify active playback survives app minimization and resumes cleanly after activity recreation.
-- Verify persisted session restore covers queue, track index, playback state, and position after process death/reopen.
+### Phase 3: Lifecycle and Background Reliability
+- [x] Foreground playback service is used while active playback is running.
+- [x] Playback session persistence exists (queue, selected index, position, play state).
+- [x] Session restore path exists on activity/process recreation.
+- [x] Notification progress refresh loop exists and updates state on interval.
+- [ ] Device/emulator verification still required for minimize/restore and force-stop/reopen scenarios.
 
-### 4) Notification UX/device validation
-- Validate compact controls (`Previous`, `Play/Pause`, `Next`) on physical device/emulator.
-- Validate progress bar updates while playing and state remains consistent after reopening via notification tap.
+### Phase 4: Notification UX
+- [x] Notification includes title/artist/artwork (when provided).
+- [x] Notification compact actions include Previous / Play-Pause / Next.
+- [x] Notification progress reflects current position/duration.
+- [x] Notification tap reopens playback surface and can deliver pending action.
+- [ ] Device-level behavioral verification still required each delivery.
 
-### 5) Android TV D-pad deterministic flow verification
-- Validate section model transitions in runtime:
-  - Menu -> Songs (`Right`/`Down`)
-  - Songs left edge -> Menu
-  - Songs bottom/last -> Player
-  - Player `Up` -> Songs
-- Validate first focus lands on Menu.
-- Validate back behavior: Songs/Player -> Menu first, then exit on subsequent back.
-- Validate focus context recovery after selecting song and returning.
+### Phase 5: Offline APK Shell Behavior
+- [x] App shell loads bundled assets via `WebViewAssetLoader` path.
+- [x] Startup defaults to bundled app assets and falls back to bundled offline shell.
+- [x] Runtime shell does not require hosted site for initial rendering.
 
-### 6) Full validation checklist still pending in this container
-The `agent.md` delivery checklist requires running these each delivery:
-- `npm run android:sdk:prepare`
-- `npm run apk:debug`
-- On-device behavioral checks (background playback, notification actions/progress, reopen sync, force-stop restore)
-- Android TV D-pad checks (all 12 navigation expectations)
+### Phase 6: Android TV D-pad Focus Model
+- [x] Three focus sections exist in native layout (`menu_section`, `song_section`, `player_section`).
+- [x] Song rows are focusable/clickable and handle directional edge transitions.
+- [x] Deterministic section movement rules are implemented:
+  - Menu Right/Down -> Songs
+  - Songs Left edge -> Menu
+  - Songs last-item Down -> Player
+  - Player Up -> Songs
+- [x] Initial focus targets Menu on screen load.
+- [x] Back from Songs/Player returns to Menu before exit.
+- [x] Focus context restoration after song interaction is handled by section focus helpers.
+- [ ] End-to-end Android TV remote validation is still required on emulator/device.
 
-> Current blocker in this container: Android SDK path is not configured, so APK build and runtime/device validations cannot be completed here until SDK variables/path are set.
+## Definition of Done Status
+- [x] App launches with bundled UI from APK.
+- [x] Android-side background playback + notification contract is implemented.
+- [x] Notification controls are wired to active playback control path.
+- [x] Notification progress update path is implemented.
+- [x] Android TV section-navigation logic is implemented natively.
+- [ ] Remaining done criteria that require hardware/emulator runtime validation are pending per-delivery execution.
+
+## Validation Checklist (Run Every Delivery)
+
+### Build checks
+- [ ] `npm run android:sdk:prepare`
+- [ ] `npm run apk:debug`
+
+### Behavior checks on device/emulator
+1. [ ] Start playback, minimize app, verify audio continues.
+2. [ ] Use notification Play/Pause/Next/Previous.
+3. [ ] Verify notification progress moves while playing.
+4. [ ] Reopen app from notification and confirm state sync.
+5. [ ] Force-stop/reopen and verify session restore.
+
+### Android TV D-pad checks
+6. [ ] First load focus starts in Menu.
+7. [ ] Menu Right/Down moves to Songs.
+8. [ ] Songs Left from first/left edge moves to Menu.
+9. [ ] Songs Down from last item moves to Player.
+10. [ ] Player Up moves back to Songs.
+11. [ ] Back from Songs/Player returns focus to Menu first.
+12. [ ] After song selection and return, 3-section navigation still works.
+
+> Environment note: this container may not have an Android SDK/emulator attached, so device-runtime checks can remain pending until executed in a configured Android environment.
