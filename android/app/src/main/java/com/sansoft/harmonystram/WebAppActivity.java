@@ -128,16 +128,20 @@ public class WebAppActivity extends AppCompatActivity {
         });
         webView.setWebViewClient(new HarmonyWebViewClient(assetLoader));
 
+        logStartupDiagnostics(getIntent());
+
         if (savedInstanceState != null) {
             webView.restoreState(savedInstanceState);
         } else {
             String startUrl = getIntent().getStringExtra(EXTRA_START_URL);
             if (startUrl != null && startUrl.startsWith("https://appassets.androidplatform.net/assets/")) {
                 Log.i(TAG, "Loading explicit start URL: " + startUrl);
+                logStartupLoadPlan(startUrl, startUrl);
                 webView.loadUrl(startUrl);
             } else {
                 String resolvedUrl = resolveBundledEntryUrl();
                 Log.i(TAG, "Loading resolved entry URL: " + resolvedUrl);
+                logStartupLoadPlan(resolvedUrl, startUrl);
                 webView.loadUrl(resolvedUrl);
             }
         }
@@ -242,6 +246,53 @@ public class WebAppActivity extends AppCompatActivity {
         }
         loadingFallbackShell = true;
         view.loadUrl(FALLBACK_SHELL_URL);
+    }
+
+    private String contentLogPrefix() {
+        return "pkg=" + getPackageName() + " ";
+    }
+
+    private void logContentInfo(String message) {
+        Log.i(LOGCAT_HINT_TAG, contentLogPrefix() + message);
+    }
+
+    private void logContentWarn(String message) {
+        Log.w(LOGCAT_HINT_TAG, contentLogPrefix() + message);
+    }
+
+    private void logContentError(String message) {
+        Log.e(LOGCAT_HINT_TAG, contentLogPrefix() + message);
+    }
+
+    private void logStartupLoadPlan(String selectedUrl, String requestedStartUrl) {
+        logContentInfo("STARTUP_LOAD_REPORT_BEGIN");
+        logContentInfo("startup.requestedStartUrl=" + requestedStartUrl);
+        logContentInfo("startup.selectedMainFrameUrl=" + selectedUrl);
+        logContentInfo("startup.fallbackShellUrl=" + FALLBACK_SHELL_URL);
+        logContentInfo("startup.expectedAsset[1]=" + BUNDLED_HOME_ASSET_PATH);
+        logContentInfo("startup.expectedAsset[2]=" + BUNDLED_HOME_ASSET_PATH_BASE_PATH);
+        logContentInfo("startup.expectedAsset[3]=assets/web/offline_shell.html");
+        logContentInfo("startup.expectedRequestPattern[1]=https://appassets.androidplatform.net/");
+        logContentInfo("startup.expectedRequestPattern[2]=https://appassets.androidplatform.net/_next/");
+        logContentInfo("startup.expectedRequestPattern[3]=https://appassets.androidplatform.net/harmonystream/");
+        logContentInfo("STARTUP_LOAD_REPORT_END");
+    }
+
+    private void logStartupDiagnostics(Intent launchIntent) {
+        String requestedStartUrl = launchIntent == null ? null : launchIntent.getStringExtra(EXTRA_START_URL);
+        logContentInfo("Startup diagnostics requestedStartUrl=" + requestedStartUrl);
+        logAssetPresence(BUNDLED_HOME_ASSET_PATH);
+        logAssetPresence(BUNDLED_HOME_ASSET_PATH_BASE_PATH);
+        logAssetPresence("assets/web/offline_shell.html");
+    }
+
+    private void logAssetPresence(String assetPath) {
+        try {
+            getAssets().open(assetPath).close();
+            logContentInfo("Asset available: " + assetPath);
+        } catch (Exception exception) {
+            logContentError("Asset missing: " + assetPath + " reason=" + exception.getClass().getSimpleName());
+        }
     }
 
     private String resolveBundledEntryUrl() {
