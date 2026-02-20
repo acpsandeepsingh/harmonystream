@@ -50,6 +50,7 @@ public class WebAppActivity extends AppCompatActivity {
             + "<p>Bundled app shell is active. Build web assets into <code>android/app/src/main/assets/public</code>"
             + " to load the full web player UI offline.</p></main></body></html>";
     private static final String TAG = "HarmonyWebAppActivity";
+    private static final String LOGCAT_HINT_TAG = "HarmonyContentDebug";
     private static final long MAIN_FRAME_TIMEOUT_MS = 15000L;
 
     private WebView webView;
@@ -247,12 +248,16 @@ public class WebAppActivity extends AppCompatActivity {
         AssetManager assets = getAssets();
         try {
             assets.open(BUNDLED_HOME_ASSET_PATH).close();
+            Log.i(LOGCAT_HINT_TAG, "Resolved bundled entry from asset: " + BUNDLED_HOME_ASSET_PATH);
             return BUNDLED_HOME_URL;
         } catch (Exception ignored) {
+            Log.w(LOGCAT_HINT_TAG, "Missing bundled entry asset: " + BUNDLED_HOME_ASSET_PATH);
             try {
                 assets.open(BUNDLED_HOME_ASSET_PATH_BASE_PATH).close();
+                Log.i(LOGCAT_HINT_TAG, "Resolved bundled entry from base-path asset: " + BUNDLED_HOME_ASSET_PATH_BASE_PATH);
                 return BUNDLED_HOME_URL_BASE_PATH;
             } catch (Exception ignoredBasePathBuild) {
+                Log.e(LOGCAT_HINT_TAG, "Missing base-path bundled entry asset: " + BUNDLED_HOME_ASSET_PATH_BASE_PATH + "; falling back to offline shell");
                 return FALLBACK_SHELL_URL;
             }
         }
@@ -280,6 +285,7 @@ public class WebAppActivity extends AppCompatActivity {
                 }
                 return new WebResourceResponse(mime, "UTF-8", getAssets().open(assetPath));
             } catch (Exception ignored) {
+                Log.w(LOGCAT_HINT_TAG, "Asset miss (public assets): " + assetPath + " requestedPath=" + path);
                 return null;
             }
         }
@@ -312,6 +318,7 @@ public class WebAppActivity extends AppCompatActivity {
                 }
                 return new WebResourceResponse(mime, "UTF-8", getAssets().open(assetPath));
             } catch (Exception ignored) {
+                Log.w(LOGCAT_HINT_TAG, "Asset miss (public route): " + assetPath + " requestedPath=" + path);
                 return null;
             }
         }
@@ -410,7 +417,15 @@ public class WebAppActivity extends AppCompatActivity {
 
         @Override
         public android.webkit.WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
-            return assetLoader.shouldInterceptRequest(request.getUrl());
+            if (request == null || request.getUrl() == null) {
+                return null;
+            }
+            android.net.Uri requestUri = request.getUrl();
+            android.webkit.WebResourceResponse response = assetLoader.shouldInterceptRequest(requestUri);
+            if (response == null) {
+                Log.w(LOGCAT_HINT_TAG, "No intercept match for request: " + requestUri + " method=" + request.getMethod());
+            }
+            return response;
         }
 
         @Override
