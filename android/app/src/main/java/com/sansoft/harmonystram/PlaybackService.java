@@ -11,6 +11,7 @@ import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.os.Build;
+import android.util.Log;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
@@ -23,6 +24,8 @@ import androidx.core.content.ContextCompat;
 import androidx.media.app.NotificationCompat.MediaStyle;
 
 public class PlaybackService extends Service {
+
+    private static final String TAG = "PlaybackService";
 
     public static final String CHANNEL_ID = "harmonystream_playback";
     public static final int NOTIFICATION_ID = 1001;
@@ -322,8 +325,13 @@ public class PlaybackService extends Service {
         Notification notification = builder.build();
 
         if (!hasNotificationPermission()) {
+            Log.w(TAG, "POST_NOTIFICATIONS permission is not granted. Continuing playback service without drawer notification.");
             if (isPlaying) {
-                stopSelf();
+                try {
+                    startForeground(NOTIFICATION_ID, notification);
+                } catch (SecurityException securityException) {
+                    Log.e(TAG, "Unable to start foreground playback without notification permission", securityException);
+                }
             }
             return;
         }
@@ -335,10 +343,8 @@ public class PlaybackService extends Service {
                 stopForeground(false);
                 NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, notification);
             }
-        } catch (SecurityException ignored) {
-            if (isPlaying) {
-                stopSelf();
-            }
+        } catch (SecurityException securityException) {
+            Log.e(TAG, "Unable to publish playback notification", securityException);
         }
     }
 
