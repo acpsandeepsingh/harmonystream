@@ -53,6 +53,16 @@ public class WebAppActivity extends AppCompatActivity {
         }
     };
 
+    private final BroadcastReceiver mediaActionReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (intent == null || !PlaybackService.ACTION_MEDIA_CONTROL.equals(intent.getAction())) {
+                return;
+            }
+            dispatchPendingMediaAction(intent.getStringExtra("action"));
+        }
+    };
+
     @SuppressLint({"SetJavaScriptEnabled", "JavascriptInterface"})
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -99,6 +109,45 @@ public class WebAppActivity extends AppCompatActivity {
         } else {
             registerReceiver(serviceStateReceiver, filter);
         }
+
+        IntentFilter mediaFilter = new IntentFilter(PlaybackService.ACTION_MEDIA_CONTROL);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(mediaActionReceiver, mediaFilter, Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            registerReceiver(mediaActionReceiver, mediaFilter);
+        }
+
+        dispatchPendingMediaAction(getIntent().getStringExtra(PlaybackService.EXTRA_PENDING_MEDIA_ACTION));
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        if (intent == null) {
+            return;
+        }
+        dispatchPendingMediaAction(intent.getStringExtra(PlaybackService.EXTRA_PENDING_MEDIA_ACTION));
+    }
+
+    private void dispatchPendingMediaAction(String action) {
+        if (action == null || action.isEmpty()) {
+            return;
+        }
+
+        JSONObject payload = new JSONObject();
+        try {
+            payload.put("action", action);
+        } catch (JSONException ignored) {
+        }
+        dispatchToWeb("window.dispatchEvent(new CustomEvent('nativePlaybackCommand', { detail: " + payload + " }));");
+        clearPendingMediaAction();
+    }
+
+    private void clearPendingMediaAction() {
+        Intent clearIntent = new Intent(this, PlaybackService.class);
+        clearIntent.setAction(PlaybackService.ACTION_CLEAR_PENDING_MEDIA_ACTION);
+        startService(clearIntent);
     }
 
     private void dispatchToWeb(String js) {
@@ -124,6 +173,7 @@ public class WebAppActivity extends AppCompatActivity {
             Intent stateIntent = new Intent(WebAppActivity.this, PlaybackService.class);
             stateIntent.setAction(PlaybackService.ACTION_SEEK);
             stateIntent.putExtra("position_ms", Math.max(0L, positionMs));
+            stateIntent.putExtra("source", "web");
             startService(stateIntent);
         }
 
@@ -134,8 +184,10 @@ public class WebAppActivity extends AppCompatActivity {
             try {
                 JSONArray queue = new JSONArray(queueJson == null ? "[]" : queueJson);
                 queueIntent.putExtra("queue_json", queue.toString());
+                queueIntent.putExtra("source", "web");
             } catch (JSONException ignored) {
                 queueIntent.putExtra("queue_json", "[]");
+                queueIntent.putExtra("source", "web");
             }
             startService(queueIntent);
         }
@@ -150,6 +202,7 @@ public class WebAppActivity extends AppCompatActivity {
         private void sendCommand(String action) {
             Intent serviceIntent = new Intent(WebAppActivity.this, PlaybackService.class);
             serviceIntent.setAction(action);
+            serviceIntent.putExtra("source", "web");
             startService(serviceIntent);
         }
     }
@@ -173,6 +226,10 @@ public class WebAppActivity extends AppCompatActivity {
     protected void onDestroy() {
         try {
             unregisterReceiver(serviceStateReceiver);
+        } catch (IllegalArgumentException ignored) {
+        }
+        try {
+            unregisterReceiver(mediaActionReceiver);
         } catch (IllegalArgumentException ignored) {
         }
         if (webView != null) {
