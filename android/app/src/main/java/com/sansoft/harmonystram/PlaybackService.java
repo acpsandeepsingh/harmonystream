@@ -38,6 +38,7 @@ public class PlaybackService extends Service {
     public static final String ACTION_MEDIA_CONTROL = "com.sansoft.harmonystram.MEDIA_CONTROL";
     public static final String ACTION_GET_STATE = "com.sansoft.harmonystram.GET_STATE";
     public static final String ACTION_STATE_CHANGED = "com.sansoft.harmonystram.STATE_CHANGED";
+    public static final String ACTION_CLEAR_PENDING_MEDIA_ACTION = "com.sansoft.harmonystram.CLEAR_PENDING_MEDIA_ACTION";
     public static final String EXTRA_PENDING_MEDIA_ACTION = "pending_media_action";
 
     private static final String PREFS_NAME = "playback_service_state";
@@ -46,6 +47,7 @@ public class PlaybackService extends Service {
     private static final String KEY_PLAYING = "playing";
     private static final String KEY_POSITION_MS = "position_ms";
     private static final String KEY_DURATION_MS = "duration_ms";
+    private static final String KEY_PENDING_MEDIA_ACTION = "pending_media_action";
 
     private String currentTitle = "HarmonyStream";
     private String currentArtist = "";
@@ -53,6 +55,7 @@ public class PlaybackService extends Service {
     private long currentPositionMs = 0;
     private long currentDurationMs = 0;
     private Bitmap artworkBitmap;
+    private String pendingMediaAction;
 
     private final Handler progressHandler = new Handler(Looper.getMainLooper());
     private final Runnable progressTick = new Runnable() {
@@ -114,6 +117,11 @@ public class PlaybackService extends Service {
             case ACTION_GET_STATE:
                 broadcastState();
                 break;
+            case ACTION_CLEAR_PENDING_MEDIA_ACTION:
+                pendingMediaAction = null;
+                persistState();
+                updateNotification();
+                break;
             default:
                 break;
         }
@@ -138,6 +146,9 @@ public class PlaybackService extends Service {
     private PendingIntent createContentIntent() {
         Intent launchIntent = new Intent(this, WebAppActivity.class);
         launchIntent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        if (pendingMediaAction != null && !pendingMediaAction.isEmpty()) {
+            launchIntent.putExtra(EXTRA_PENDING_MEDIA_ACTION, pendingMediaAction);
+        }
         int flags = PendingIntent.FLAG_UPDATE_CURRENT;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             flags |= PendingIntent.FLAG_IMMUTABLE;
@@ -150,6 +161,8 @@ public class PlaybackService extends Service {
     }
 
     private void dispatchActionToUi(String action, @Nullable Intent sourceIntent) {
+        pendingMediaAction = action;
+        persistState();
         Intent intent = new Intent(ACTION_MEDIA_CONTROL);
         intent.setPackage(getPackageName());
         intent.putExtra("action", action);
@@ -283,6 +296,7 @@ public class PlaybackService extends Service {
                 .putBoolean(KEY_PLAYING, isPlaying)
                 .putLong(KEY_POSITION_MS, currentPositionMs)
                 .putLong(KEY_DURATION_MS, currentDurationMs)
+                .putString(KEY_PENDING_MEDIA_ACTION, pendingMediaAction)
                 .apply();
     }
 
@@ -293,6 +307,7 @@ public class PlaybackService extends Service {
         isPlaying = prefs.getBoolean(KEY_PLAYING, false);
         currentPositionMs = Math.max(0, prefs.getLong(KEY_POSITION_MS, 0));
         currentDurationMs = Math.max(0, prefs.getLong(KEY_DURATION_MS, 0));
+        pendingMediaAction = prefs.getString(KEY_PENDING_MEDIA_ACTION, null);
     }
 
     private void createNotificationChannel() {
