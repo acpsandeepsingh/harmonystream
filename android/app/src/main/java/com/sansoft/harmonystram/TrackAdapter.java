@@ -1,5 +1,6 @@
 package com.sansoft.harmonystram;
 
+import android.view.KeyEvent;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -15,6 +16,10 @@ public class TrackAdapter extends RecyclerView.Adapter<TrackAdapter.TrackViewHol
 
     public interface OnTrackClickListener {
         void onTrackClick(int position);
+
+        void onTrackFocusLeftEdge();
+
+        void onTrackFocusBottomEdge();
     }
 
     private final List<Song> tracks = new ArrayList<>();
@@ -48,6 +53,20 @@ public class TrackAdapter extends RecyclerView.Adapter<TrackAdapter.TrackViewHol
         holder.title.setText(item.getTitle());
         holder.subtitle.setText(item.getArtist());
         holder.itemView.setOnClickListener(v -> listener.onTrackClick(position));
+        holder.itemView.setOnKeyListener((v, keyCode, event) -> {
+            if (event.getAction() != KeyEvent.ACTION_DOWN) {
+                return false;
+            }
+            if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
+                listener.onTrackFocusLeftEdge();
+                return true;
+            }
+            if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN && position == tracks.size() - 1) {
+                listener.onTrackFocusBottomEdge();
+                return true;
+            }
+            return false;
+        });
     }
 
     @Override

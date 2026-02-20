@@ -72,6 +72,13 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
     private Spinner sourceSpinner;
     private Spinner genreSpinner;
     private Button searchButton;
+    private Button libraryButton;
+    private Button profileButton;
+    private Button previousButton;
+    private Button nextButton;
+    private View menuSection;
+    private View songSection;
+    private View playerSection;
 
     private final List<Song> tracks = new ArrayList<>();
     private final List<Song> allTracks = new ArrayList<>();
@@ -174,15 +181,18 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         playPauseButton = findViewById(R.id.btn_play_pause);
         repeatModeButton = findViewById(R.id.btn_repeat_mode);
         queueButton = findViewById(R.id.btn_queue);
-        Button previousButton = findViewById(R.id.btn_previous);
-        Button nextButton = findViewById(R.id.btn_next);
+        previousButton = findViewById(R.id.btn_previous);
+        nextButton = findViewById(R.id.btn_next);
         Button createPlaylistButton = findViewById(R.id.btn_create_playlist);
         Button addToPlaylistButton = findViewById(R.id.btn_add_to_playlist);
-        Button libraryButton = findViewById(R.id.btn_library);
-        Button profileButton = findViewById(R.id.btn_profile);
+        libraryButton = findViewById(R.id.btn_library);
+        profileButton = findViewById(R.id.btn_profile);
         Button fullscreenButton = findViewById(R.id.btn_fullscreen);
         Button playbackDiagnosticsButton = findViewById(R.id.btn_playback_diagnostics);
         RecyclerView trackList = findViewById(R.id.track_list);
+        menuSection = findViewById(R.id.menu_section);
+        songSection = findViewById(R.id.song_section);
+        playerSection = findViewById(R.id.player_section);
 
         userSessionStore = new NativeUserSessionStore(this);
         updateAccountStatusText();
@@ -282,6 +292,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         }
         handlePendingMediaControlAction(getIntent());
         stateSyncHandler.post(stateSyncRunnable);
+        focusMenuSection();
     }
 
     private void initializeEmbeddedYouTubePlayerSafely() {
@@ -1626,6 +1637,26 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         }
     }
 
+
+    @Override
+    public void onBackPressed() {
+        if ((playPauseButton != null && playPauseButton.hasFocus())
+                || (queueButton != null && queueButton.hasFocus())
+                || (previousButton != null && previousButton.hasFocus())
+                || (nextButton != null && nextButton.hasFocus())) {
+            focusMenuSection();
+            return;
+        }
+
+        RecyclerView trackList = findViewById(R.id.track_list);
+        if (trackList != null && trackList.hasFocus()) {
+            focusMenuSection();
+            return;
+        }
+
+        super.onBackPressed();
+    }
+
     @Override
     protected void onStart() {
         super.onStart();
@@ -1647,15 +1678,96 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         super.onPause();
     }
 
+
+    @Override
+    public void onTrackFocusLeftEdge() {
+        focusMenuSection();
+    }
+
+    @Override
+    public void onTrackFocusBottomEdge() {
+        focusPlayerSection();
+    }
+
+    private void focusMenuSection() {
+        if (libraryButton != null) {
+            libraryButton.requestFocus();
+        } else if (menuSection != null) {
+            menuSection.requestFocus();
+        }
+    }
+
+    private void focusSongSection() {
+        RecyclerView trackList = findViewById(R.id.track_list);
+        if (trackList != null && trackList.getLayoutManager() != null && trackAdapter != null && trackAdapter.getItemCount() > 0) {
+            trackList.post(() -> {
+                RecyclerView.ViewHolder holder = trackList.findViewHolderForAdapterPosition(0);
+                if (holder != null) {
+                    holder.itemView.requestFocus();
+                } else {
+                    trackList.scrollToPosition(0);
+                    trackList.post(() -> {
+                        RecyclerView.ViewHolder delayedHolder = trackList.findViewHolderForAdapterPosition(0);
+                        if (delayedHolder != null) delayedHolder.itemView.requestFocus();
+                    });
+                }
+            });
+            return;
+        }
+        if (songSection != null) songSection.requestFocus();
+    }
+
+    private void focusPlayerSection() {
+        if (playPauseButton != null) {
+            playPauseButton.requestFocus();
+        } else if (playerSection != null) {
+            playerSection.requestFocus();
+        }
+    }
+
     private void applyTvFocusPolish() {
-        if (searchInput != null) searchInput.setNextFocusDownId(R.id.track_list);
-        if (searchButton != null) searchButton.setNextFocusDownId(R.id.track_list);
-        if (playPauseButton != null) playPauseButton.setNextFocusUpId(R.id.track_list);
-        if (queueButton != null) queueButton.setNextFocusUpId(R.id.track_list);
+        if (searchInput != null) {
+            searchInput.setNextFocusDownId(R.id.track_list);
+            searchInput.setOnKeyListener((v, keyCode, event) -> {
+                if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
+                if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
+                    focusSongSection();
+                    return true;
+                }
+                return false;
+            });
+        }
+
+        if (libraryButton != null) {
+            libraryButton.setOnKeyListener((v, keyCode, event) -> {
+                if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
+                if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT || keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
+                    focusSongSection();
+                    return true;
+                }
+                return false;
+            });
+        }
+
+        if (profileButton != null) {
+            profileButton.setOnKeyListener((v, keyCode, event) -> {
+                if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
+                if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
+                    focusSongSection();
+                    return true;
+                }
+                return false;
+            });
+        }
 
         if (playPauseButton != null) {
+            playPauseButton.setNextFocusUpId(R.id.track_list);
             playPauseButton.setOnKeyListener((v, keyCode, event) -> {
                 if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
+                if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
+                    focusSongSection();
+                    return true;
+                }
                 if (keyCode == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE || keyCode == KeyEvent.KEYCODE_SPACE || keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER) {
                     togglePlayPause();
                     return true;
@@ -1663,6 +1775,41 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
                 return false;
             });
         }
+
+        if (queueButton != null) {
+            queueButton.setNextFocusUpId(R.id.track_list);
+            queueButton.setOnKeyListener((v, keyCode, event) -> {
+                if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
+                if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
+                    focusSongSection();
+                    return true;
+                }
+                return false;
+            });
+        }
+
+        if (previousButton != null) {
+            previousButton.setOnKeyListener((v, keyCode, event) -> {
+                if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
+                if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
+                    focusSongSection();
+                    return true;
+                }
+                return false;
+            });
+        }
+
+        if (nextButton != null) {
+            nextButton.setOnKeyListener((v, keyCode, event) -> {
+                if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
+                if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
+                    focusSongSection();
+                    return true;
+                }
+                return false;
+            });
+        }
+
         if (playerView != null) {
             playerView.setUseController(true);
             playerView.setControllerAutoShow(true);
