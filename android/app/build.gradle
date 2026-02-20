@@ -180,15 +180,23 @@ tasks.register("syncBundledWebAssets") {
 
         File indexFile = new File(bundledAssetsPublicDir, "index.html")
         File nextDir = new File(bundledAssetsPublicDir, "_next")
+        File nextAliasDir = new File(bundledAssetsPublicDir, "next")
+        if (nextDir.exists()) {
+            delete(nextAliasDir)
+            copy {
+                from(nextDir)
+                into(nextAliasDir)
+            }
+        }
         if (!indexFile.exists()) {
             throw new GradleException("Bundled web asset check failed: missing ${indexFile}. APK would blank-screen.")
         }
-        if (!nextDir.exists()) {
-            throw new GradleException("Bundled web asset check failed: missing ${nextDir}. APK would blank-screen due to missing chunks.")
+        if (!nextDir.exists() && !nextAliasDir.exists()) {
+            throw new GradleException("Bundled web asset check failed: missing both ${nextDir} and ${nextAliasDir}. APK would blank-screen due to missing chunks.")
         }
 
         println("[HarmonyBuild] Bundled web assets synced: ${bundledAssetsPublicDir}")
-        println("[HarmonyBuild] Asset checks passed: index.html and _next directory present")
+        println("[HarmonyBuild] Asset checks passed: index.html and next chunk directory present (_next or next)")
     }
 }
 
