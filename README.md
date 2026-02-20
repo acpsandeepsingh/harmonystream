@@ -4,33 +4,6 @@ This is a Next.js starter app for a music streaming service, built in Firebase S
 
 To get started, take a look at `src/app/page.tsx`.
 
-
-## Native Android Rewrite Status
-
-For a clear website-to-native parity plan, see `docs/native-android-website-parity.md`.
-
-### Android YouTube API key setup (native)
-
-The native Android app now reads `YOUTUBE_API_KEY` from one of these sources (highest priority first):
-
-1. Gradle property `-PYOUTUBE_API_KEY=...`
-2. `android/secrets.properties` (gitignored)
-3. Environment variable `YOUTUBE_API_KEY`
-
-Quick setup:
-
-- Copy `android/secrets.properties.example` to `android/secrets.properties`.
-- Add your key: `YOUTUBE_API_KEY=...`.
-
-The Android module now runs as a fully native screen (RecyclerView + Media3/ExoPlayer player) instead of loading the web app through a WebView. The current native build includes:
-
-- Native track list UI and native playback controls (Previous/Play-Pause/Next).
-- Native audio/video playback using Media3 ExoPlayer.
-- Existing `PlaybackService` notification controls integrated with player state updates.
-
-> Note: The native rewrite currently uses sample media URLs as a baseline player implementation. YouTube-specific catalog, search, and account-connected features still need to be implemented natively in future steps.
-
-
 ## Android-Only Agent Remaining Work (from `agent.md`)
 
 The following items are still required to fully satisfy the Android-only execution plan:
