@@ -2,7 +2,9 @@ package com.sansoft.harmonystram;
 
 import android.Manifest;
 import android.annotation.SuppressLint;
+import android.app.PendingIntent;
 import android.app.PictureInPictureParams;
+import android.app.RemoteAction;
 import android.content.res.AssetManager;
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -11,6 +13,7 @@ import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.Color;
+import android.graphics.drawable.Icon;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -45,6 +48,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.regex.Matcher;
@@ -71,6 +75,8 @@ public class WebAppActivity extends AppCompatActivity {
     private static final String WEB_CONSOLE_TAG = "WebConsole";
     private static final long MAIN_FRAME_TIMEOUT_MS = 15000L;
     private static final int REQUEST_CODE_POST_NOTIFICATIONS = 4242;
+    private static final Rational DEFAULT_PIP_ASPECT_RATIO = new Rational(16, 9);
+    private static final Rational COMPACT_PIP_ASPECT_RATIO = new Rational(4, 3);
 
     private WebView webView;
     private ProgressBar loadingIndicator;
@@ -98,6 +104,9 @@ public class WebAppActivity extends AppCompatActivity {
             } catch (JSONException ignored) {
             }
             dispatchToWeb("window.dispatchEvent(new CustomEvent('nativePlaybackState', { detail: " + payload + " }));");
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                setPictureInPictureParams(buildPipParams(playbackActive));
+            }
         }
     };
 
@@ -116,6 +125,7 @@ public class WebAppActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_web_app);
+        configureSystemBars();
 
         webView = findViewById(R.id.web_app_view);
         loadingIndicator = findViewById(R.id.web_loading_indicator);
@@ -207,13 +217,65 @@ public class WebAppActivity extends AppCompatActivity {
             return;
         }
 
-        PictureInPictureParams params = new PictureInPictureParams.Builder()
-                .setAspectRatio(new Rational(16, 9))
-                .build();
+        PictureInPictureParams params = buildPipParams(playbackActive);
         try {
             enterPictureInPictureMode(params);
         } catch (IllegalStateException ignored) {
         }
+    }
+
+
+    @Override
+    public void onPictureInPictureModeChanged(boolean isInPictureInPictureMode) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode);
+        configureSystemBars();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            setPictureInPictureParams(buildPipParams(playbackActive));
+        }
+    }
+
+    private void configureSystemBars() {
+        getWindow().setStatusBarColor(Color.rgb(11, 18, 32));
+        getWindow().setNavigationBarColor(Color.rgb(11, 18, 32));
+    }
+
+    private PictureInPictureParams buildPipParams(boolean playing) {
+        PictureInPictureParams.Builder builder = new PictureInPictureParams.Builder()
+                .setAspectRatio(COMPACT_PIP_ASPECT_RATIO)
+                .setActions(buildPipActions(playing));
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            builder.setSeamlessResizeEnabled(true)
+                    .setAutoEnterEnabled(false)
+                    .setExpandedAspectRatio(DEFAULT_PIP_ASPECT_RATIO);
+        }
+
+        return builder.build();
+    }
+
+    private List<RemoteAction> buildPipActions(boolean playing) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            return Collections.emptyList();
+        }
+
+        List<RemoteAction> actions = new ArrayList<>();
+        actions.add(createPipAction(PlaybackService.ACTION_PREVIOUS, android.R.drawable.ic_media_previous, "Previous"));
+        actions.add(createPipAction(playing ? PlaybackService.ACTION_PAUSE : PlaybackService.ACTION_PLAY,
+                playing ? android.R.drawable.ic_media_pause : android.R.drawable.ic_media_play,
+                playing ? "Pause" : "Play"));
+        actions.add(createPipAction(PlaybackService.ACTION_NEXT, android.R.drawable.ic_media_next, "Next"));
+        return actions;
+    }
+
+    private RemoteAction createPipAction(String action, int iconRes, String title) {
+        Intent intent = new Intent(this, PlaybackService.class);
+        intent.setAction(action);
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            flags |= PendingIntent.FLAG_IMMUTABLE;
+        }
+        PendingIntent pendingIntent = PendingIntent.getService(this, action.hashCode(), intent, flags);
+        return new RemoteAction(Icon.createWithResource(this, iconRes), title, title, pendingIntent);
     }
 
     @Override
