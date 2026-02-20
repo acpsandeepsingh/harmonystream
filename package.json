@@ -14,8 +14,7 @@
     "build:android": "BUILD_TARGET=android NODE_ENV=production next build",
     "android:sdk:prepare": "./scripts.ensure-android-sdk.sh",
     "logcat:content": "adb logcat -v time HarmonyContentDebug:V HarmonyWebAppActivity:V chromium:W AndroidRuntime:E *:S",
-    "logcat:content:clear": "adb logcat -c && npm run logcat:content",
-    "logcat:content:grep": "adb logcat -v time | grep -E \"HarmonyContentDebug|HarmonyWebAppActivity|chromium|AndroidRuntime|com\\.sansoft\\.harmonystram\""
+    "logcat:content:clear": "adb logcat -c && npm run logcat:content"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.1.0",

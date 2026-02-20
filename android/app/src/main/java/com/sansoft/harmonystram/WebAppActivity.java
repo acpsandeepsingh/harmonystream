@@ -299,16 +299,16 @@ public class WebAppActivity extends AppCompatActivity {
         AssetManager assets = getAssets();
         try {
             assets.open(BUNDLED_HOME_ASSET_PATH).close();
-            logContentInfo("Resolved bundled entry from asset: " + BUNDLED_HOME_ASSET_PATH);
+            Log.i(LOGCAT_HINT_TAG, "Resolved bundled entry from asset: " + BUNDLED_HOME_ASSET_PATH);
             return BUNDLED_HOME_URL;
         } catch (Exception ignored) {
-            logContentWarn("Missing bundled entry asset: " + BUNDLED_HOME_ASSET_PATH);
+            Log.w(LOGCAT_HINT_TAG, "Missing bundled entry asset: " + BUNDLED_HOME_ASSET_PATH);
             try {
                 assets.open(BUNDLED_HOME_ASSET_PATH_BASE_PATH).close();
-                logContentInfo("Resolved bundled entry from base-path asset: " + BUNDLED_HOME_ASSET_PATH_BASE_PATH);
+                Log.i(LOGCAT_HINT_TAG, "Resolved bundled entry from base-path asset: " + BUNDLED_HOME_ASSET_PATH_BASE_PATH);
                 return BUNDLED_HOME_URL_BASE_PATH;
             } catch (Exception ignoredBasePathBuild) {
-                logContentError("Missing base-path bundled entry asset: " + BUNDLED_HOME_ASSET_PATH_BASE_PATH + "; falling back to offline shell");
+                Log.e(LOGCAT_HINT_TAG, "Missing base-path bundled entry asset: " + BUNDLED_HOME_ASSET_PATH_BASE_PATH + "; falling back to offline shell");
                 return FALLBACK_SHELL_URL;
             }
         }
@@ -336,7 +336,7 @@ public class WebAppActivity extends AppCompatActivity {
                 }
                 return new WebResourceResponse(mime, "UTF-8", getAssets().open(assetPath));
             } catch (Exception ignored) {
-                logContentWarn("Asset miss (public assets): " + assetPath + " requestedPath=" + path);
+                Log.w(LOGCAT_HINT_TAG, "Asset miss (public assets): " + assetPath + " requestedPath=" + path);
                 return null;
             }
         }
@@ -369,7 +369,7 @@ public class WebAppActivity extends AppCompatActivity {
                 }
                 return new WebResourceResponse(mime, "UTF-8", getAssets().open(assetPath));
             } catch (Exception ignored) {
-                logContentWarn("Asset miss (public route): " + assetPath + " requestedPath=" + path);
+                Log.w(LOGCAT_HINT_TAG, "Asset miss (public route): " + assetPath + " requestedPath=" + path);
                 return null;
             }
         }
@@ -473,11 +473,8 @@ public class WebAppActivity extends AppCompatActivity {
             }
             android.net.Uri requestUri = request.getUrl();
             android.webkit.WebResourceResponse response = assetLoader.shouldInterceptRequest(requestUri);
-            String requestMethod = request.getMethod();
             if (response == null) {
-                logContentWarn("No intercept match for request: " + requestUri + " method=" + requestMethod);
-            } else {
-                logContentInfo("Intercepted request: " + requestUri + " method=" + requestMethod);
+                Log.w(LOGCAT_HINT_TAG, "No intercept match for request: " + requestUri + " method=" + request.getMethod());
             }
             return response;
         }
