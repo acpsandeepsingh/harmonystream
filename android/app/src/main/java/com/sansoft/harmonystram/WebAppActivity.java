@@ -34,6 +34,15 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
 public class WebAppActivity extends AppCompatActivity {
 
     public static final String EXTRA_START_URL = "start_url";
@@ -495,6 +504,7 @@ public class WebAppActivity extends AppCompatActivity {
                 CharSequence errorDescription = error == null ? "unknown" : error.getDescription();
                 int errorCode = error == null ? -1 : error.getErrorCode();
                 Log.e(TAG, "Main-frame error code=" + errorCode + " url=" + request.getUrl() + " description=" + errorDescription);
+                logContentError("Main-frame error code=" + errorCode + " url=" + request.getUrl() + " description=" + errorDescription);
                 loadFallbackShell(view);
             }
         }
@@ -505,6 +515,7 @@ public class WebAppActivity extends AppCompatActivity {
             super.onReceivedHttpError(view, request, errorResponse);
             if (request != null && request.isForMainFrame() && errorResponse != null && errorResponse.getStatusCode() >= 400) {
                 Log.e(TAG, "Main-frame HTTP error code=" + errorResponse.getStatusCode() + " url=" + request.getUrl());
+                logContentError("Main-frame HTTP error code=" + errorResponse.getStatusCode() + " url=" + request.getUrl());
                 loadFallbackShell(view);
             }
         }
@@ -517,6 +528,7 @@ public class WebAppActivity extends AppCompatActivity {
             mainFrameStartedUrl = url;
             scheduleMainFrameTimeout();
             Log.d(TAG, "Page started: " + url);
+            logContentInfo("Page started: " + url);
         }
 
         @Override
@@ -526,16 +538,19 @@ public class WebAppActivity extends AppCompatActivity {
             clearMainFrameTimeout();
             loadingIndicator.setVisibility(View.GONE);
             Log.d(TAG, "Page finished: " + url);
+            logContentInfo("Page finished: " + url);
             if (url != null && url.contains("appassets.androidplatform.net")) {
                 loadingFallbackShell = false;
                 return;
             }
             if (url == null || "about:blank".equals(url)) {
                 Log.w(TAG, "Main-frame finished with blank URL; forcing fallback shell");
+                logContentWarn("Main-frame finished with blank URL; forcing fallback shell");
                 loadFallbackShell(webView);
                 return;
             }
             Log.w(TAG, "Main-frame finished with non-appassets URL " + url + "; forcing fallback shell");
+            logContentWarn("Main-frame finished with non-appassets URL " + url + "; forcing fallback shell");
             loadFallbackShell(webView);
         }
     }
