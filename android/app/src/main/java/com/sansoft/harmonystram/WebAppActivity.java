@@ -344,7 +344,7 @@ public class WebAppActivity extends AppCompatActivity {
             if (url != null && url.contains("appassets.androidplatform.net")) {
                 return;
             }
-            webView.loadUrl(FALLBACK_SHELL_FILE_URL);
+            webView.loadUrl(FALLBACK_SHELL_URL);
         }
     }
 }
