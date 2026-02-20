@@ -32,7 +32,7 @@ import org.json.JSONObject;
 public class WebAppActivity extends AppCompatActivity {
 
     public static final String EXTRA_START_URL = "start_url";
-    private static final String BUNDLED_HOME_URL = "https://appassets.androidplatform.net/assets/public/index.html";
+    private static final String BUNDLED_HOME_URL = "https://appassets.androidplatform.net/";
     private static final String BUNDLED_HOME_URL_BASE_PATH = "https://appassets.androidplatform.net/harmonystream/index.html";
     private static final String FALLBACK_SHELL_URL = "https://appassets.androidplatform.net/assets/web/offline_shell.html";
     private static final String BUNDLED_HOME_ASSET_PATH = "public/index.html";
@@ -99,6 +99,7 @@ public class WebAppActivity extends AppCompatActivity {
                 .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
                 .addPathHandler("/_next/", new PublicAssetsPathHandler("_next/"))
                 .addPathHandler("/harmonystream/", new PublicAssetsPathHandler("harmonystream/"))
+                .addPathHandler("/", new PublicRoutesPathHandler())
                 .build();
 
         webView.addJavascriptInterface(new NativePlaybackBridge(), "HarmonyNative");
@@ -213,6 +214,38 @@ public class WebAppActivity extends AppCompatActivity {
                 normalizedPath = normalizedPath.substring(1);
             }
             String assetPath = "public/" + assetPrefix + normalizedPath;
+            try {
+                String extension = MimeTypeMap.getFileExtensionFromUrl(assetPath);
+                String mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension);
+                if (mime == null) {
+                    mime = "application/octet-stream";
+                }
+                return new WebResourceResponse(mime, "UTF-8", getAssets().open(assetPath));
+            } catch (Exception ignored) {
+                return null;
+            }
+        }
+    }
+
+    private class PublicRoutesPathHandler implements WebViewAssetLoader.PathHandler {
+        @Override
+        public WebResourceResponse handle(String path) {
+            String normalizedPath = path == null ? "" : path;
+            if (normalizedPath.startsWith("/")) {
+                normalizedPath = normalizedPath.substring(1);
+            }
+
+            String assetPath;
+            if (normalizedPath.isEmpty()) {
+                assetPath = "public/index.html";
+            } else if (normalizedPath.endsWith("/")) {
+                assetPath = "public/" + normalizedPath + "index.html";
+            } else if (normalizedPath.contains(".")) {
+                assetPath = "public/" + normalizedPath;
+            } else {
+                assetPath = "public/" + normalizedPath + "/index.html";
+            }
+
             try {
                 String extension = MimeTypeMap.getFileExtensionFromUrl(assetPath);
                 String mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension);
