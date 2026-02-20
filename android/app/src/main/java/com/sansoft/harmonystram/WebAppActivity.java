@@ -1,11 +1,13 @@
 package com.sansoft.harmonystram;
 
+import android.Manifest;
 import android.annotation.SuppressLint;
 import android.content.res.AssetManager;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.os.Build;
@@ -26,6 +28,8 @@ import android.widget.ProgressBar;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 import androidx.webkit.WebViewAssetLoader;
 import androidx.webkit.WebResourceErrorCompat;
 import androidx.webkit.WebViewClientCompat;
@@ -64,6 +68,7 @@ public class WebAppActivity extends AppCompatActivity {
     private static final String LOGCAT_HINT_TAG = "HarmonyContentDebug";
     private static final String WEB_CONSOLE_TAG = "WebConsole";
     private static final long MAIN_FRAME_TIMEOUT_MS = 15000L;
+    private static final int REQUEST_CODE_POST_NOTIFICATIONS = 4242;
 
     private WebView webView;
     private ProgressBar loadingIndicator;
@@ -110,6 +115,8 @@ public class WebAppActivity extends AppCompatActivity {
 
         webView = findViewById(R.id.web_app_view);
         loadingIndicator = findViewById(R.id.web_loading_indicator);
+
+        requestNotificationPermissionIfNeeded();
 
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
@@ -165,7 +172,7 @@ public class WebAppActivity extends AppCompatActivity {
 
         Intent stateIntent = new Intent(this, PlaybackService.class);
         stateIntent.setAction(PlaybackService.ACTION_GET_STATE);
-        startService(stateIntent);
+        startPlaybackService(stateIntent);
 
         IntentFilter filter = new IntentFilter(PlaybackService.ACTION_STATE_CHANGED);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -212,7 +219,7 @@ public class WebAppActivity extends AppCompatActivity {
     private void clearPendingMediaAction() {
         Intent clearIntent = new Intent(this, PlaybackService.class);
         clearIntent.setAction(PlaybackService.ACTION_CLEAR_PENDING_MEDIA_ACTION);
-        startService(clearIntent);
+        startPlaybackService(clearIntent);
     }
 
     private void dispatchToWeb(String js) {
@@ -540,7 +547,7 @@ public class WebAppActivity extends AppCompatActivity {
             stateIntent.setAction(PlaybackService.ACTION_SEEK);
             stateIntent.putExtra("position_ms", Math.max(0L, positionMs));
             stateIntent.putExtra("source", "web");
-            startService(stateIntent);
+            startPlaybackService(stateIntent);
         }
 
         @JavascriptInterface
@@ -555,7 +562,7 @@ public class WebAppActivity extends AppCompatActivity {
                 queueIntent.putExtra("queue_json", "[]");
                 queueIntent.putExtra("source", "web");
             }
-            startService(queueIntent);
+            startPlaybackService(queueIntent);
         }
 
         @JavascriptInterface
@@ -571,21 +578,39 @@ public class WebAppActivity extends AppCompatActivity {
                 serviceIntent.putExtra("artwork_base64", artworkBase64);
             }
             serviceIntent.putExtra("source", "web");
-            startService(serviceIntent);
+            startPlaybackService(serviceIntent);
         }
 
         @JavascriptInterface
         public void getState() {
             Intent stateIntent = new Intent(WebAppActivity.this, PlaybackService.class);
             stateIntent.setAction(PlaybackService.ACTION_GET_STATE);
-            startService(stateIntent);
+            startPlaybackService(stateIntent);
         }
 
         private void sendCommand(String action) {
             Intent serviceIntent = new Intent(WebAppActivity.this, PlaybackService.class);
             serviceIntent.setAction(action);
             serviceIntent.putExtra("source", "web");
-            startService(serviceIntent);
+            startPlaybackService(serviceIntent);
+        }
+    }
+
+    private void requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            return;
+        }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+            return;
+        }
+        ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQUEST_CODE_POST_NOTIFICATIONS);
+    }
+
+    private void startPlaybackService(Intent intent) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            ContextCompat.startForegroundService(this, intent);
+        } else {
+            startService(intent);
         }
     }
 
