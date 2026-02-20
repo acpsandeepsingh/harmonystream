@@ -7,10 +7,15 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.graphics.Bitmap;
+import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.util.Log;
 import android.view.View;
 import android.webkit.JavascriptInterface;
+import android.webkit.ConsoleMessage;
 import android.webkit.MimeTypeMap;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
@@ -44,10 +49,14 @@ public class WebAppActivity extends AppCompatActivity {
             + "border:1px solid #2a3550;border-radius:12px;background:#131d33}</style></head><body><main><h1>HarmonyStream</h1>"
             + "<p>Bundled app shell is active. Build web assets into <code>android/app/src/main/assets/public</code>"
             + " to load the full web player UI offline.</p></main></body></html>";
+    private static final String TAG = "HarmonyWebAppActivity";
+    private static final long MAIN_FRAME_TIMEOUT_MS = 15000L;
 
     private WebView webView;
     private ProgressBar loadingIndicator;
     private boolean loadingFallbackShell;
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private final Runnable mainFrameTimeoutRunnable = this::handleMainFrameTimeout;
 
     private final BroadcastReceiver serviceStateReceiver = new BroadcastReceiver() {
         @Override
@@ -95,6 +104,8 @@ public class WebAppActivity extends AppCompatActivity {
         settings.setLoadWithOverviewMode(true);
         settings.setUseWideViewPort(true);
 
+        webView.setBackgroundColor(Color.rgb(11, 18, 32));
+
         WebViewAssetLoader assetLoader = new WebViewAssetLoader.Builder()
                 .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
                 .addPathHandler("/_next/", new PublicAssetsPathHandler("_next/"))
@@ -103,7 +114,15 @@ public class WebAppActivity extends AppCompatActivity {
                 .build();
 
         webView.addJavascriptInterface(new NativePlaybackBridge(), "HarmonyNative");
-        webView.setWebChromeClient(new WebChromeClient());
+        webView.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public boolean onConsoleMessage(ConsoleMessage consoleMessage) {
+                if (consoleMessage != null) {
+                    Log.d(TAG, "JS " + consoleMessage.messageLevel() + " " + consoleMessage.sourceId() + ":" + consoleMessage.lineNumber() + " " + consoleMessage.message());
+                }
+                return super.onConsoleMessage(consoleMessage);
+            }
+        });
         webView.setWebViewClient(new HarmonyWebViewClient(assetLoader));
 
         if (savedInstanceState != null) {
@@ -111,9 +130,12 @@ public class WebAppActivity extends AppCompatActivity {
         } else {
             String startUrl = getIntent().getStringExtra(EXTRA_START_URL);
             if (startUrl != null && startUrl.startsWith("https://appassets.androidplatform.net/assets/")) {
+                Log.i(TAG, "Loading explicit start URL: " + startUrl);
                 webView.loadUrl(startUrl);
             } else {
-                webView.loadUrl(resolveBundledEntryUrl());
+                String resolvedUrl = resolveBundledEntryUrl();
+                Log.i(TAG, "Loading resolved entry URL: " + resolvedUrl);
+                webView.loadUrl(resolvedUrl);
             }
         }
 
@@ -173,10 +195,36 @@ public class WebAppActivity extends AppCompatActivity {
         webView.post(() -> webView.evaluateJavascript(js, null));
     }
 
+    private void scheduleMainFrameTimeout() {
+        mainHandler.removeCallbacks(mainFrameTimeoutRunnable);
+        mainHandler.postDelayed(mainFrameTimeoutRunnable, MAIN_FRAME_TIMEOUT_MS);
+    }
+
+    private void clearMainFrameTimeout() {
+        mainHandler.removeCallbacks(mainFrameTimeoutRunnable);
+    }
+
+    private void handleMainFrameTimeout() {
+        if (webView == null) {
+            return;
+        }
+        String currentUrl = webView.getUrl();
+        if (currentUrl == null || currentUrl.isEmpty() || "about:blank".equals(currentUrl)) {
+            Log.w(TAG, "Main-frame load timed out on empty URL; forcing fallback shell");
+            loadFallbackShell(webView);
+            return;
+        }
+        if (!currentUrl.contains("appassets.androidplatform.net")) {
+            Log.w(TAG, "Main-frame load timed out on URL: " + currentUrl + "; forcing fallback shell");
+            loadFallbackShell(webView);
+        }
+    }
+
     private void loadFallbackShell(WebView view) {
         if (view == null) {
             return;
         }
+        Log.w(TAG, "Loading fallback shell. Existing URL: " + view.getUrl());
         if (loadingFallbackShell) {
             view.loadDataWithBaseURL("https://appassets.androidplatform.net/assets/web/", EMBEDDED_FALLBACK_HTML, "text/html", "UTF-8", null);
             return;
@@ -328,6 +376,7 @@ public class WebAppActivity extends AppCompatActivity {
 
     @Override
     protected void onDestroy() {
+        clearMainFrameTimeout();
         try {
             unregisterReceiver(serviceStateReceiver);
         } catch (IllegalArgumentException ignored) {
@@ -366,7 +415,10 @@ public class WebAppActivity extends AppCompatActivity {
 
         @Override
         public void onReceivedError(WebView view, WebResourceRequest request, WebResourceErrorCompat error) {
-                if (request != null && request.isForMainFrame()) {
+            if (request != null && request.isForMainFrame()) {
+                CharSequence errorDescription = error == null ? "unknown" : error.getDescription();
+                int errorCode = error == null ? -1 : error.getErrorCode();
+                Log.e(TAG, "Main-frame error code=" + errorCode + " url=" + request.getUrl() + " description=" + errorDescription);
                 loadFallbackShell(view);
             }
         }
@@ -376,6 +428,7 @@ public class WebAppActivity extends AppCompatActivity {
         public void onReceivedHttpError(WebView view, WebResourceRequest request, WebResourceResponse errorResponse) {
             super.onReceivedHttpError(view, request, errorResponse);
             if (request != null && request.isForMainFrame() && errorResponse != null && errorResponse.getStatusCode() >= 400) {
+                Log.e(TAG, "Main-frame HTTP error code=" + errorResponse.getStatusCode() + " url=" + request.getUrl());
                 loadFallbackShell(view);
             }
         }
@@ -384,19 +437,26 @@ public class WebAppActivity extends AppCompatActivity {
         public void onPageStarted(WebView view, String url, Bitmap favicon) {
             super.onPageStarted(view, url, favicon);
             loadingIndicator.setVisibility(View.VISIBLE);
+            scheduleMainFrameTimeout();
+            Log.d(TAG, "Page started: " + url);
         }
 
         @Override
         public void onPageFinished(WebView view, String url) {
             super.onPageFinished(view, url);
+            clearMainFrameTimeout();
             loadingIndicator.setVisibility(View.GONE);
+            Log.d(TAG, "Page finished: " + url);
             if (url != null && url.contains("appassets.androidplatform.net")) {
                 loadingFallbackShell = false;
                 return;
             }
             if (url == null || "about:blank".equals(url)) {
+                Log.w(TAG, "Main-frame finished with blank URL; forcing fallback shell");
+                loadFallbackShell(webView);
                 return;
             }
+            Log.w(TAG, "Main-frame finished with non-appassets URL " + url + "; forcing fallback shell");
             loadFallbackShell(webView);
         }
     }
