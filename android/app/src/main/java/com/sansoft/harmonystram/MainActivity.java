@@ -279,6 +279,10 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
             registerReceiver(mediaActionReceiver, mediaFilter);
         }
 
+        Intent stateIntent = new Intent(this, PlaybackService.class);
+        stateIntent.setAction(PlaybackService.ACTION_GET_STATE);
+        startService(stateIntent);
+
         logPlaybackEvent("activity_created", eventAttrs("saved_state", String.valueOf(savedInstanceState != null)));
         updatePlaybackDiagnostics("Lifecycle: created");
         updateRepeatModeButtonLabel();
@@ -1057,6 +1061,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
     public void onTrackClick(int position) {
         selectedTrackIndex = position;
         playTrack(position);
+        focusSongSection();
     }
 
     private void playTrack(int index) {
@@ -1638,18 +1643,27 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
     }
 
 
+    private boolean hasFocusWithin(View root) {
+        if (root == null) return false;
+        View focused = getCurrentFocus();
+        return focused != null && (focused == root || isDescendantOf(focused, root));
+    }
+
+    private boolean isDescendantOf(View child, View potentialAncestor) {
+        View current = child;
+        while (current != null) {
+            if (current == potentialAncestor) {
+                return true;
+            }
+            android.view.ViewParent parent = current.getParent();
+            current = parent instanceof View ? (View) parent : null;
+        }
+        return false;
+    }
+
     @Override
     public void onBackPressed() {
-        if ((playPauseButton != null && playPauseButton.hasFocus())
-                || (queueButton != null && queueButton.hasFocus())
-                || (previousButton != null && previousButton.hasFocus())
-                || (nextButton != null && nextButton.hasFocus())) {
-            focusMenuSection();
-            return;
-        }
-
-        RecyclerView trackList = findViewById(R.id.track_list);
-        if (trackList != null && trackList.hasFocus()) {
+        if (hasFocusWithin(songSection) || hasFocusWithin(playerSection)) {
             focusMenuSection();
             return;
         }

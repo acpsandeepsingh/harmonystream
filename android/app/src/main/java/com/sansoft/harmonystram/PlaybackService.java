@@ -7,10 +7,13 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.os.Build;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
 import android.util.Base64;
 
 import androidx.annotation.Nullable;
@@ -29,7 +32,16 @@ public class PlaybackService extends Service {
     public static final String ACTION_PLAY_PAUSE = "com.sansoft.harmonystram.PLAY_PAUSE";
     public static final String ACTION_NEXT = "com.sansoft.harmonystram.NEXT";
     public static final String ACTION_MEDIA_CONTROL = "com.sansoft.harmonystram.MEDIA_CONTROL";
+    public static final String ACTION_GET_STATE = "com.sansoft.harmonystram.GET_STATE";
+    public static final String ACTION_STATE_CHANGED = "com.sansoft.harmonystram.STATE_CHANGED";
     public static final String EXTRA_PENDING_MEDIA_ACTION = "pending_media_action";
+
+    private static final String PREFS_NAME = "playback_service_state";
+    private static final String KEY_TITLE = "title";
+    private static final String KEY_ARTIST = "artist";
+    private static final String KEY_PLAYING = "playing";
+    private static final String KEY_POSITION_MS = "position_ms";
+    private static final String KEY_DURATION_MS = "duration_ms";
 
     private String currentTitle = "HarmonyStream";
     private String currentArtist = "";
@@ -38,10 +50,26 @@ public class PlaybackService extends Service {
     private long currentDurationMs = 0;
     private Bitmap artworkBitmap;
 
+    private final Handler progressHandler = new Handler(Looper.getMainLooper());
+    private final Runnable progressTick = new Runnable() {
+        @Override
+        public void run() {
+            if (isPlaying && currentDurationMs > 0) {
+                currentPositionMs = Math.min(currentDurationMs, currentPositionMs + 1000);
+                updateNotification();
+                broadcastState();
+                persistState();
+            }
+            progressHandler.postDelayed(this, 1000);
+        }
+    };
+
     @Override
     public void onCreate() {
         super.onCreate();
         createNotificationChannel();
+        restoreState();
+        progressHandler.post(progressTick);
     }
 
     @Override
@@ -68,12 +96,17 @@ public class PlaybackService extends Service {
                     } catch (Exception ignored) {
                     }
                 }
+                persistState();
                 updateNotification();
+                broadcastState();
                 break;
             case ACTION_PREVIOUS:
             case ACTION_PLAY_PAUSE:
             case ACTION_NEXT:
                 dispatchActionToUi(action);
+                break;
+            case ACTION_GET_STATE:
+                broadcastState();
                 break;
             default:
                 break;
@@ -111,6 +144,17 @@ public class PlaybackService extends Service {
         intent.setPackage(getPackageName());
         intent.putExtra("action", action);
         sendBroadcast(intent);
+    }
+
+    private void broadcastState() {
+        Intent stateIntent = new Intent(ACTION_STATE_CHANGED);
+        stateIntent.setPackage(getPackageName());
+        stateIntent.putExtra("title", currentTitle);
+        stateIntent.putExtra("artist", currentArtist);
+        stateIntent.putExtra("playing", isPlaying);
+        stateIntent.putExtra("position_ms", currentPositionMs);
+        stateIntent.putExtra("duration_ms", currentDurationMs);
+        sendBroadcast(stateIntent);
     }
 
     private void updateNotification() {
@@ -186,6 +230,26 @@ public class PlaybackService extends Service {
                 == android.content.pm.PackageManager.PERMISSION_GRANTED;
     }
 
+    private void persistState() {
+        SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        prefs.edit()
+                .putString(KEY_TITLE, currentTitle)
+                .putString(KEY_ARTIST, currentArtist)
+                .putBoolean(KEY_PLAYING, isPlaying)
+                .putLong(KEY_POSITION_MS, currentPositionMs)
+                .putLong(KEY_DURATION_MS, currentDurationMs)
+                .apply();
+    }
+
+    private void restoreState() {
+        SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        currentTitle = valueOrDefault(prefs.getString(KEY_TITLE, currentTitle), "HarmonyStream");
+        currentArtist = valueOrDefault(prefs.getString(KEY_ARTIST, currentArtist), "");
+        isPlaying = prefs.getBoolean(KEY_PLAYING, false);
+        currentPositionMs = Math.max(0, prefs.getLong(KEY_POSITION_MS, 0));
+        currentDurationMs = Math.max(0, prefs.getLong(KEY_DURATION_MS, 0));
+    }
+
     private void createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel channel = new NotificationChannel(
@@ -199,6 +263,12 @@ public class PlaybackService extends Service {
                 manager.createNotificationChannel(channel);
             }
         }
+    }
+
+    @Override
+    public void onDestroy() {
+        progressHandler.removeCallbacksAndMessages(null);
+        super.onDestroy();
     }
 
     @Nullable

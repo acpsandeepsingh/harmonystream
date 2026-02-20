@@ -1,29 +1,59 @@
 package com.sansoft.harmonystram;
 
 import android.annotation.SuppressLint;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.graphics.Bitmap;
-import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
-import android.webkit.WebViewClient;
 import android.widget.ProgressBar;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.webkit.WebViewAssetLoader;
+import androidx.webkit.WebViewClientCompat;
+
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
 
 public class WebAppActivity extends AppCompatActivity {
 
     public static final String EXTRA_START_URL = "start_url";
-    private static final String HOME_URL = "https://acpsandeepsingh.github.io/harmonystream/";
+    private static final String BUNDLED_HOME_URL = "https://appassets.androidplatform.net/assets/public/index.html";
+    private static final String FALLBACK_SHELL_URL = "https://appassets.androidplatform.net/assets/web/offline_shell.html";
 
     private WebView webView;
     private ProgressBar loadingIndicator;
 
-    @SuppressLint("SetJavaScriptEnabled")
+    private final BroadcastReceiver serviceStateReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (intent == null || !PlaybackService.ACTION_STATE_CHANGED.equals(intent.getAction())) {
+                return;
+            }
+            JSONObject payload = new JSONObject();
+            try {
+                payload.put("title", intent.getStringExtra("title"));
+                payload.put("artist", intent.getStringExtra("artist"));
+                payload.put("playing", intent.getBooleanExtra("playing", false));
+                payload.put("position_ms", intent.getLongExtra("position_ms", 0));
+                payload.put("duration_ms", intent.getLongExtra("duration_ms", 0));
+            } catch (JSONException ignored) {
+            }
+            dispatchToWeb("window.dispatchEvent(new CustomEvent('nativePlaybackState', { detail: " + payload + " }));");
+        }
+    };
+
+    @SuppressLint({"SetJavaScriptEnabled", "JavascriptInterface"})
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -40,28 +70,84 @@ public class WebAppActivity extends AppCompatActivity {
         settings.setLoadWithOverviewMode(true);
         settings.setUseWideViewPort(true);
 
+        WebViewAssetLoader assetLoader = new WebViewAssetLoader.Builder()
+                .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
+                .build();
+
+        webView.addJavascriptInterface(new NativePlaybackBridge(), "HarmonyNative");
         webView.setWebChromeClient(new WebChromeClient());
-        webView.setWebViewClient(new HarmonyWebViewClient());
+        webView.setWebViewClient(new HarmonyWebViewClient(assetLoader));
 
         if (savedInstanceState != null) {
             webView.restoreState(savedInstanceState);
         } else {
             String startUrl = getIntent().getStringExtra(EXTRA_START_URL);
-            if (isHttpUrl(startUrl)) {
+            if (startUrl != null && startUrl.startsWith("https://appassets.androidplatform.net/assets/")) {
                 webView.loadUrl(startUrl);
             } else {
-                webView.loadUrl(HOME_URL);
+                webView.loadUrl(BUNDLED_HOME_URL);
             }
+        }
+
+        Intent stateIntent = new Intent(this, PlaybackService.class);
+        stateIntent.setAction(PlaybackService.ACTION_GET_STATE);
+        startService(stateIntent);
+
+        IntentFilter filter = new IntentFilter(PlaybackService.ACTION_STATE_CHANGED);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(serviceStateReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            registerReceiver(serviceStateReceiver, filter);
         }
     }
 
-    private boolean isHttpUrl(String url) {
-        if (url == null || url.trim().isEmpty()) {
-            return false;
+    private void dispatchToWeb(String js) {
+        if (webView == null) return;
+        webView.post(() -> webView.evaluateJavascript(js, null));
+    }
+
+    private class NativePlaybackBridge {
+        @JavascriptInterface
+        public void play() { sendCommand(PlaybackService.ACTION_PLAY_PAUSE); }
+
+        @JavascriptInterface
+        public void pause() { sendCommand(PlaybackService.ACTION_PLAY_PAUSE); }
+
+        @JavascriptInterface
+        public void next() { sendCommand(PlaybackService.ACTION_NEXT); }
+
+        @JavascriptInterface
+        public void previous() { sendCommand(PlaybackService.ACTION_PREVIOUS); }
+
+        @JavascriptInterface
+        public void seek(long positionMs) {
+            Intent stateIntent = new Intent(WebAppActivity.this, PlaybackService.class);
+            stateIntent.setAction(PlaybackService.ACTION_UPDATE_STATE);
+            stateIntent.putExtra("position_ms", Math.max(0L, positionMs));
+            startService(stateIntent);
         }
-        Uri parsed = Uri.parse(url);
-        String scheme = parsed.getScheme();
-        return "http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme);
+
+        @JavascriptInterface
+        public void setQueue(String queueJson) {
+            try {
+                JSONArray ignored = new JSONArray(queueJson == null ? "[]" : queueJson);
+                // Queue ownership remains in active native playback controller; this call is a contract hook.
+            } catch (JSONException ignored) {
+            }
+        }
+
+        @JavascriptInterface
+        public void getState() {
+            Intent stateIntent = new Intent(WebAppActivity.this, PlaybackService.class);
+            stateIntent.setAction(PlaybackService.ACTION_GET_STATE);
+            startService(stateIntent);
+        }
+
+        private void sendCommand(String action) {
+            Intent serviceIntent = new Intent(WebAppActivity.this, PlaybackService.class);
+            serviceIntent.setAction(action);
+            startService(serviceIntent);
+        }
     }
 
     @Override
@@ -81,32 +167,36 @@ public class WebAppActivity extends AppCompatActivity {
 
     @Override
     protected void onDestroy() {
+        try {
+            unregisterReceiver(serviceStateReceiver);
+        } catch (IllegalArgumentException ignored) {
+        }
         if (webView != null) {
             webView.destroy();
         }
         super.onDestroy();
     }
 
-    private class HarmonyWebViewClient extends WebViewClient {
+    private class HarmonyWebViewClient extends WebViewClientCompat {
+        private final WebViewAssetLoader assetLoader;
+
+        HarmonyWebViewClient(WebViewAssetLoader assetLoader) {
+            this.assetLoader = assetLoader;
+        }
+
+        @Override
+        public android.webkit.WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+            return assetLoader.shouldInterceptRequest(request.getUrl());
+        }
+
+        @Override
+        public android.webkit.WebResourceResponse shouldInterceptRequest(WebView view, String url) {
+            return assetLoader.shouldInterceptRequest(android.net.Uri.parse(url));
+        }
+
         @Override
         public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-            Uri uri = request.getUrl();
-            if (uri == null) {
-                return false;
-            }
-
-            String scheme = uri.getScheme();
-            if (scheme == null) {
-                return false;
-            }
-
-            // Keep regular web links and YouTube playback inside the app's WebView.
-            if ("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme)) {
-                return false;
-            }
-
-            // Block non-web deep links so they don't force-open external apps.
-            return true;
+            return false;
         }
 
         @Override
@@ -119,6 +209,13 @@ public class WebAppActivity extends AppCompatActivity {
         public void onPageFinished(WebView view, String url) {
             super.onPageFinished(view, url);
             loadingIndicator.setVisibility(View.GONE);
+            if (BUNDLED_HOME_URL.equals(url)) {
+                return;
+            }
+            if (url != null && url.contains("appassets.androidplatform.net")) {
+                return;
+            }
+            webView.loadUrl(FALLBACK_SHELL_URL);
         }
     }
 }
