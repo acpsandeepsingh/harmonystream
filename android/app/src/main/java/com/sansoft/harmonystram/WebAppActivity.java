@@ -280,7 +280,7 @@ public class WebAppActivity extends AppCompatActivity {
         logContentInfo("startup.fallbackShellUrl=" + FALLBACK_SHELL_URL);
         logContentInfo("startup.expectedAsset[1]=" + BUNDLED_HOME_ASSET_PATH);
         logContentInfo("startup.expectedAsset[2]=" + BUNDLED_HOME_ASSET_PATH_BASE_PATH);
-        logContentInfo("startup.expectedAsset[3]=web/offline_shell.html");
+        logContentInfo("startup.expectedAsset[3]=assets/web/offline_shell.html");
         logContentInfo("startup.expectedRequestPattern[1]=https://appassets.androidplatform.net/");
         logContentInfo("startup.expectedRequestPattern[2]=https://appassets.androidplatform.net/_next/");
         logContentInfo("startup.expectedRequestPattern[3]=https://appassets.androidplatform.net/harmonystream/");
@@ -292,8 +292,7 @@ public class WebAppActivity extends AppCompatActivity {
         logContentInfo("Startup diagnostics requestedStartUrl=" + requestedStartUrl);
         logAssetPresence(BUNDLED_HOME_ASSET_PATH);
         logAssetPresence(BUNDLED_HOME_ASSET_PATH_BASE_PATH);
-        logAssetPresence("web/offline_shell.html");
-        logIndexReferenceDiagnostics(BUNDLED_HOME_ASSET_PATH);
+        logAssetPresence("assets/web/offline_shell.html");
     }
 
     private void logAssetPresence(String assetPath) {
@@ -305,77 +304,20 @@ public class WebAppActivity extends AppCompatActivity {
         }
     }
 
-    private void logIndexReferenceDiagnostics(String entryAssetPath) {
-        try {
-            String html = readAssetText(entryAssetPath);
-            LinkedHashSet<String> referencedAssets = extractAssetReferences(html);
-            logContentInfo("Index diagnostics entry=" + entryAssetPath + " referencesFound=" + referencedAssets.size());
-            int checked = 0;
-            List<String> missingRefs = new ArrayList<>();
-            for (String reference : referencedAssets) {
-                if (!reference.startsWith("/_next/") && !reference.startsWith("/harmonystream/") && !reference.startsWith("/_next/static/")) {
-                    continue;
-                }
-                checked++;
-                String assetPath = reference.startsWith("/") ? "public" + reference : "public/" + reference;
-                if (!assetExists(assetPath)) {
-                    missingRefs.add(assetPath);
-                    logContentError("Referenced asset missing: " + assetPath + " from=" + entryAssetPath);
-                }
-            }
-            logContentInfo("Index diagnostics checkedRefs=" + checked + " missingRefs=" + missingRefs.size());
-        } catch (Exception exception) {
-            logContentError("Index diagnostics failed for " + entryAssetPath + " reason=" + exception.getClass().getSimpleName());
-        }
-    }
-
-    private String readAssetText(String assetPath) throws Exception {
-        try (InputStream inputStream = getAssets().open(assetPath); ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
-            byte[] buffer = new byte[4096];
-            int read;
-            while ((read = inputStream.read(buffer)) != -1) {
-                outputStream.write(buffer, 0, read);
-            }
-            return outputStream.toString(StandardCharsets.UTF_8.name());
-        }
-    }
-
-    private LinkedHashSet<String> extractAssetReferences(String html) {
-        LinkedHashSet<String> references = new LinkedHashSet<>();
-        Matcher matcher = Pattern.compile("(?:src|href)=\"([^\"]+)\"").matcher(html == null ? "" : html);
-        while (matcher.find()) {
-            String value = matcher.group(1);
-            if (value == null || value.isEmpty() || value.startsWith("http://") || value.startsWith("https://") || value.startsWith("data:")) {
-                continue;
-            }
-            references.add(value);
-        }
-        return references;
-    }
-
-    private boolean assetExists(String assetPath) {
-        try {
-            getAssets().open(assetPath).close();
-            return true;
-        } catch (Exception ignored) {
-            return false;
-        }
-    }
-
     private String resolveBundledEntryUrl() {
         AssetManager assets = getAssets();
         try {
             assets.open(BUNDLED_HOME_ASSET_PATH).close();
-            logContentInfo("Resolved bundled entry from asset: " + BUNDLED_HOME_ASSET_PATH);
+            Log.i(LOGCAT_HINT_TAG, "Resolved bundled entry from asset: " + BUNDLED_HOME_ASSET_PATH);
             return BUNDLED_HOME_URL;
         } catch (Exception ignored) {
-            logContentWarn("Missing bundled entry asset: " + BUNDLED_HOME_ASSET_PATH);
+            Log.w(LOGCAT_HINT_TAG, "Missing bundled entry asset: " + BUNDLED_HOME_ASSET_PATH);
             try {
                 assets.open(BUNDLED_HOME_ASSET_PATH_BASE_PATH).close();
-                logContentInfo("Resolved bundled entry from base-path asset: " + BUNDLED_HOME_ASSET_PATH_BASE_PATH);
+                Log.i(LOGCAT_HINT_TAG, "Resolved bundled entry from base-path asset: " + BUNDLED_HOME_ASSET_PATH_BASE_PATH);
                 return BUNDLED_HOME_URL_BASE_PATH;
             } catch (Exception ignoredBasePathBuild) {
-                logContentError("Missing base-path bundled entry asset: " + BUNDLED_HOME_ASSET_PATH_BASE_PATH + "; falling back to offline shell");
+                Log.e(LOGCAT_HINT_TAG, "Missing base-path bundled entry asset: " + BUNDLED_HOME_ASSET_PATH_BASE_PATH + "; falling back to offline shell");
                 return FALLBACK_SHELL_URL;
             }
         }
@@ -403,7 +345,7 @@ public class WebAppActivity extends AppCompatActivity {
                 }
                 return new WebResourceResponse(mime, "UTF-8", getAssets().open(assetPath));
             } catch (Exception ignored) {
-                logContentWarn("Asset miss (public assets): " + assetPath + " requestedPath=" + path);
+                Log.w(LOGCAT_HINT_TAG, "Asset miss (public assets): " + assetPath + " requestedPath=" + path);
                 return null;
             }
         }
@@ -436,7 +378,7 @@ public class WebAppActivity extends AppCompatActivity {
                 }
                 return new WebResourceResponse(mime, "UTF-8", getAssets().open(assetPath));
             } catch (Exception ignored) {
-                logContentWarn("Asset miss (public route): " + assetPath + " requestedPath=" + path);
+                Log.w(LOGCAT_HINT_TAG, "Asset miss (public route): " + assetPath + " requestedPath=" + path);
                 return null;
             }
         }
@@ -540,11 +482,8 @@ public class WebAppActivity extends AppCompatActivity {
             }
             android.net.Uri requestUri = request.getUrl();
             android.webkit.WebResourceResponse response = assetLoader.shouldInterceptRequest(requestUri);
-            String requestMethod = request.getMethod();
             if (response == null) {
-                logContentWarn("No intercept match for request: " + requestUri + " method=" + requestMethod);
-            } else {
-                logContentInfo("Intercepted request: " + requestUri + " method=" + requestMethod);
+                Log.w(LOGCAT_HINT_TAG, "No intercept match for request: " + requestUri + " method=" + request.getMethod());
             }
             return response;
         }
