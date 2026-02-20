@@ -35,6 +35,7 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -60,6 +61,7 @@ public class WebAppActivity extends AppCompatActivity {
             + " to load the full web player UI offline.</p></main></body></html>";
     private static final String TAG = "HarmonyWebAppActivity";
     private static final String LOGCAT_HINT_TAG = "HarmonyContentDebug";
+    private static final String WEB_CONSOLE_TAG = "WebConsole";
     private static final long MAIN_FRAME_TIMEOUT_MS = 15000L;
 
     private WebView webView;
@@ -121,6 +123,7 @@ public class WebAppActivity extends AppCompatActivity {
         WebViewAssetLoader assetLoader = new WebViewAssetLoader.Builder()
                 .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
                 .addPathHandler("/_next/", new PublicAssetsPathHandler("_next/"))
+                .addPathHandler("/harmonystream/_next/", new MultiPathAssetsHandler(new String[]{"public/_next/", "_next/", "public/harmonystream/_next/", "harmonystream/_next/"}))
                 .addPathHandler("/harmonystream/", new PublicAssetsPathHandler("harmonystream/"))
                 .addPathHandler("/", new PublicRoutesPathHandler())
                 .build();
@@ -130,7 +133,10 @@ public class WebAppActivity extends AppCompatActivity {
             @Override
             public boolean onConsoleMessage(ConsoleMessage consoleMessage) {
                 if (consoleMessage != null) {
-                    Log.d(TAG, "JS " + consoleMessage.messageLevel() + " " + consoleMessage.sourceId() + ":" + consoleMessage.lineNumber() + " " + consoleMessage.message());
+                    String jsLine = "JS " + consoleMessage.messageLevel() + " " + consoleMessage.sourceId() + ":" + consoleMessage.lineNumber() + " " + consoleMessage.message();
+                    Log.d(TAG, jsLine);
+                    Log.d(WEB_CONSOLE_TAG, jsLine);
+                    logContentInfo(jsLine);
                 }
                 return super.onConsoleMessage(consoleMessage);
             }
@@ -138,6 +144,7 @@ public class WebAppActivity extends AppCompatActivity {
         webView.setWebViewClient(new HarmonyWebViewClient(assetLoader));
 
         logStartupDiagnostics(getIntent());
+        logBundledEntrySummary();
 
         if (savedInstanceState != null) {
             webView.restoreState(savedInstanceState);
@@ -323,6 +330,111 @@ public class WebAppActivity extends AppCompatActivity {
         }
     }
 
+    private void logBundledEntrySummary() {
+        try {
+            String html = readAssetText(BUNDLED_HOME_ASSET_PATH, 32 * 1024);
+            if (html == null) {
+                logContentWarn("Bundled entry summary: unable to read " + BUNDLED_HOME_ASSET_PATH);
+                return;
+            }
+            logContentInfo("Bundled entry length=" + html.length());
+            logContentInfo("Bundled entry has '/_next/': " + html.contains("/_next/"));
+            logContentInfo("Bundled entry has '/harmonystream/_next/': " + html.contains("/harmonystream/_next/"));
+            logContentInfo("Bundled entry has '/harmonystream/': " + html.contains("/harmonystream/"));
+            List<String> discoveredAssets = extractBundledAssetRefs(html);
+            if (discoveredAssets.isEmpty()) {
+                logContentWarn("Bundled entry summary: no script/link refs discovered in " + BUNDLED_HOME_ASSET_PATH);
+            } else {
+                for (int i = 0; i < discoveredAssets.size(); i++) {
+                    logContentInfo("Bundled entry ref[" + (i + 1) + "]=" + discoveredAssets.get(i));
+                }
+            }
+        } catch (Exception exception) {
+            logContentError("Bundled entry summary failed reason=" + exception.getClass().getSimpleName() + " message=" + exception.getMessage());
+        }
+    }
+
+    private String readAssetText(String assetPath, int byteLimit) throws IOException {
+        InputStream inputStream = null;
+        try {
+            inputStream = getAssets().open(assetPath);
+            ByteArrayOutputStream output = new ByteArrayOutputStream();
+            byte[] buffer = new byte[4096];
+            int total = 0;
+            int read;
+            while ((read = inputStream.read(buffer)) != -1) {
+                if (total + read > byteLimit) {
+                    int allowed = byteLimit - total;
+                    if (allowed > 0) {
+                        output.write(buffer, 0, allowed);
+                    }
+                    break;
+                }
+                output.write(buffer, 0, read);
+                total += read;
+            }
+            return output.toString(StandardCharsets.UTF_8.name());
+        } finally {
+            if (inputStream != null) {
+                try {
+                    inputStream.close();
+                } catch (IOException ignored) {
+                }
+            }
+        }
+    }
+
+    private List<String> extractBundledAssetRefs(String html) {
+        LinkedHashSet<String> refs = new LinkedHashSet<>();
+        Matcher matcher = Pattern.compile("(?:src|href)=\"([^\"]+)\"").matcher(html);
+        while (matcher.find() && refs.size() < 30) {
+            String value = matcher.group(1);
+            if (value == null || value.isEmpty()) {
+                continue;
+            }
+            if (value.contains("_next") || value.contains("harmonystream") || value.endsWith(".js") || value.endsWith(".css")) {
+                refs.add(value);
+            }
+        }
+        return new ArrayList<>(refs);
+    }
+
+    private class MultiPathAssetsHandler implements WebViewAssetLoader.PathHandler {
+        private final String[] candidatePrefixes;
+
+        MultiPathAssetsHandler(String[] candidatePrefixes) {
+            this.candidatePrefixes = candidatePrefixes;
+        }
+
+        @Override
+        public WebResourceResponse handle(String path) {
+            String normalizedPath = path == null ? "" : path;
+            if (normalizedPath.startsWith("/")) {
+                normalizedPath = normalizedPath.substring(1);
+            }
+
+            String mime = "application/octet-stream";
+            String extension = MimeTypeMap.getFileExtensionFromUrl(normalizedPath);
+            String resolvedMime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension);
+            if (resolvedMime != null) {
+                mime = resolvedMime;
+            }
+
+            for (String prefix : candidatePrefixes) {
+                String candidatePath = prefix + normalizedPath;
+                try {
+                    InputStream stream = getAssets().open(candidatePath);
+                    logContentInfo("MultiPathAssetsHandler resolved requestPath=" + path + " assetPath=" + candidatePath);
+                    return new WebResourceResponse(mime, "UTF-8", stream);
+                } catch (Exception ignored) {
+                }
+            }
+
+            logContentWarn("MultiPathAssetsHandler miss requestPath=" + path + " candidates=" + java.util.Arrays.toString(candidatePrefixes));
+            return null;
+        }
+    }
+
     private class PublicAssetsPathHandler implements WebViewAssetLoader.PathHandler {
         private final String assetPrefix;
 
@@ -336,18 +448,21 @@ public class WebAppActivity extends AppCompatActivity {
             if (normalizedPath.startsWith("/")) {
                 normalizedPath = normalizedPath.substring(1);
             }
-            String assetPath = "public/" + assetPrefix + normalizedPath;
-            try {
-                String extension = MimeTypeMap.getFileExtensionFromUrl(assetPath);
-                String mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension);
-                if (mime == null) {
-                    mime = "application/octet-stream";
-                }
-                return new WebResourceResponse(mime, "UTF-8", getAssets().open(assetPath));
-            } catch (Exception ignored) {
-                Log.w(LOGCAT_HINT_TAG, "Asset miss (public assets): " + assetPath + " requestedPath=" + path);
-                return null;
+            String publicAssetPath = "public/" + assetPrefix + normalizedPath;
+            String rootAssetPath = assetPrefix + normalizedPath;
+            String extension = MimeTypeMap.getFileExtensionFromUrl(publicAssetPath);
+            String mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension);
+            if (mime == null) {
+                mime = "application/octet-stream";
             }
+
+            InputStream assetStream = openAssetWithFallback(publicAssetPath, rootAssetPath);
+            if (assetStream != null) {
+                return new WebResourceResponse(mime, "UTF-8", assetStream);
+            }
+
+            Log.w(LOGCAT_HINT_TAG, "Asset miss (public assets): " + publicAssetPath + " requestedPath=" + path);
+            return null;
         }
     }
 
@@ -370,15 +485,35 @@ public class WebAppActivity extends AppCompatActivity {
                 assetPath = "public/" + normalizedPath + "/index.html";
             }
 
+            String extension = MimeTypeMap.getFileExtensionFromUrl(assetPath);
+            String mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension);
+            if (mime == null) {
+                mime = "application/octet-stream";
+            }
+
+            String rootAssetPath = assetPath.startsWith("public/") ? assetPath.substring("public/".length()) : assetPath;
+            InputStream assetStream = openAssetWithFallback(assetPath, rootAssetPath);
+            if (assetStream != null) {
+                return new WebResourceResponse(mime, "UTF-8", assetStream);
+            }
+
+            Log.w(LOGCAT_HINT_TAG, "Asset miss (public route): " + assetPath + " requestedPath=" + path);
+            return null;
+        }
+    }
+
+    private InputStream openAssetWithFallback(String primaryPath, String fallbackPath) {
+        try {
+            return getAssets().open(primaryPath);
+        } catch (Exception ignoredPrimary) {
+            if (fallbackPath == null || fallbackPath.isEmpty() || fallbackPath.equals(primaryPath)) {
+                return null;
+            }
+
             try {
-                String extension = MimeTypeMap.getFileExtensionFromUrl(assetPath);
-                String mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension);
-                if (mime == null) {
-                    mime = "application/octet-stream";
-                }
-                return new WebResourceResponse(mime, "UTF-8", getAssets().open(assetPath));
-            } catch (Exception ignored) {
-                Log.w(LOGCAT_HINT_TAG, "Asset miss (public route): " + assetPath + " requestedPath=" + path);
+                Log.i(LOGCAT_HINT_TAG, "Falling back to root asset path: " + fallbackPath + " (primary missing: " + primaryPath + ")");
+                return getAssets().open(fallbackPath);
+            } catch (Exception ignoredFallback) {
                 return null;
             }
         }
@@ -481,16 +616,26 @@ public class WebAppActivity extends AppCompatActivity {
                 return null;
             }
             android.net.Uri requestUri = request.getUrl();
+            String method = request.getMethod();
+            boolean isMainFrame = request.isForMainFrame();
+            logContentInfo("Intercept request method=" + method + " url=" + requestUri + " isMainFrame=" + isMainFrame);
             android.webkit.WebResourceResponse response = assetLoader.shouldInterceptRequest(requestUri);
             if (response == null) {
-                Log.w(LOGCAT_HINT_TAG, "No intercept match for request: " + requestUri + " method=" + request.getMethod());
+                Log.w(LOGCAT_HINT_TAG, "No intercept match for request: " + requestUri + " method=" + method);
+            } else {
+                logContentInfo("Intercept hit url=" + requestUri + " mime=" + response.getMimeType() + " status=" + response.getStatusCode());
             }
             return response;
         }
 
         @Override
         public android.webkit.WebResourceResponse shouldInterceptRequest(WebView view, String url) {
-            return assetLoader.shouldInterceptRequest(android.net.Uri.parse(url));
+            logContentInfo("Intercept legacy-request url=" + url);
+            android.webkit.WebResourceResponse response = assetLoader.shouldInterceptRequest(android.net.Uri.parse(url));
+            if (response == null) {
+                logContentWarn("Intercept legacy miss url=" + url);
+            }
+            return response;
         }
 
         @Override
@@ -539,6 +684,7 @@ public class WebAppActivity extends AppCompatActivity {
             loadingIndicator.setVisibility(View.GONE);
             Log.d(TAG, "Page finished: " + url);
             logContentInfo("Page finished: " + url);
+            runDomProbe(view, "onPageFinished");
             if (url != null && url.contains("appassets.androidplatform.net")) {
                 loadingFallbackShell = false;
                 return;
@@ -554,4 +700,16 @@ public class WebAppActivity extends AppCompatActivity {
             loadFallbackShell(webView);
         }
     }
+
+    private void runDomProbe(WebView view, String stage) {
+        if (view == null) {
+            return;
+        }
+        String js = "(function(){try{var scripts=document.scripts?document.scripts.length:0;var links=document.querySelectorAll('link').length;var body=document.body?document.body.innerText.slice(0,300):'';var state=(window.__NEXT_DATA__?'has_next_data':'no_next_data');return JSON.stringify({stage:'" + stage + "',url:location.href,readyState:document.readyState,title:document.title,scripts:scripts,links:links,state:state,body:body});}catch(e){return JSON.stringify({stage:'" + stage + "',probe_error:String(e)});}})();";
+        view.evaluateJavascript(js, value -> {
+            Log.i(WEB_CONSOLE_TAG, "DOM_PROBE " + value);
+            logContentInfo("DOM_PROBE " + value);
+        });
+    }
 }
+
