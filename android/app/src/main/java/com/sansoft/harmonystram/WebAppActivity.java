@@ -13,7 +13,6 @@ import android.view.View;
 import android.webkit.JavascriptInterface;
 import android.webkit.MimeTypeMap;
 import android.webkit.WebChromeClient;
-import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
@@ -38,9 +37,17 @@ public class WebAppActivity extends AppCompatActivity {
     private static final String FALLBACK_SHELL_URL = "https://appassets.androidplatform.net/assets/web/offline_shell.html";
     private static final String BUNDLED_HOME_ASSET_PATH = "public/index.html";
     private static final String BUNDLED_HOME_ASSET_PATH_BASE_PATH = "public/harmonystream/index.html";
+    private static final String EMBEDDED_FALLBACK_HTML = "<!doctype html><html><head><meta charset=\"utf-8\" />"
+            + "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\" />"
+            + "<title>HarmonyStream</title><style>body{font-family:sans-serif;background:#0b1220;color:#fff;display:flex;"
+            + "align-items:center;justify-content:center;height:100vh;margin:0}main{max-width:520px;padding:24px;text-align:center;"
+            + "border:1px solid #2a3550;border-radius:12px;background:#131d33}</style></head><body><main><h1>HarmonyStream</h1>"
+            + "<p>Bundled app shell is active. Build web assets into <code>android/app/src/main/assets/public</code>"
+            + " to load the full web player UI offline.</p></main></body></html>";
 
     private WebView webView;
     private ProgressBar loadingIndicator;
+    private boolean loadingFallbackShell;
 
     private final BroadcastReceiver serviceStateReceiver = new BroadcastReceiver() {
         @Override
@@ -163,6 +170,18 @@ public class WebAppActivity extends AppCompatActivity {
     private void dispatchToWeb(String js) {
         if (webView == null) return;
         webView.post(() -> webView.evaluateJavascript(js, null));
+    }
+
+    private void loadFallbackShell(WebView view) {
+        if (view == null) {
+            return;
+        }
+        if (loadingFallbackShell) {
+            view.loadDataWithBaseURL("https://appassets.androidplatform.net/assets/web/", EMBEDDED_FALLBACK_HTML, "text/html", "UTF-8", null);
+            return;
+        }
+        loadingFallbackShell = true;
+        view.loadUrl(FALLBACK_SHELL_URL);
     }
 
     private String resolveBundledEntryUrl() {
@@ -316,15 +335,22 @@ public class WebAppActivity extends AppCompatActivity {
         public void onReceivedError(WebView view, WebResourceRequest request, WebResourceErrorCompat error) {
             super.onReceivedError(view, request, error);
             if (request != null && request.isForMainFrame()) {
-                view.loadUrl(FALLBACK_SHELL_URL);
+                loadFallbackShell(view);
             }
+        }
+
+
+        @Override
+        public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
+            super.onReceivedError(view, errorCode, description, failingUrl);
+            loadFallbackShell(view);
         }
 
         @Override
         public void onReceivedHttpError(WebView view, WebResourceRequest request, WebResourceResponse errorResponse) {
             super.onReceivedHttpError(view, request, errorResponse);
             if (request != null && request.isForMainFrame() && errorResponse != null && errorResponse.getStatusCode() >= 400) {
-                view.loadUrl(FALLBACK_SHELL_URL);
+                loadFallbackShell(view);
             }
         }
 
@@ -338,13 +364,18 @@ public class WebAppActivity extends AppCompatActivity {
         public void onPageFinished(WebView view, String url) {
             super.onPageFinished(view, url);
             loadingIndicator.setVisibility(View.GONE);
+            if (url != null && url.startsWith("https://appassets.androidplatform.net/assets/web/offline_shell")) {
+                return;
+            }
             if (BUNDLED_HOME_URL.equals(url)) {
+                loadingFallbackShell = false;
                 return;
             }
             if (url != null && url.contains("appassets.androidplatform.net")) {
+                loadingFallbackShell = false;
                 return;
             }
-            webView.loadUrl(FALLBACK_SHELL_URL);
+            loadFallbackShell(webView);
         }
     }
 }
