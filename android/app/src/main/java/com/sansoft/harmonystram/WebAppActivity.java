@@ -12,7 +12,6 @@ import android.os.Bundle;
 import android.view.View;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
-import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
@@ -22,6 +21,7 @@ import android.widget.ProgressBar;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.webkit.WebViewAssetLoader;
+import androidx.webkit.WebResourceErrorCompat;
 import androidx.webkit.WebViewClientCompat;
 
 import org.json.JSONArray;
@@ -275,7 +275,7 @@ public class WebAppActivity extends AppCompatActivity {
         }
 
         @Override
-        public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
+        public void onReceivedError(WebView view, WebResourceRequest request, WebResourceErrorCompat error) {
             super.onReceivedError(view, request, error);
             if (request != null && request.isForMainFrame()) {
                 view.loadUrl(FALLBACK_SHELL_URL);
