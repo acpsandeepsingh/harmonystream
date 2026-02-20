@@ -55,6 +55,8 @@ public class WebAppActivity extends AppCompatActivity {
     private WebView webView;
     private ProgressBar loadingIndicator;
     private boolean loadingFallbackShell;
+    private boolean mainFrameLoading;
+    private String mainFrameStartedUrl;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final Runnable mainFrameTimeoutRunnable = this::handleMainFrameTimeout;
 
@@ -208,16 +210,24 @@ public class WebAppActivity extends AppCompatActivity {
         if (webView == null) {
             return;
         }
+        if (!mainFrameLoading) {
+            return;
+        }
         String currentUrl = webView.getUrl();
+        String startedUrl = mainFrameStartedUrl == null ? "unknown" : mainFrameStartedUrl;
         if (currentUrl == null || currentUrl.isEmpty() || "about:blank".equals(currentUrl)) {
-            Log.w(TAG, "Main-frame load timed out on empty URL; forcing fallback shell");
+            Log.w(TAG, "Main-frame load timed out on empty URL. startedUrl=" + startedUrl + "; forcing fallback shell");
             loadFallbackShell(webView);
             return;
         }
-        if (!currentUrl.contains("appassets.androidplatform.net")) {
-            Log.w(TAG, "Main-frame load timed out on URL: " + currentUrl + "; forcing fallback shell");
-            loadFallbackShell(webView);
+        if (currentUrl.contains("appassets.androidplatform.net/assets/web/offline_shell.html")) {
+            Log.w(TAG, "Fallback shell URL timed out; rendering embedded fallback HTML");
+            loadingFallbackShell = true;
+            webView.loadDataWithBaseURL("https://appassets.androidplatform.net/assets/web/", EMBEDDED_FALLBACK_HTML, "text/html", "UTF-8", null);
+            return;
         }
+        Log.w(TAG, "Main-frame load timed out on URL: " + currentUrl + " startedUrl=" + startedUrl + "; forcing fallback shell");
+        loadFallbackShell(webView);
     }
 
     private void loadFallbackShell(WebView view) {
@@ -437,6 +447,8 @@ public class WebAppActivity extends AppCompatActivity {
         public void onPageStarted(WebView view, String url, Bitmap favicon) {
             super.onPageStarted(view, url, favicon);
             loadingIndicator.setVisibility(View.VISIBLE);
+            mainFrameLoading = true;
+            mainFrameStartedUrl = url;
             scheduleMainFrameTimeout();
             Log.d(TAG, "Page started: " + url);
         }
@@ -444,6 +456,7 @@ public class WebAppActivity extends AppCompatActivity {
         @Override
         public void onPageFinished(WebView view, String url) {
             super.onPageFinished(view, url);
+            mainFrameLoading = false;
             clearMainFrameTimeout();
             loadingIndicator.setVisibility(View.GONE);
             Log.d(TAG, "Page finished: " + url);
