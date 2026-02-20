@@ -13,6 +13,7 @@ import android.view.View;
 import android.webkit.JavascriptInterface;
 import android.webkit.MimeTypeMap;
 import android.webkit.WebChromeClient;
+import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
@@ -343,7 +344,7 @@ public class WebAppActivity extends AppCompatActivity {
             if (url != null && url.contains("appassets.androidplatform.net")) {
                 return;
             }
-            webView.loadUrl(FALLBACK_SHELL_URL);
+            webView.loadUrl(FALLBACK_SHELL_FILE_URL);
         }
     }
 }
