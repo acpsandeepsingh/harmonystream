@@ -123,8 +123,13 @@ public class WebAppActivity extends AppCompatActivity {
 
         WebViewAssetLoader assetLoader = new WebViewAssetLoader.Builder()
                 .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
+<<<<<<< codex/analyze-apk-error-logcat-output-x85szu
                 .addPathHandler("/_next/", new MultiPathAssetsHandler(new String[]{"public/_next/", "_next/", "public/next/", "next/", "public/harmonystream/_next/", "harmonystream/_next/", "public/harmonystream/next/", "harmonystream/next/"}))
                 .addPathHandler("/harmonystream/_next/", new MultiPathAssetsHandler(new String[]{"public/_next/", "_next/", "public/next/", "next/", "public/harmonystream/_next/", "harmonystream/_next/", "public/harmonystream/next/", "harmonystream/next/"}))
+=======
+                .addPathHandler("/_next/", new MultiPathAssetsHandler(new String[]{"public/_next/", "_next/", "public/harmonystream/_next/", "harmonystream/_next/"}))
+                .addPathHandler("/harmonystream/_next/", new MultiPathAssetsHandler(new String[]{"public/_next/", "_next/", "public/harmonystream/_next/", "harmonystream/_next/"}))
+>>>>>>> main
                 .addPathHandler("/harmonystream/", new PublicAssetsPathHandler("harmonystream/"))
                 .addPathHandler("/", new PublicRoutesPathHandler())
                 .build();
