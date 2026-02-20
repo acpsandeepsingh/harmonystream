@@ -9,8 +9,8 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "cap:add:android": "npx cap add android",
-    "cap:sync:android": "npx cap sync android",
-    "apk:debug": "npm run android:sdk:prepare && ./android/gradlew -p android assembleDebug",
+    "cap:sync:android": "npm run build:android && npx cap sync android",
+    "apk:debug": "npm run android:sdk:prepare && npm run cap:sync:android && ./android/gradlew -p android assembleDebug",
     "build:android": "BUILD_TARGET=android NODE_ENV=production next build",
     "android:sdk:prepare": "./scripts.ensure-android-sdk.sh"
   },
