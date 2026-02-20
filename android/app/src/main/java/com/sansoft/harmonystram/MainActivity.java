@@ -396,6 +396,7 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         logPlaybackEvent("pending_media_action", eventAttrs("action", pendingAction));
         updatePlaybackDiagnostics("Notification action: " + pendingAction);
         intent.removeExtra(PlaybackService.EXTRA_PENDING_MEDIA_ACTION);
+        clearPendingMediaAction();
 
         if (PlaybackService.ACTION_PREVIOUS.equals(pendingAction)) {
             playPrevious();
@@ -408,6 +409,12 @@ public class MainActivity extends AppCompatActivity implements TrackAdapter.OnTr
         if (PlaybackService.ACTION_PLAY_PAUSE.equals(pendingAction)) {
             togglePlayPause();
         }
+    }
+
+    private void clearPendingMediaAction() {
+        Intent clearIntent = new Intent(this, PlaybackService.class);
+        clearIntent.setAction(PlaybackService.ACTION_CLEAR_PENDING_MEDIA_ACTION);
+        startService(clearIntent);
     }
 
     private boolean restorePlaybackSession() {
