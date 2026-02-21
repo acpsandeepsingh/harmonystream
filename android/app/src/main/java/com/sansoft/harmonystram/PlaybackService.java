@@ -435,10 +435,12 @@ public class PlaybackService extends Service implements AudioManager.OnAudioFocu
                 createServiceActionIntent(ACTION_PREVIOUS)
         );
 
+        // Use explicit play/pause actions from notification to avoid double-toggle races while app UI is open.
+        String primaryAction = isPlaying ? ACTION_PAUSE : ACTION_PLAY;
         NotificationCompat.Action playPauseAction = new NotificationCompat.Action(
                 isPlaying ? android.R.drawable.ic_media_pause : android.R.drawable.ic_media_play,
                 isPlaying ? "Pause" : "Play",
-                createServiceActionIntent(ACTION_PLAY_PAUSE)
+                createServiceActionIntent(primaryAction)
         );
 
         NotificationCompat.Action nextAction = new NotificationCompat.Action(
