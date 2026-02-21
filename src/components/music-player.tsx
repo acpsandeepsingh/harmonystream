@@ -69,6 +69,7 @@ declare global {
       getState?: () => void;
     };
     __harmonyNativeApplyCommand?: (action: string) => void;
+    __harmonyNativeManagedByApp?: boolean;
   }
 }
 
@@ -420,6 +421,7 @@ export function MusicPlayer() {
   const isSeekingRef = useRef(false);
   const isChangingTrackRef = useRef(false);
   const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const isGlobalPlayingRef = useRef(isGlobalPlaying);
 
   // Player-specific UI state
   const [container, setContainer] = useState<HTMLElement | null>(null);
@@ -456,7 +458,7 @@ export function MusicPlayer() {
         setGlobalIsPlaying(false);
         break;
       case 'com.sansoft.harmonystram.PLAY_PAUSE':
-        setGlobalIsPlaying(!isGlobalPlaying);
+        setGlobalIsPlaying(!isGlobalPlayingRef.current);
         break;
       case 'com.sansoft.harmonystram.NEXT':
         globalPlayNext();
@@ -467,7 +469,11 @@ export function MusicPlayer() {
       default:
         break;
     }
-  }, [setGlobalIsPlaying, globalPlayNext, globalPlayPrev, isGlobalPlaying]);
+  }, [setGlobalIsPlaying, globalPlayNext, globalPlayPrev]);
+
+  useEffect(() => {
+    isGlobalPlayingRef.current = isGlobalPlaying;
+  }, [isGlobalPlaying]);
 
   useEffect(() => {
     if (isQueueOpen && currentTrack) {
@@ -927,20 +933,31 @@ export function MusicPlayer() {
   useEffect(() => {
     if (!isAndroidAppRuntime || typeof window === 'undefined') return;
 
+    window.__harmonyNativeManagedByApp = true;
     window.__harmonyNativeApplyCommand = applyNativeCommand;
     const commandListener = (event: Event) => {
       const detail = (event as CustomEvent<{ action?: string }>).detail;
       applyNativeCommand(detail?.action ?? '');
     };
 
+    const pipStateListener = (event: Event) => {
+      const detail = (event as CustomEvent<{ isInPictureInPictureMode?: boolean }>).detail;
+      if (detail?.isInPictureInPictureMode && currentTrack) {
+        setGlobalIsPlaying(true);
+      }
+    };
+
     window.addEventListener('nativePlaybackCommand', commandListener as EventListener);
+    window.addEventListener('nativePictureInPictureChanged', pipStateListener as EventListener);
     window.HarmonyNative?.getState?.();
 
     return () => {
       window.removeEventListener('nativePlaybackCommand', commandListener as EventListener);
+      window.removeEventListener('nativePictureInPictureChanged', pipStateListener as EventListener);
       window.__harmonyNativeApplyCommand = undefined;
+      window.__harmonyNativeManagedByApp = false;
     };
-  }, [isAndroidAppRuntime, applyNativeCommand]);
+  }, [isAndroidAppRuntime, applyNativeCommand, currentTrack, setGlobalIsPlaying]);
 
   useEffect(() => {
     if (!isAndroidAppRuntime || !currentTrack) return;
