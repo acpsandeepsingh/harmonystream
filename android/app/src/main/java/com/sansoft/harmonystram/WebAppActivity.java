@@ -13,6 +13,7 @@ import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.Color;
+import android.graphics.Rect;
 import android.graphics.drawable.Icon;
 import android.os.Build;
 import android.os.Bundle;
@@ -76,7 +77,8 @@ public class WebAppActivity extends AppCompatActivity {
     private static final long MAIN_FRAME_TIMEOUT_MS = 15000L;
     private static final int REQUEST_CODE_POST_NOTIFICATIONS = 4242;
     private static final Rational DEFAULT_PIP_ASPECT_RATIO = new Rational(16, 9);
-    private static final Rational COMPACT_PIP_ASPECT_RATIO = new Rational(4, 3);
+    private static final Rational COMPACT_PIP_ASPECT_RATIO = new Rational(16, 9);
+    private static final long MEDIA_ACTION_DEBOUNCE_WINDOW_MS = 1500L;
 
     private WebView webView;
     private ProgressBar loadingIndicator;
@@ -86,6 +88,8 @@ public class WebAppActivity extends AppCompatActivity {
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final Runnable mainFrameTimeoutRunnable = this::handleMainFrameTimeout;
     private boolean playbackActive;
+    private String lastDispatchedMediaAction;
+    private long lastDispatchedMediaActionAtMs;
 
     private final BroadcastReceiver serviceStateReceiver = new BroadcastReceiver() {
         @Override
@@ -257,6 +261,10 @@ public class WebAppActivity extends AppCompatActivity {
                 .setAspectRatio(COMPACT_PIP_ASPECT_RATIO)
                 .setActions(buildPipActions(playing));
 
+        if (webView != null && webView.getWidth() > 0 && webView.getHeight() > 0) {
+            builder.setSourceRectHint(new Rect(0, 0, webView.getWidth(), webView.getHeight()));
+        }
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             builder.setSeamlessResizeEnabled(true)
                     .setAutoEnterEnabled(false)
@@ -347,14 +355,33 @@ public class WebAppActivity extends AppCompatActivity {
             return;
         }
 
-        JSONObject payload = new JSONObject();
-        try {
-            payload.put("action", action);
-        } catch (JSONException ignored) {
+        if (shouldIgnoreDuplicateMediaAction(action)) {
+            clearPendingMediaAction();
+            return;
         }
-        dispatchToWeb("window.dispatchEvent(new CustomEvent('nativePlaybackCommand', { detail: " + payload + " }));");
+
+        // Avoid double-handling commands (event listeners + direct apply) which can retrigger a toggle and pause immediately.
         dispatchToWeb("window.__harmonyNativeApplyCommand && window.__harmonyNativeApplyCommand(" + JSONObject.quote(action) + ");");
+
+        // Keep compatibility for non-toggle actions that older web builds may only handle via the custom event.
+        if (!PlaybackService.ACTION_PLAY.equals(action)
+                && !PlaybackService.ACTION_PAUSE.equals(action)
+                && !PlaybackService.ACTION_PLAY_PAUSE.equals(action)) {
+            String eventAction = JSONObject.quote(action);
+            dispatchToWeb("window.dispatchEvent(new CustomEvent('nativePlaybackCommand', { detail: { action: " + eventAction + " } }));");
+        }
         clearPendingMediaAction();
+    }
+
+    private boolean shouldIgnoreDuplicateMediaAction(String action) {
+        long nowMs = System.currentTimeMillis();
+        if (action.equals(lastDispatchedMediaAction)
+                && nowMs - lastDispatchedMediaActionAtMs <= MEDIA_ACTION_DEBOUNCE_WINDOW_MS) {
+            return true;
+        }
+        lastDispatchedMediaAction = action;
+        lastDispatchedMediaActionAtMs = nowMs;
+        return false;
     }
 
     private void clearPendingMediaAction() {
