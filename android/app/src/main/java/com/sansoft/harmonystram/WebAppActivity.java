@@ -360,6 +360,12 @@ public class WebAppActivity extends AppCompatActivity {
             return;
         }
 
+        JSONObject payload = new JSONObject();
+        try {
+            payload.put("action", action);
+        } catch (JSONException ignored) {
+        }
+
         // Avoid double-handling commands (event listeners + direct apply) which can retrigger a toggle and pause immediately.
         dispatchToWeb("window.__harmonyNativeApplyCommand && window.__harmonyNativeApplyCommand(" + JSONObject.quote(action) + ");");
 
@@ -367,8 +373,12 @@ public class WebAppActivity extends AppCompatActivity {
         if (!PlaybackService.ACTION_PLAY.equals(action)
                 && !PlaybackService.ACTION_PAUSE.equals(action)
                 && !PlaybackService.ACTION_PLAY_PAUSE.equals(action)) {
-            String eventAction = JSONObject.quote(action);
-            dispatchToWeb("window.dispatchEvent(new CustomEvent('nativePlaybackCommand', { detail: { action: " + eventAction + " } }));");
+            JSONObject payload = new JSONObject();
+            try {
+                payload.put("action", action);
+            } catch (JSONException ignored) {
+            }
+            dispatchToWeb("window.dispatchEvent(new CustomEvent('nativePlaybackCommand', { detail: " + payload + " }));");
         }
         clearPendingMediaAction();
     }
