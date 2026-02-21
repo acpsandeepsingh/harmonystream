@@ -212,9 +212,7 @@ public class WebAppActivity extends AppCompatActivity {
         playbackActive = shouldKeepPlaybackAliveInBackground();
         maybeEnterPictureInPicture();
     }
-   private boolean shouldKeepPlaybackAliveInBackground() {
-        return PlaybackService.readSnapshot(this).playing;
-    }
+
     private void maybeEnterPictureInPicture() {
         if (!playbackActive || Build.VERSION.SDK_INT < Build.VERSION_CODES.O || isInPictureInPictureMode()) {
             return;
@@ -240,7 +238,18 @@ public class WebAppActivity extends AppCompatActivity {
     private void configureSystemBars() {
         getWindow().setStatusBarColor(Color.rgb(11, 18, 32));
         getWindow().setNavigationBarColor(Color.rgb(11, 18, 32));
-
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            getWindow().setStatusBarContrastEnforced(false);
+            getWindow().setNavigationBarContrastEnforced(false);
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            android.view.WindowInsetsController controller = getWindow().getInsetsController();
+            if (controller != null) {
+                controller.setSystemBarsAppearance(0,
+                        android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+                                | android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS);
+            }
+        }
     }
 
     private PictureInPictureParams buildPipParams(boolean playing) {
@@ -282,7 +291,47 @@ public class WebAppActivity extends AppCompatActivity {
         return new RemoteAction(Icon.createWithResource(this, iconRes), title, title, pendingIntent);
     }
 
+    @Override
+    protected void onResume() {
+        super.onResume();
+        configureSystemBars();
+        if (webView != null) {
+            webView.onResume();
+            webView.resumeTimers();
+        }
+    }
 
+    @Override
+    protected void onPause() {
+        if (shouldKeepPlaybackAliveInBackground()) {
+            maybeEnterPictureInPicture();
+            if (webView != null) {
+                webView.onResume();
+                webView.resumeTimers();
+            }
+        } else if (webView != null) {
+            webView.onPause();
+            webView.pauseTimers();
+        }
+        super.onPause();
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        if (shouldKeepPlaybackAliveInBackground() && webView != null) {
+            webView.onResume();
+            webView.resumeTimers();
+        }
+    }
+
+    private boolean shouldKeepPlaybackAliveInBackground() {
+        if (playbackActive) {
+            return true;
+        }
+        PlaybackService.PlaybackSnapshot snapshot = PlaybackService.readSnapshot(this);
+        return snapshot != null && snapshot.playing;
+    }
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
