@@ -24,6 +24,11 @@ import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
 import androidx.core.content.ContextCompat;
 import androidx.media.app.NotificationCompat.MediaStyle;
+import androidx.media.session.MediaButtonReceiver;
+
+import android.support.v4.media.MediaMetadataCompat;
+import android.support.v4.media.session.MediaSessionCompat;
+import android.support.v4.media.session.PlaybackStateCompat;
 
 public class PlaybackService extends Service {
 
@@ -174,6 +179,7 @@ public class PlaybackService extends Service {
                 pendingMediaAction = null;
                 persistState();
                 updateNotification();
+                updateMediaSessionState();
                 break;
             default:
                 break;
@@ -319,7 +325,13 @@ public class PlaybackService extends Service {
                 .addAction(prevAction)
                 .addAction(playPauseAction)
                 .addAction(nextAction)
-                .setStyle(new MediaStyle().setShowActionsInCompactView(0, 1, 2));
+                .setStyle(new MediaStyle()
+                        .setShowActionsInCompactView(0, 1, 2)
+                        .setMediaSession(mediaSession == null ? null : mediaSession.getSessionToken()))
+                .setDeleteIntent(MediaButtonReceiver.buildMediaButtonPendingIntent(
+                        this,
+                        PlaybackStateCompat.ACTION_STOP
+                ));
 
         if (artworkBitmap != null) {
             builder.setLargeIcon(artworkBitmap);
