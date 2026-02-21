@@ -473,12 +473,25 @@ export function MusicPlayer() {
         setGlobalIsPlaying(false);
         break;
       case 'com.sansoft.harmonystram.PLAY_PAUSE':
-        setGlobalIsPlaying(!isGlobalPlayingRef.current);
+        if (canControlPlayer && typeof player.getPlayerState === 'function') {
+          const playerState = player.getPlayerState();
+          const shouldPlay = playerState !== 1;
+          if (shouldPlay && typeof player.playVideo === 'function') {
+            player.playVideo();
+          } else if (!shouldPlay && typeof player.pauseVideo === 'function') {
+            player.pauseVideo();
+          }
+          setGlobalIsPlaying(shouldPlay);
+        } else {
+          setGlobalIsPlaying(!isGlobalPlayingRef.current);
+        }
         break;
       case 'com.sansoft.harmonystram.NEXT':
+        setGlobalIsPlaying(true);
         globalPlayNext();
         break;
       case 'com.sansoft.harmonystram.PREVIOUS':
+        setGlobalIsPlaying(true);
         globalPlayPrev();
         break;
       default:
@@ -964,6 +977,32 @@ export function MusicPlayer() {
       applyNativeCommand(detail?.action ?? '');
     };
 
+    const nativeStateListener = (event: Event) => {
+      const detail = (event as CustomEvent<{ playing?: boolean }>).detail;
+      if (typeof detail?.playing !== 'boolean') return;
+
+      setGlobalIsPlaying(detail.playing);
+      if (detail.playing) {
+        const player = playerRef.current;
+        if (player && typeof player.getPlayerState === 'function' && typeof player.playVideo === 'function') {
+          const state = player.getPlayerState();
+          if (state !== 1) {
+            player.playVideo();
+          }
+        }
+      }
+    };
+
+    const hostResumedListener = () => {
+      window.HarmonyNative?.getState?.();
+      if (isGlobalPlayingRef.current) {
+        const player = playerRef.current;
+        if (player && typeof player.playVideo === 'function') {
+          player.playVideo();
+        }
+      }
+    };
+
     const pipStateListener = (event: Event) => {
       const detail = (event as CustomEvent<{ isInPictureInPictureMode?: boolean }>).detail;
       if (detail?.isInPictureInPictureMode && currentTrack) {
@@ -972,11 +1011,15 @@ export function MusicPlayer() {
     };
 
     window.addEventListener('nativePlaybackCommand', commandListener as EventListener);
+    window.addEventListener('nativePlaybackState', nativeStateListener as EventListener);
+    window.addEventListener('nativeHostResumed', hostResumedListener as EventListener);
     window.addEventListener('nativePictureInPictureChanged', pipStateListener as EventListener);
     window.HarmonyNative?.getState?.();
 
     return () => {
       window.removeEventListener('nativePlaybackCommand', commandListener as EventListener);
+      window.removeEventListener('nativePlaybackState', nativeStateListener as EventListener);
+      window.removeEventListener('nativeHostResumed', hostResumedListener as EventListener);
       window.removeEventListener('nativePictureInPictureChanged', pipStateListener as EventListener);
       window.__harmonyNativeApplyCommand = undefined;
       window.__harmonyNativeManagedByApp = false;
