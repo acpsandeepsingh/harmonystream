@@ -151,20 +151,24 @@ public class PlaybackService extends Service {
             case ACTION_PAUSE:
             case ACTION_NEXT:
                 boolean fromWebBridge = "web".equals(intent.getStringExtra("source"));
-                if (fromWebBridge) {
-                    if (ACTION_PLAY.equals(action)) {
-                        isPlaying = true;
-                    } else if (ACTION_PAUSE.equals(action)) {
-                        isPlaying = false;
-                    } else if (ACTION_PLAY_PAUSE.equals(action)) {
-                        isPlaying = !isPlaying;
-                    }
-                    persistState();
-                    updateNotification();
-                    updateMediaSessionState();
-                    broadcastState();
-                    syncWakeLock();
+
+                if (ACTION_PLAY.equals(action)) {
+                    isPlaying = true;
+                } else if (ACTION_PAUSE.equals(action)) {
+                    isPlaying = false;
+                } else if (ACTION_PLAY_PAUSE.equals(action)) {
+                    isPlaying = !isPlaying;
+                } else if (!fromWebBridge && (ACTION_NEXT.equals(action) || ACTION_PREVIOUS.equals(action))) {
+                    // Next/previous from notifications or lock screen should keep session alive
+                    // and optimistic playing state while the WebView applies the new track.
+                    isPlaying = true;
                 }
+
+                persistState();
+                updateNotification();
+                updateMediaSessionState();
+                broadcastState();
+                syncWakeLock();
                 dispatchActionToUi(action, intent);
                 break;
             case ACTION_SEEK:
