@@ -6,6 +6,11 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.media.AudioAttributes;
+import android.media.AudioFocusRequest;
+import android.media.AudioManager;
+import android.media.session.MediaSession;
+import android.media.session.PlaybackState;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
@@ -24,7 +29,7 @@ import androidx.core.app.NotificationManagerCompat;
 import androidx.core.content.ContextCompat;
 import androidx.media.app.NotificationCompat.MediaStyle;
 
-public class PlaybackService extends Service {
+public class PlaybackService extends Service implements AudioManager.OnAudioFocusChangeListener {
 
     private static final String TAG = "PlaybackService";
 
@@ -90,6 +95,10 @@ public class PlaybackService extends Service {
     private long currentDurationMs = 0;
     private Bitmap artworkBitmap;
     private String pendingMediaAction;
+    private AudioManager audioManager;
+    private AudioFocusRequest audioFocusRequest;
+    private MediaSession mediaSession;
+    private boolean hasAudioFocus;
 
     private final Handler progressHandler = new Handler(Looper.getMainLooper());
     private final Runnable progressTick = new Runnable() {
@@ -110,6 +119,12 @@ public class PlaybackService extends Service {
         super.onCreate();
         createNotificationChannel();
         restoreState();
+        audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
+        setupMediaSession();
+        if (isPlaying) {
+            requestAudioFocus();
+        }
+        updateMediaSessionState();
         progressHandler.post(progressTick);
     }
 
@@ -125,6 +140,7 @@ public class PlaybackService extends Service {
         switch (action) {
             case ACTION_UPDATE_STATE:
                 applyStateUpdate(intent);
+                syncPlaybackResources();
                 persistState();
                 updateNotification();
                 broadcastState();
@@ -134,13 +150,17 @@ public class PlaybackService extends Service {
             case ACTION_PLAY:
             case ACTION_PAUSE:
             case ACTION_NEXT:
+                // Keep play/pause state authoritative from the Web player via ACTION_UPDATE_STATE.
+                // Optimistically toggling here can cause notification/PiP icon flicker when UI state arrives slightly later.
+                boolean fromWebBridge = "web".equals(intent.getStringExtra("source"));
                 if (ACTION_PLAY.equals(action)) {
                     isPlaying = true;
                 } else if (ACTION_PAUSE.equals(action)) {
                     isPlaying = false;
-                } else if (ACTION_PLAY_PAUSE.equals(action)) {
+                } else if (ACTION_PLAY_PAUSE.equals(action) && !fromWebBridge) {
                     isPlaying = !isPlaying;
                 }
+                syncPlaybackResources();
                 persistState();
                 updateNotification();
                 broadcastState();
@@ -225,6 +245,115 @@ public class PlaybackService extends Service {
         }
     }
 
+
+    private void syncPlaybackResources() {
+        if (isPlaying) {
+            requestAudioFocus();
+            ensureForegroundIfPlaying();
+        } else {
+            abandonAudioFocus();
+        }
+        updateMediaSessionState();
+    }
+
+    private void setupMediaSession() {
+        mediaSession = new MediaSession(this, TAG);
+        mediaSession.setActive(true);
+        mediaSession.setCallback(new MediaSession.Callback() {
+            @Override
+            public void onPlay() {
+                Intent intent = new Intent(PlaybackService.this, PlaybackService.class);
+                intent.setAction(ACTION_PLAY);
+                startService(intent);
+            }
+
+            @Override
+            public void onPause() {
+                Intent intent = new Intent(PlaybackService.this, PlaybackService.class);
+                intent.setAction(ACTION_PAUSE);
+                startService(intent);
+            }
+
+            @Override
+            public void onSkipToNext() {
+                Intent intent = new Intent(PlaybackService.this, PlaybackService.class);
+                intent.setAction(ACTION_NEXT);
+                startService(intent);
+            }
+
+            @Override
+            public void onSkipToPrevious() {
+                Intent intent = new Intent(PlaybackService.this, PlaybackService.class);
+                intent.setAction(ACTION_PREVIOUS);
+                startService(intent);
+            }
+
+            @Override
+            public void onSeekTo(long pos) {
+                Intent intent = new Intent(PlaybackService.this, PlaybackService.class);
+                intent.setAction(ACTION_SEEK);
+                intent.putExtra("position_ms", Math.max(0L, pos));
+                startService(intent);
+            }
+        });
+    }
+
+    private void updateMediaSessionState() {
+        if (mediaSession == null) {
+            return;
+        }
+        long actions = PlaybackState.ACTION_PLAY
+                | PlaybackState.ACTION_PAUSE
+                | PlaybackState.ACTION_PLAY_PAUSE
+                | PlaybackState.ACTION_SKIP_TO_NEXT
+                | PlaybackState.ACTION_SKIP_TO_PREVIOUS
+                | PlaybackState.ACTION_SEEK_TO;
+        int state = isPlaying ? PlaybackState.STATE_PLAYING : PlaybackState.STATE_PAUSED;
+        PlaybackState playbackState = new PlaybackState.Builder()
+                .setActions(actions)
+                .setState(state, Math.max(0L, currentPositionMs), isPlaying ? 1.0f : 0.0f, SystemClock.elapsedRealtime())
+                .build();
+        mediaSession.setPlaybackState(playbackState);
+    }
+
+    private void requestAudioFocus() {
+        if (audioManager == null || hasAudioFocus) {
+            return;
+        }
+
+        int result;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            if (audioFocusRequest == null) {
+                AudioAttributes attrs = new AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                        .build();
+                audioFocusRequest = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                        .setAudioAttributes(attrs)
+                        .setOnAudioFocusChangeListener(this)
+                        .build();
+            }
+            result = audioManager.requestAudioFocus(audioFocusRequest);
+        } else {
+            result = audioManager.requestAudioFocus(this, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN);
+        }
+
+        hasAudioFocus = (result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED);
+    }
+
+    private void abandonAudioFocus() {
+        if (audioManager == null || !hasAudioFocus) {
+            return;
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && audioFocusRequest != null) {
+            audioManager.abandonAudioFocusRequest(audioFocusRequest);
+        } else {
+            audioManager.abandonAudioFocus(this);
+        }
+        hasAudioFocus = false;
+    }
+
     private void applyStateUpdate(Intent intent) {
         if (intent.hasExtra("title")) {
             currentTitle = valueOrDefault(intent.getStringExtra("title"), currentTitle);
@@ -300,6 +429,11 @@ public class PlaybackService extends Service {
                 createServiceActionIntent(ACTION_NEXT)
         );
 
+        MediaStyle mediaStyle = new MediaStyle().setShowActionsInCompactView(0, 1, 2);
+        if (mediaSession != null) {
+            mediaStyle.setMediaSession(mediaSession.getSessionToken());
+        }
+
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.ic_media_play)
                 .setContentTitle(currentTitle)
@@ -311,7 +445,7 @@ public class PlaybackService extends Service {
                 .addAction(prevAction)
                 .addAction(playPauseAction)
                 .addAction(nextAction)
-                .setStyle(new MediaStyle().setShowActionsInCompactView(0, 1, 2));
+                .setStyle(mediaStyle);
 
         if (artworkBitmap != null) {
             builder.setLargeIcon(artworkBitmap);
@@ -426,7 +560,25 @@ public class PlaybackService extends Service {
         if (isPlaying) {
             scheduleSelfRestart();
         }
+        abandonAudioFocus();
+        if (mediaSession != null) {
+            mediaSession.setActive(false);
+            mediaSession.release();
+            mediaSession = null;
+        }
         super.onDestroy();
+    }
+
+    @Override
+    public void onAudioFocusChange(int focusChange) {
+        if (focusChange == AudioManager.AUDIOFOCUS_LOSS || focusChange == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT) {
+            isPlaying = false;
+            syncPlaybackResources();
+            persistState();
+            updateNotification();
+            broadcastState();
+            dispatchActionToUi(ACTION_PAUSE, null);
+        }
     }
 
     @Nullable
