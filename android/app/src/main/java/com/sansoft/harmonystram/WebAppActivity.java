@@ -332,7 +332,6 @@ public class WebAppActivity extends AppCompatActivity {
         PlaybackService.PlaybackSnapshot snapshot = PlaybackService.readSnapshot(this);
         return snapshot != null && snapshot.playing;
     }
-
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
