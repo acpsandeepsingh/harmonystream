@@ -4,6 +4,7 @@ import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.PictureInPictureParams;
 import android.content.res.AssetManager;
+import android.content.res.Configuration;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -217,6 +218,12 @@ public class WebAppActivity extends AppCompatActivity {
     }
 
     @Override
+    public void onPictureInPictureModeChanged(boolean isInPictureInPictureMode, Configuration newConfig) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig);
+        dispatchToWeb("window.dispatchEvent(new CustomEvent('nativePictureInPictureChanged', { detail: { isInPictureInPictureMode: " + isInPictureInPictureMode + " } }));");
+    }
+
+    @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
@@ -224,6 +231,13 @@ public class WebAppActivity extends AppCompatActivity {
             return;
         }
         dispatchPendingMediaAction(intent.getStringExtra(PlaybackService.EXTRA_PENDING_MEDIA_ACTION));
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // Recovery hook: after lock-screen/app resume, ask web player to re-assert playback if needed.
+        dispatchToWeb("window.dispatchEvent(new CustomEvent('nativeHostResumed'));\n");
     }
 
     private void dispatchPendingMediaAction(String action) {
@@ -797,6 +811,7 @@ public class WebAppActivity extends AppCompatActivity {
         String js = "(function(){try{if(window.__harmonyNativeShimInstalled){return 'already';}"
                 + "window.__harmonyNativeShimInstalled=true;"
                 + "function send(){try{if(!window.HarmonyNative||!window.HarmonyNative.updateState){return;}"
+                + "if(window.__harmonyNativeManagedByApp){return;}"
                 + "var media=document.querySelector('audio,video');"
                 + "var title=document.title||'HarmonyStream';"
                 + "var artist='';"
@@ -808,14 +823,14 @@ public class WebAppActivity extends AppCompatActivity {
                 + "function bindMedia(media){if(!media||media.__harmonyBound){return;}media.__harmonyBound=true;"
                 + "['play','pause','timeupdate','loadedmetadata','ended','seeking'].forEach(function(ev){media.addEventListener(ev,send,{passive:true});});}"
                 + "function scan(){var media=document.querySelector('audio,video');bindMedia(media);send();}"
-                + "window.__harmonyNativeApplyCommand=function(action){try{var media=document.querySelector('audio,video');if(!media){return;}"
+                + "if(typeof window.__harmonyNativeApplyCommand!=='function'){window.__harmonyNativeApplyCommand=function(action){try{var media=document.querySelector('audio,video');if(!media){return;}"
                 + "if(action==='"+PlaybackService.ACTION_PLAY+"'){media.play();}"
                 + "if(action==='"+PlaybackService.ACTION_PAUSE+"'){media.pause();}"
                 + "if(action==='"+PlaybackService.ACTION_PLAY_PAUSE+"'){if(media.paused){media.play();}else{media.pause();}}"
                 + "if(action==='"+PlaybackService.ACTION_NEXT+"'){if(navigator.mediaSession&&navigator.mediaSession.metadata){document.dispatchEvent(new KeyboardEvent('keydown',{key:'MediaTrackNext'}));}}"
                 + "if(action==='"+PlaybackService.ACTION_PREVIOUS+"'){if(navigator.mediaSession&&navigator.mediaSession.metadata){document.dispatchEvent(new KeyboardEvent('keydown',{key:'MediaTrackPrevious'}));}}"
                 + "setTimeout(send,200);"
-                + "}catch(e){}};"
+                + "}catch(e){}};}"
                 + "setInterval(scan,1200);scan();return 'installed';}catch(e){return 'err:'+String(e);}})();";
         view.evaluateJavascript(js, value -> Log.d(TAG, "Native playback shim: " + value));
     }

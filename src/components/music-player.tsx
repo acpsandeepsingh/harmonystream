@@ -69,6 +69,7 @@ declare global {
       getState?: () => void;
     };
     __harmonyNativeApplyCommand?: (action: string) => void;
+    __harmonyNativeManagedByApp?: boolean;
   }
 }
 
@@ -420,6 +421,8 @@ export function MusicPlayer() {
   const isSeekingRef = useRef(false);
   const isChangingTrackRef = useRef(false);
   const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const isGlobalPlayingRef = useRef(isGlobalPlaying);
+  const pendingNativeActionRef = useRef<string | null>(null);
 
   // Player-specific UI state
   const [container, setContainer] = useState<HTMLElement | null>(null);
@@ -448,16 +451,42 @@ export function MusicPlayer() {
 
   const applyNativeCommand = useCallback((action: string) => {
     if (!action) return;
+
+    const player = playerRef.current;
+    const canControlPlayer = !!player && typeof player.getPlayerState === 'function';
+
+    if (!canControlPlayer) {
+      pendingNativeActionRef.current = action;
+    }
+
     switch (action) {
       case 'com.sansoft.harmonystram.PLAY':
+        if (canControlPlayer && typeof player.playVideo === 'function') {
+          player.playVideo();
+        }
         setGlobalIsPlaying(true);
         break;
       case 'com.sansoft.harmonystram.PAUSE':
+        if (canControlPlayer && typeof player.pauseVideo === 'function') {
+          player.pauseVideo();
+        }
         setGlobalIsPlaying(false);
         break;
-      case 'com.sansoft.harmonystram.PLAY_PAUSE':
-        setGlobalIsPlaying(!isGlobalPlaying);
+      case 'com.sansoft.harmonystram.PLAY_PAUSE': {
+        if (canControlPlayer && typeof player.playVideo === 'function' && typeof player.pauseVideo === 'function') {
+          const playerState = player.getPlayerState();
+          if (playerState === 1) {
+            player.pauseVideo();
+            setGlobalIsPlaying(false);
+          } else {
+            player.playVideo();
+            setGlobalIsPlaying(true);
+          }
+        } else {
+          setGlobalIsPlaying(!isGlobalPlayingRef.current);
+        }
         break;
+      }
       case 'com.sansoft.harmonystram.NEXT':
         globalPlayNext();
         break;
@@ -467,7 +496,11 @@ export function MusicPlayer() {
       default:
         break;
     }
-  }, [setGlobalIsPlaying, globalPlayNext, globalPlayPrev, isGlobalPlaying]);
+  }, [setGlobalIsPlaying, globalPlayNext, globalPlayPrev]);
+
+  useEffect(() => {
+    isGlobalPlayingRef.current = isGlobalPlaying;
+  }, [isGlobalPlaying]);
 
   useEffect(() => {
     if (isQueueOpen && currentTrack) {
@@ -539,6 +572,15 @@ export function MusicPlayer() {
   const onReady: YouTubeProps['onReady'] = useCallback((event: YouTubeEvent) => {
     playerRef.current = event.target;
     playerRef.current.setVolume(volume);
+    if (pendingNativeActionRef.current) {
+      const action = pendingNativeActionRef.current;
+      pendingNativeActionRef.current = null;
+      setTimeout(() => {
+        if (action) {
+          window.__harmonyNativeApplyCommand?.(action);
+        }
+      }, 50);
+    }
   }, [volume]);
 
   const onStateChange: YouTubeProps['onStateChange'] = useCallback((event: YouTubeEvent<number>) => {
@@ -927,20 +969,46 @@ export function MusicPlayer() {
   useEffect(() => {
     if (!isAndroidAppRuntime || typeof window === 'undefined') return;
 
+    window.__harmonyNativeManagedByApp = true;
     window.__harmonyNativeApplyCommand = applyNativeCommand;
     const commandListener = (event: Event) => {
       const detail = (event as CustomEvent<{ action?: string }>).detail;
       applyNativeCommand(detail?.action ?? '');
     };
 
+    const pipStateListener = (event: Event) => {
+      const detail = (event as CustomEvent<{ isInPictureInPictureMode?: boolean }>).detail;
+      if (detail?.isInPictureInPictureMode && currentTrack) {
+        setGlobalIsPlaying(true);
+      }
+    };
+
+    const hostResumedListener = () => {
+      const player = playerRef.current;
+      if (!player || !currentTrack) return;
+      try {
+        const state = typeof player.getPlayerState === 'function' ? player.getPlayerState() : -1;
+        if (isGlobalPlayingRef.current && state !== 1 && typeof player.playVideo === 'function') {
+          player.playVideo();
+        }
+      } catch (error) {
+        console.warn('Failed to recover playback after resume', error);
+      }
+    };
+
     window.addEventListener('nativePlaybackCommand', commandListener as EventListener);
+    window.addEventListener('nativePictureInPictureChanged', pipStateListener as EventListener);
+    window.addEventListener('nativeHostResumed', hostResumedListener as EventListener);
     window.HarmonyNative?.getState?.();
 
     return () => {
       window.removeEventListener('nativePlaybackCommand', commandListener as EventListener);
+      window.removeEventListener('nativePictureInPictureChanged', pipStateListener as EventListener);
+      window.removeEventListener('nativeHostResumed', hostResumedListener as EventListener);
       window.__harmonyNativeApplyCommand = undefined;
+      window.__harmonyNativeManagedByApp = false;
     };
-  }, [isAndroidAppRuntime, applyNativeCommand]);
+  }, [isAndroidAppRuntime, applyNativeCommand, currentTrack, setGlobalIsPlaying]);
 
   useEffect(() => {
     if (!isAndroidAppRuntime || !currentTrack) return;
