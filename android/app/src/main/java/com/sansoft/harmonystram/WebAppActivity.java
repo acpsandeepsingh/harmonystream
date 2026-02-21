@@ -212,7 +212,9 @@ public class WebAppActivity extends AppCompatActivity {
         playbackActive = shouldKeepPlaybackAliveInBackground();
         maybeEnterPictureInPicture();
     }
-
+   private boolean shouldKeepPlaybackAliveInBackground() {
+        return PlaybackService.readSnapshot(this).playing;
+    }
     private void maybeEnterPictureInPicture() {
         if (!playbackActive || Build.VERSION.SDK_INT < Build.VERSION_CODES.O || isInPictureInPictureMode()) {
             return;
