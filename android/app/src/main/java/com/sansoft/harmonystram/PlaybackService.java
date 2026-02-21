@@ -9,6 +9,7 @@ import android.app.Service;
 import android.media.AudioAttributes;
 import android.media.AudioFocusRequest;
 import android.media.AudioManager;
+import android.media.MediaMetadata;
 import android.media.session.MediaSession;
 import android.media.session.PlaybackState;
 import android.content.Intent;
@@ -125,6 +126,7 @@ public class PlaybackService extends Service implements AudioManager.OnAudioFocu
             requestAudioFocus();
         }
         updateMediaSessionState();
+        updateMediaSessionMetadata();
         progressHandler.post(progressTick);
     }
 
@@ -141,6 +143,7 @@ public class PlaybackService extends Service implements AudioManager.OnAudioFocu
             case ACTION_UPDATE_STATE:
                 applyStateUpdate(intent);
                 syncPlaybackResources();
+                updateMediaSessionMetadata();
                 persistState();
                 updateNotification();
                 broadcastState();
@@ -316,6 +319,21 @@ public class PlaybackService extends Service implements AudioManager.OnAudioFocu
         mediaSession.setPlaybackState(playbackState);
     }
 
+    private void updateMediaSessionMetadata() {
+        if (mediaSession == null) {
+            return;
+        }
+        MediaMetadata.Builder metadataBuilder = new MediaMetadata.Builder()
+                .putString(MediaMetadata.METADATA_KEY_TITLE, currentTitle)
+                .putString(MediaMetadata.METADATA_KEY_ARTIST, currentArtist)
+                .putLong(MediaMetadata.METADATA_KEY_DURATION, Math.max(0L, currentDurationMs));
+        if (artworkBitmap != null) {
+            metadataBuilder.putBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART, artworkBitmap);
+            metadataBuilder.putBitmap(MediaMetadata.METADATA_KEY_ART, artworkBitmap);
+        }
+        mediaSession.setMetadata(metadataBuilder.build());
+    }
+
     private void requestAudioFocus() {
         if (audioManager == null || hasAudioFocus) {
             return;
@@ -441,6 +459,8 @@ public class PlaybackService extends Service implements AudioManager.OnAudioFocu
                 .setContentIntent(createContentIntent())
                 .setOnlyAlertOnce(true)
                 .setOngoing(isPlaying)
+                .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
+                .setPriority(NotificationCompat.PRIORITY_LOW)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                 .addAction(prevAction)
                 .addAction(playPauseAction)
@@ -512,6 +532,7 @@ public class PlaybackService extends Service implements AudioManager.OnAudioFocu
         currentPositionMs = Math.max(0, prefs.getLong(KEY_POSITION_MS, 0));
         currentDurationMs = Math.max(0, prefs.getLong(KEY_DURATION_MS, 0));
         pendingMediaAction = prefs.getString(KEY_PENDING_MEDIA_ACTION, null);
+        updateMediaSessionMetadata();
     }
 
     private void createNotificationChannel() {
