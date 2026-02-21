@@ -11,6 +11,7 @@ import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.os.Build;
+import android.os.PowerManager;
 import android.util.Log;
 import android.os.Handler;
 import android.os.IBinder;
@@ -23,6 +24,11 @@ import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
 import androidx.core.content.ContextCompat;
 import androidx.media.app.NotificationCompat.MediaStyle;
+import androidx.media.session.MediaButtonReceiver;
+
+import android.support.v4.media.MediaMetadataCompat;
+import android.support.v4.media.session.MediaSessionCompat;
+import android.support.v4.media.session.PlaybackStateCompat;
 
 public class PlaybackService extends Service {
 
@@ -90,6 +96,10 @@ public class PlaybackService extends Service {
     private long currentDurationMs = 0;
     private Bitmap artworkBitmap;
     private String pendingMediaAction;
+    @Nullable
+    private PowerManager.WakeLock playbackWakeLock;
+    @Nullable
+    private MediaSessionCompat mediaSession;
 
     private final Handler progressHandler = new Handler(Looper.getMainLooper());
     private final Runnable progressTick = new Runnable() {
@@ -109,7 +119,11 @@ public class PlaybackService extends Service {
     public void onCreate() {
         super.onCreate();
         createNotificationChannel();
+        initWakeLock();
+        initMediaSession();
         restoreState();
+        updateMediaSessionState();
+        syncWakeLock();
         progressHandler.post(progressTick);
     }
 
@@ -128,6 +142,8 @@ public class PlaybackService extends Service {
                 persistState();
                 updateNotification();
                 broadcastState();
+                updateMediaSessionState();
+                syncWakeLock();
                 break;
             case ACTION_PREVIOUS:
             case ACTION_PLAY_PAUSE:
@@ -145,6 +161,8 @@ public class PlaybackService extends Service {
                 updateNotification();
                 broadcastState();
                 dispatchActionToUi(action, intent);
+                updateMediaSessionState();
+                syncWakeLock();
                 break;
             case ACTION_SEEK:
                 currentPositionMs = Math.max(0L, intent.getLongExtra("position_ms", currentPositionMs));
@@ -155,6 +173,8 @@ public class PlaybackService extends Service {
                 updateNotification();
                 broadcastState();
                 dispatchActionToUi(action, intent);
+                updateMediaSessionState();
+                syncWakeLock();
                 break;
             case ACTION_SET_QUEUE:
                 dispatchActionToUi(action, intent);
@@ -166,6 +186,7 @@ public class PlaybackService extends Service {
                 pendingMediaAction = null;
                 persistState();
                 updateNotification();
+                updateMediaSessionState();
                 break;
             default:
                 break;
@@ -311,7 +332,13 @@ public class PlaybackService extends Service {
                 .addAction(prevAction)
                 .addAction(playPauseAction)
                 .addAction(nextAction)
-                .setStyle(new MediaStyle().setShowActionsInCompactView(0, 1, 2));
+                .setStyle(new MediaStyle()
+                        .setShowActionsInCompactView(0, 1, 2)
+                        .setMediaSession(mediaSession == null ? null : mediaSession.getSessionToken()))
+                .setDeleteIntent(MediaButtonReceiver.buildMediaButtonPendingIntent(
+                        this,
+                        PlaybackStateCompat.ACTION_STOP
+                ));
 
         if (artworkBitmap != null) {
             builder.setLargeIcon(artworkBitmap);
@@ -395,6 +422,115 @@ public class PlaybackService extends Service {
         }
     }
 
+    private void initMediaSession() {
+        mediaSession = new MediaSessionCompat(this, TAG);
+        mediaSession.setCallback(new MediaSessionCompat.Callback() {
+            @Override
+            public void onPlay() {
+                Intent intent = new Intent(PlaybackService.this, PlaybackService.class);
+                intent.setAction(ACTION_PLAY);
+                startService(intent);
+            }
+
+            @Override
+            public void onPause() {
+                Intent intent = new Intent(PlaybackService.this, PlaybackService.class);
+                intent.setAction(ACTION_PAUSE);
+                startService(intent);
+            }
+
+            @Override
+            public void onSkipToNext() {
+                Intent intent = new Intent(PlaybackService.this, PlaybackService.class);
+                intent.setAction(ACTION_NEXT);
+                startService(intent);
+            }
+
+            @Override
+            public void onSkipToPrevious() {
+                Intent intent = new Intent(PlaybackService.this, PlaybackService.class);
+                intent.setAction(ACTION_PREVIOUS);
+                startService(intent);
+            }
+
+            @Override
+            public void onSeekTo(long pos) {
+                Intent intent = new Intent(PlaybackService.this, PlaybackService.class);
+                intent.setAction(ACTION_SEEK);
+                intent.putExtra("position_ms", Math.max(0L, pos));
+                startService(intent);
+            }
+        });
+        mediaSession.setFlags(MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS | MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS);
+        mediaSession.setActive(true);
+    }
+
+    private void updateMediaSessionState() {
+        if (mediaSession == null) {
+            return;
+        }
+
+        long actions = PlaybackStateCompat.ACTION_PLAY
+                | PlaybackStateCompat.ACTION_PAUSE
+                | PlaybackStateCompat.ACTION_PLAY_PAUSE
+                | PlaybackStateCompat.ACTION_SKIP_TO_NEXT
+                | PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS
+                | PlaybackStateCompat.ACTION_SEEK_TO
+                | PlaybackStateCompat.ACTION_STOP;
+
+        int state = isPlaying ? PlaybackStateCompat.STATE_PLAYING : PlaybackStateCompat.STATE_PAUSED;
+        float speed = isPlaying ? 1.0f : 0.0f;
+
+        PlaybackStateCompat playbackState = new PlaybackStateCompat.Builder()
+                .setActions(actions)
+                .setState(state, Math.max(0L, currentPositionMs), speed, SystemClock.elapsedRealtime())
+                .build();
+        mediaSession.setPlaybackState(playbackState);
+
+        MediaMetadataCompat metadata = new MediaMetadataCompat.Builder()
+                .putString(MediaMetadataCompat.METADATA_KEY_TITLE, currentTitle)
+                .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, currentArtist)
+                .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, Math.max(0L, currentDurationMs))
+                .build();
+        mediaSession.setMetadata(metadata);
+    }
+
+    private void initWakeLock() {
+        PowerManager powerManager = (PowerManager) getSystemService(POWER_SERVICE);
+        if (powerManager == null) {
+            return;
+        }
+        playbackWakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,
+                getPackageName() + ":PlaybackWakeLock");
+        playbackWakeLock.setReferenceCounted(false);
+    }
+
+    private void syncWakeLock() {
+        if (playbackWakeLock == null) {
+            return;
+        }
+        try {
+            if (isPlaying && !playbackWakeLock.isHeld()) {
+                playbackWakeLock.acquire();
+            } else if (!isPlaying && playbackWakeLock.isHeld()) {
+                playbackWakeLock.release();
+            }
+        } catch (RuntimeException runtimeException) {
+            Log.w(TAG, "Failed to update playback wake lock state", runtimeException);
+        }
+    }
+
+    private void releaseWakeLock() {
+        if (playbackWakeLock == null || !playbackWakeLock.isHeld()) {
+            return;
+        }
+        try {
+            playbackWakeLock.release();
+        } catch (RuntimeException runtimeException) {
+            Log.w(TAG, "Failed to release playback wake lock", runtimeException);
+        }
+    }
+
     @Override
     public void onTaskRemoved(Intent rootIntent) {
         super.onTaskRemoved(rootIntent);
@@ -423,6 +559,12 @@ public class PlaybackService extends Service {
     @Override
     public void onDestroy() {
         progressHandler.removeCallbacksAndMessages(null);
+        releaseWakeLock();
+        if (mediaSession != null) {
+            mediaSession.setActive(false);
+            mediaSession.release();
+            mediaSession = null;
+        }
         if (isPlaying) {
             scheduleSelfRestart();
         }
