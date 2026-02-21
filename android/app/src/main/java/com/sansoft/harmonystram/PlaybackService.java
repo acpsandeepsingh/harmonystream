@@ -134,12 +134,12 @@ public class PlaybackService extends Service {
             case ACTION_PLAY:
             case ACTION_PAUSE:
             case ACTION_NEXT:
+                // Keep play/pause state authoritative from the Web player via ACTION_UPDATE_STATE.
+                // Optimistically toggling here can cause notification/PiP icon flicker when UI state arrives slightly later.
                 if (ACTION_PLAY.equals(action)) {
                     isPlaying = true;
                 } else if (ACTION_PAUSE.equals(action)) {
                     isPlaying = false;
-                } else if (ACTION_PLAY_PAUSE.equals(action)) {
-                    isPlaying = !isPlaying;
                 }
                 persistState();
                 updateNotification();
