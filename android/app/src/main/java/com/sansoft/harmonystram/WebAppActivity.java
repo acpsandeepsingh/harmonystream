@@ -360,12 +360,6 @@ public class WebAppActivity extends AppCompatActivity {
             return;
         }
 
-        JSONObject payload = new JSONObject();
-        try {
-            payload.put("action", action);
-        } catch (JSONException ignored) {
-        }
-
         // Avoid double-handling commands (event listeners + direct apply) which can retrigger a toggle and pause immediately.
         dispatchToWeb("window.__harmonyNativeApplyCommand && window.__harmonyNativeApplyCommand(" + JSONObject.quote(action) + ");");
 
