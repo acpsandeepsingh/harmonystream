@@ -422,7 +422,6 @@ export function MusicPlayer() {
   const isChangingTrackRef = useRef(false);
   const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const isGlobalPlayingRef = useRef(isGlobalPlaying);
-  const pendingNativeActionRef = useRef<string | null>(null);
 
   // Player-specific UI state
   const [container, setContainer] = useState<HTMLElement | null>(null);
@@ -472,19 +471,8 @@ export function MusicPlayer() {
         }
         setGlobalIsPlaying(false);
         break;
-      case 'com.sansoft.harmonystram.PLAY_PAUSE': {
-        if (canControlPlayer && typeof player.playVideo === 'function' && typeof player.pauseVideo === 'function') {
-          const playerState = player.getPlayerState();
-          if (playerState === 1) {
-            player.pauseVideo();
-            setGlobalIsPlaying(false);
-          } else {
-            player.playVideo();
-            setGlobalIsPlaying(true);
-          }
-        } else {
-          setGlobalIsPlaying(!isGlobalPlayingRef.current);
-        }
+      case 'com.sansoft.harmonystram.PLAY_PAUSE':
+        setGlobalIsPlaying(!isGlobalPlayingRef.current);
         break;
       }
       case 'com.sansoft.harmonystram.NEXT':
@@ -983,28 +971,13 @@ export function MusicPlayer() {
       }
     };
 
-    const hostResumedListener = () => {
-      const player = playerRef.current;
-      if (!player || !currentTrack) return;
-      try {
-        const state = typeof player.getPlayerState === 'function' ? player.getPlayerState() : -1;
-        if (isGlobalPlayingRef.current && state !== 1 && typeof player.playVideo === 'function') {
-          player.playVideo();
-        }
-      } catch (error) {
-        console.warn('Failed to recover playback after resume', error);
-      }
-    };
-
     window.addEventListener('nativePlaybackCommand', commandListener as EventListener);
     window.addEventListener('nativePictureInPictureChanged', pipStateListener as EventListener);
-    window.addEventListener('nativeHostResumed', hostResumedListener as EventListener);
     window.HarmonyNative?.getState?.();
 
     return () => {
       window.removeEventListener('nativePlaybackCommand', commandListener as EventListener);
       window.removeEventListener('nativePictureInPictureChanged', pipStateListener as EventListener);
-      window.removeEventListener('nativeHostResumed', hostResumedListener as EventListener);
       window.__harmonyNativeApplyCommand = undefined;
       window.__harmonyNativeManagedByApp = false;
     };
