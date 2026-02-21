@@ -365,8 +365,21 @@ public class WebAppActivity extends AppCompatActivity {
             payload.put("action", action);
         } catch (JSONException ignored) {
         }
-        dispatchToWeb("window.dispatchEvent(new CustomEvent('nativePlaybackCommand', { detail: " + payload + " }));");
+
+        // Avoid double-handling commands (event listeners + direct apply) which can retrigger a toggle and pause immediately.
         dispatchToWeb("window.__harmonyNativeApplyCommand && window.__harmonyNativeApplyCommand(" + JSONObject.quote(action) + ");");
+
+        // Keep compatibility for non-toggle actions that older web builds may only handle via the custom event.
+        if (!PlaybackService.ACTION_PLAY.equals(action)
+                && !PlaybackService.ACTION_PAUSE.equals(action)
+                && !PlaybackService.ACTION_PLAY_PAUSE.equals(action)) {
+            JSONObject payload = new JSONObject();
+            try {
+                payload.put("action", action);
+            } catch (JSONException ignored) {
+            }
+            dispatchToWeb("window.dispatchEvent(new CustomEvent('nativePlaybackCommand', { detail: " + payload + " }));");
+        }
         clearPendingMediaAction();
     }
 
