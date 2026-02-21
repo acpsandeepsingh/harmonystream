@@ -150,19 +150,22 @@ public class PlaybackService extends Service {
             case ACTION_PLAY:
             case ACTION_PAUSE:
             case ACTION_NEXT:
-                if (ACTION_PLAY.equals(action)) {
-                    isPlaying = true;
-                } else if (ACTION_PAUSE.equals(action)) {
-                    isPlaying = false;
-                } else if (ACTION_PLAY_PAUSE.equals(action)) {
-                    isPlaying = !isPlaying;
+                boolean fromWebBridge = "web".equals(intent.getStringExtra("source"));
+                if (fromWebBridge) {
+                    if (ACTION_PLAY.equals(action)) {
+                        isPlaying = true;
+                    } else if (ACTION_PAUSE.equals(action)) {
+                        isPlaying = false;
+                    } else if (ACTION_PLAY_PAUSE.equals(action)) {
+                        isPlaying = !isPlaying;
+                    }
+                    persistState();
+                    updateNotification();
+                    updateMediaSessionState();
+                    broadcastState();
+                    syncWakeLock();
                 }
-                persistState();
-                updateNotification();
-                updateMediaSessionState();
-                broadcastState();
                 dispatchActionToUi(action, intent);
-                syncWakeLock();
                 break;
             case ACTION_SEEK:
                 currentPositionMs = Math.max(0L, intent.getLongExtra("position_ms", currentPositionMs));

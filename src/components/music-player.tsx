@@ -450,16 +450,31 @@ export function MusicPlayer() {
 
   const applyNativeCommand = useCallback((action: string) => {
     if (!action) return;
+
+    const player = playerRef.current;
+    const canControlPlayer = !!player && typeof player.getPlayerState === 'function';
+
+    if (!canControlPlayer) {
+      pendingNativeActionRef.current = action;
+    }
+
     switch (action) {
       case 'com.sansoft.harmonystram.PLAY':
+        if (canControlPlayer && typeof player.playVideo === 'function') {
+          player.playVideo();
+        }
         setGlobalIsPlaying(true);
         break;
       case 'com.sansoft.harmonystram.PAUSE':
+        if (canControlPlayer && typeof player.pauseVideo === 'function') {
+          player.pauseVideo();
+        }
         setGlobalIsPlaying(false);
         break;
       case 'com.sansoft.harmonystram.PLAY_PAUSE':
         setGlobalIsPlaying(!isGlobalPlayingRef.current);
         break;
+      }
       case 'com.sansoft.harmonystram.NEXT':
         globalPlayNext();
         break;
@@ -545,6 +560,15 @@ export function MusicPlayer() {
   const onReady: YouTubeProps['onReady'] = useCallback((event: YouTubeEvent) => {
     playerRef.current = event.target;
     playerRef.current.setVolume(volume);
+    if (pendingNativeActionRef.current) {
+      const action = pendingNativeActionRef.current;
+      pendingNativeActionRef.current = null;
+      setTimeout(() => {
+        if (action) {
+          window.__harmonyNativeApplyCommand?.(action);
+        }
+      }, 50);
+    }
   }, [volume]);
 
   const onStateChange: YouTubeProps['onStateChange'] = useCallback((event: YouTubeEvent<number>) => {
