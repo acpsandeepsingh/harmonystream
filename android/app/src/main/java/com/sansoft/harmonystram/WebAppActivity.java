@@ -13,7 +13,6 @@ import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.Color;
-import android.graphics.Rect;
 import android.graphics.drawable.Icon;
 import android.os.Build;
 import android.os.Bundle;
@@ -77,8 +76,7 @@ public class WebAppActivity extends AppCompatActivity {
     private static final long MAIN_FRAME_TIMEOUT_MS = 15000L;
     private static final int REQUEST_CODE_POST_NOTIFICATIONS = 4242;
     private static final Rational DEFAULT_PIP_ASPECT_RATIO = new Rational(16, 9);
-    private static final Rational COMPACT_PIP_ASPECT_RATIO = new Rational(16, 9);
-    private static final long MEDIA_ACTION_DEBOUNCE_WINDOW_MS = 1500L;
+    private static final Rational COMPACT_PIP_ASPECT_RATIO = new Rational(4, 3);
 
     private WebView webView;
     private ProgressBar loadingIndicator;
@@ -88,8 +86,6 @@ public class WebAppActivity extends AppCompatActivity {
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final Runnable mainFrameTimeoutRunnable = this::handleMainFrameTimeout;
     private boolean playbackActive;
-    private String lastDispatchedMediaAction;
-    private long lastDispatchedMediaActionAtMs;
 
     private final BroadcastReceiver serviceStateReceiver = new BroadcastReceiver() {
         @Override
@@ -242,6 +238,7 @@ public class WebAppActivity extends AppCompatActivity {
     private void configureSystemBars() {
         getWindow().setStatusBarColor(Color.rgb(11, 18, 32));
         getWindow().setNavigationBarColor(Color.rgb(11, 18, 32));
+<<<<<<< codex/fix-status-bar-flickering-issue-40qk3p
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             getWindow().setStatusBarContrastEnforced(false);
             getWindow().setNavigationBarContrastEnforced(false);
@@ -254,16 +251,14 @@ public class WebAppActivity extends AppCompatActivity {
                                 | android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS);
             }
         }
+=======
+>>>>>>> main
     }
 
     private PictureInPictureParams buildPipParams(boolean playing) {
         PictureInPictureParams.Builder builder = new PictureInPictureParams.Builder()
                 .setAspectRatio(COMPACT_PIP_ASPECT_RATIO)
                 .setActions(buildPipActions(playing));
-
-        if (webView != null && webView.getWidth() > 0 && webView.getHeight() > 0) {
-            builder.setSourceRectHint(new Rect(0, 0, webView.getWidth(), webView.getHeight()));
-        }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             builder.setSeamlessResizeEnabled(true)
@@ -299,6 +294,7 @@ public class WebAppActivity extends AppCompatActivity {
         return new RemoteAction(Icon.createWithResource(this, iconRes), title, title, pendingIntent);
     }
 
+<<<<<<< codex/fix-status-bar-flickering-issue-40qk3p
     @Override
     protected void onResume() {
         super.onResume();
@@ -340,6 +336,9 @@ public class WebAppActivity extends AppCompatActivity {
         PlaybackService.PlaybackSnapshot snapshot = PlaybackService.readSnapshot(this);
         return snapshot != null && snapshot.playing;
     }
+
+=======
+>>>>>>> main
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
@@ -355,11 +354,6 @@ public class WebAppActivity extends AppCompatActivity {
             return;
         }
 
-        if (shouldIgnoreDuplicateMediaAction(action)) {
-            clearPendingMediaAction();
-            return;
-        }
-
         JSONObject payload = new JSONObject();
         try {
             payload.put("action", action);
@@ -368,17 +362,6 @@ public class WebAppActivity extends AppCompatActivity {
         dispatchToWeb("window.dispatchEvent(new CustomEvent('nativePlaybackCommand', { detail: " + payload + " }));");
         dispatchToWeb("window.__harmonyNativeApplyCommand && window.__harmonyNativeApplyCommand(" + JSONObject.quote(action) + ");");
         clearPendingMediaAction();
-    }
-
-    private boolean shouldIgnoreDuplicateMediaAction(String action) {
-        long nowMs = System.currentTimeMillis();
-        if (action.equals(lastDispatchedMediaAction)
-                && nowMs - lastDispatchedMediaActionAtMs <= MEDIA_ACTION_DEBOUNCE_WINDOW_MS) {
-            return true;
-        }
-        lastDispatchedMediaAction = action;
-        lastDispatchedMediaActionAtMs = nowMs;
-        return false;
     }
 
     private void clearPendingMediaAction() {
@@ -937,20 +920,19 @@ public class WebAppActivity extends AppCompatActivity {
             return;
         }
         String js = "(function(){try{if(window.__harmonyNativeShimInstalled){return 'already';}"
-                + "window.__harmonyNativeShimInstalled=true;window.__harmonyLastPlayingState=window.__harmonyLastPlayingState||false;"
+                + "window.__harmonyNativeShimInstalled=true;"
                 + "function send(){try{if(!window.HarmonyNative||!window.HarmonyNative.updateState){return;}"
-                + "var media=document.querySelector('audio,video');if(!media){return;}"
+                + "var media=document.querySelector('audio,video');"
                 + "var title=document.title||'HarmonyStream';"
                 + "var artist='';"
-                + "var playing=!media.paused&&!media.ended;"
-                + "var position=Math.floor((media.currentTime||0)*1000);"
-                + "var duration=isFinite(media.duration)?Math.floor(media.duration*1000):0;"
-                + "window.__harmonyLastPlayingState=playing;"
+                + "var playing=!!(media&&!media.paused);"
+                + "var position=media?Math.floor((media.currentTime||0)*1000):0;"
+                + "var duration=media&&isFinite(media.duration)?Math.floor(media.duration*1000):0;"
                 + "window.HarmonyNative.updateState(String(title),String(artist),playing,position,duration,'');"
                 + "}catch(e){}}"
                 + "function bindMedia(media){if(!media||media.__harmonyBound){return;}media.__harmonyBound=true;"
-                + "['play','pause','timeupdate','loadedmetadata','ended','seeking','playing','canplay'].forEach(function(ev){media.addEventListener(ev,send,{passive:true});});}"
-                + "function scan(){var media=document.querySelector('audio,video');if(media){bindMedia(media);send();}}"
+                + "['play','pause','timeupdate','loadedmetadata','ended','seeking'].forEach(function(ev){media.addEventListener(ev,send,{passive:true});});}"
+                + "function scan(){var media=document.querySelector('audio,video');bindMedia(media);send();}"
                 + "window.__harmonyNativeApplyCommand=function(action){try{var media=document.querySelector('audio,video');if(!media){return;}"
                 + "if(action==='"+PlaybackService.ACTION_PLAY+"'){media.play();}"
                 + "if(action==='"+PlaybackService.ACTION_PAUSE+"'){media.pause();}"
