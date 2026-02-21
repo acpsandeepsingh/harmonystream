@@ -447,10 +447,9 @@ public class PlaybackService extends Service implements AudioManager.OnAudioFocu
                 createServiceActionIntent(ACTION_NEXT)
         );
 
+        // androidx.media.app.NotificationCompat.MediaStyle expects a MediaSessionCompat token.
+        // We keep framework MediaSession for transport callbacks and omit the compat token hookup here.
         MediaStyle mediaStyle = new MediaStyle().setShowActionsInCompactView(0, 1, 2);
-        if (mediaSession != null) {
-            mediaStyle.setMediaSession(mediaSession.getSessionToken());
-        }
 
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.ic_media_play)
