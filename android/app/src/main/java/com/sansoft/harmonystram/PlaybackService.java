@@ -11,6 +11,7 @@ import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.os.Build;
+import android.os.PowerManager;
 import android.util.Log;
 import android.os.Handler;
 import android.os.IBinder;
@@ -90,6 +91,8 @@ public class PlaybackService extends Service {
     private long currentDurationMs = 0;
     private Bitmap artworkBitmap;
     private String pendingMediaAction;
+    @Nullable
+    private PowerManager.WakeLock playbackWakeLock;
 
     private final Handler progressHandler = new Handler(Looper.getMainLooper());
     private final Runnable progressTick = new Runnable() {
@@ -109,7 +112,9 @@ public class PlaybackService extends Service {
     public void onCreate() {
         super.onCreate();
         createNotificationChannel();
+        initWakeLock();
         restoreState();
+        syncWakeLock();
         progressHandler.post(progressTick);
     }
 
@@ -128,6 +133,7 @@ public class PlaybackService extends Service {
                 persistState();
                 updateNotification();
                 broadcastState();
+                syncWakeLock();
                 break;
             case ACTION_PREVIOUS:
             case ACTION_PLAY_PAUSE:
@@ -145,6 +151,7 @@ public class PlaybackService extends Service {
                 updateNotification();
                 broadcastState();
                 dispatchActionToUi(action, intent);
+                syncWakeLock();
                 break;
             case ACTION_SEEK:
                 currentPositionMs = Math.max(0L, intent.getLongExtra("position_ms", currentPositionMs));
@@ -155,6 +162,7 @@ public class PlaybackService extends Service {
                 updateNotification();
                 broadcastState();
                 dispatchActionToUi(action, intent);
+                syncWakeLock();
                 break;
             case ACTION_SET_QUEUE:
                 dispatchActionToUi(action, intent);
@@ -395,6 +403,42 @@ public class PlaybackService extends Service {
         }
     }
 
+    private void initWakeLock() {
+        PowerManager powerManager = (PowerManager) getSystemService(POWER_SERVICE);
+        if (powerManager == null) {
+            return;
+        }
+        playbackWakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,
+                getPackageName() + ":PlaybackWakeLock");
+        playbackWakeLock.setReferenceCounted(false);
+    }
+
+    private void syncWakeLock() {
+        if (playbackWakeLock == null) {
+            return;
+        }
+        try {
+            if (isPlaying && !playbackWakeLock.isHeld()) {
+                playbackWakeLock.acquire();
+            } else if (!isPlaying && playbackWakeLock.isHeld()) {
+                playbackWakeLock.release();
+            }
+        } catch (RuntimeException runtimeException) {
+            Log.w(TAG, "Failed to update playback wake lock state", runtimeException);
+        }
+    }
+
+    private void releaseWakeLock() {
+        if (playbackWakeLock == null || !playbackWakeLock.isHeld()) {
+            return;
+        }
+        try {
+            playbackWakeLock.release();
+        } catch (RuntimeException runtimeException) {
+            Log.w(TAG, "Failed to release playback wake lock", runtimeException);
+        }
+    }
+
     @Override
     public void onTaskRemoved(Intent rootIntent) {
         super.onTaskRemoved(rootIntent);
@@ -423,6 +467,7 @@ public class PlaybackService extends Service {
     @Override
     public void onDestroy() {
         progressHandler.removeCallbacksAndMessages(null);
+        releaseWakeLock();
         if (isPlaying) {
             scheduleSelfRestart();
         }
