@@ -435,12 +435,10 @@ public class PlaybackService extends Service implements AudioManager.OnAudioFocu
                 createServiceActionIntent(ACTION_PREVIOUS)
         );
 
-        // Use explicit play/pause actions from notification to avoid double-toggle races while app UI is open.
-        String primaryAction = isPlaying ? ACTION_PAUSE : ACTION_PLAY;
         NotificationCompat.Action playPauseAction = new NotificationCompat.Action(
                 isPlaying ? android.R.drawable.ic_media_pause : android.R.drawable.ic_media_play,
                 isPlaying ? "Pause" : "Play",
-                createServiceActionIntent(primaryAction)
+                createServiceActionIntent(ACTION_PLAY_PAUSE)
         );
 
         NotificationCompat.Action nextAction = new NotificationCompat.Action(
@@ -449,9 +447,10 @@ public class PlaybackService extends Service implements AudioManager.OnAudioFocu
                 createServiceActionIntent(ACTION_NEXT)
         );
 
-        // androidx.media.app.NotificationCompat.MediaStyle expects a MediaSessionCompat token.
-        // We keep framework MediaSession for transport callbacks and omit the compat token hookup here.
         MediaStyle mediaStyle = new MediaStyle().setShowActionsInCompactView(0, 1, 2);
+        if (mediaSession != null) {
+            mediaStyle.setMediaSession(mediaSession.getSessionToken());
+        }
 
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.ic_media_play)
