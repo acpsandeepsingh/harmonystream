@@ -97,6 +97,8 @@ public class PlaybackService extends Service {
     private Bitmap artworkBitmap;
     private String pendingMediaAction;
     @Nullable
+    private MediaSessionCompat mediaSession;
+    @Nullable
     private PowerManager.WakeLock playbackWakeLock;
 
     private final Handler progressHandler = new Handler(Looper.getMainLooper());
@@ -117,8 +119,10 @@ public class PlaybackService extends Service {
     public void onCreate() {
         super.onCreate();
         createNotificationChannel();
+        initMediaSession();
         initWakeLock();
         restoreState();
+        updateMediaSessionState();
         syncWakeLock();
         progressHandler.post(progressTick);
     }
@@ -137,6 +141,7 @@ public class PlaybackService extends Service {
                 applyStateUpdate(intent);
                 persistState();
                 updateNotification();
+                updateMediaSessionState();
                 broadcastState();
                 syncWakeLock();
                 break;
@@ -154,6 +159,7 @@ public class PlaybackService extends Service {
                 }
                 persistState();
                 updateNotification();
+                updateMediaSessionState();
                 broadcastState();
                 dispatchActionToUi(action, intent);
                 syncWakeLock();
@@ -165,6 +171,7 @@ public class PlaybackService extends Service {
                 }
                 persistState();
                 updateNotification();
+                updateMediaSessionState();
                 broadcastState();
                 dispatchActionToUi(action, intent);
                 syncWakeLock();
@@ -173,6 +180,7 @@ public class PlaybackService extends Service {
                 dispatchActionToUi(action, intent);
                 break;
             case ACTION_GET_STATE:
+                updateMediaSessionState();
                 broadcastState();
                 break;
             case ACTION_CLEAR_PENDING_MEDIA_ACTION:
@@ -264,6 +272,71 @@ public class PlaybackService extends Service {
             } catch (Exception ignored) {
             }
         }
+
+        updateMediaSessionState();
+    }
+
+    private void initMediaSession() {
+        mediaSession = new MediaSessionCompat(this, TAG);
+        mediaSession.setFlags(
+                MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS
+                        | MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS
+        );
+        mediaSession.setCallback(new MediaSessionCompat.Callback() {
+            @Override
+            public void onPlay() {
+                dispatchActionToUi(ACTION_PLAY, null);
+            }
+
+            @Override
+            public void onPause() {
+                dispatchActionToUi(ACTION_PAUSE, null);
+            }
+
+            @Override
+            public void onSkipToNext() {
+                dispatchActionToUi(ACTION_NEXT, null);
+            }
+
+            @Override
+            public void onSkipToPrevious() {
+                dispatchActionToUi(ACTION_PREVIOUS, null);
+            }
+
+            @Override
+            public void onSeekTo(long pos) {
+                Intent seekIntent = new Intent();
+                seekIntent.putExtra("position_ms", Math.max(0L, pos));
+                dispatchActionToUi(ACTION_SEEK, seekIntent);
+            }
+        });
+        mediaSession.setActive(true);
+    }
+
+    private void updateMediaSessionState() {
+        if (mediaSession == null) {
+            return;
+        }
+
+        mediaSession.setMetadata(new MediaMetadataCompat.Builder()
+                .putString(MediaMetadataCompat.METADATA_KEY_TITLE, currentTitle)
+                .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, currentArtist)
+                .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, currentDurationMs)
+                .build());
+
+        long actions = PlaybackStateCompat.ACTION_PLAY
+                | PlaybackStateCompat.ACTION_PAUSE
+                | PlaybackStateCompat.ACTION_PLAY_PAUSE
+                | PlaybackStateCompat.ACTION_SKIP_TO_NEXT
+                | PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS
+                | PlaybackStateCompat.ACTION_SEEK_TO
+                | PlaybackStateCompat.ACTION_STOP;
+
+        int state = isPlaying ? PlaybackStateCompat.STATE_PLAYING : PlaybackStateCompat.STATE_PAUSED;
+        mediaSession.setPlaybackState(new PlaybackStateCompat.Builder()
+                .setActions(actions)
+                .setState(state, currentPositionMs, isPlaying ? 1f : 0f)
+                .build());
     }
 
     private void broadcastState() {
@@ -480,6 +553,11 @@ public class PlaybackService extends Service {
     public void onDestroy() {
         progressHandler.removeCallbacksAndMessages(null);
         releaseWakeLock();
+        if (mediaSession != null) {
+            mediaSession.setActive(false);
+            mediaSession.release();
+            mediaSession = null;
+        }
         if (isPlaying) {
             scheduleSelfRestart();
         }
