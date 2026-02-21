@@ -15,6 +15,7 @@ import android.util.Log;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.util.Base64;
 
 import androidx.annotation.Nullable;
@@ -133,12 +134,12 @@ public class PlaybackService extends Service {
             case ACTION_PLAY:
             case ACTION_PAUSE:
             case ACTION_NEXT:
+                // Keep play/pause state authoritative from the Web player via ACTION_UPDATE_STATE.
+                // Optimistically toggling here can cause notification/PiP icon flicker when UI state arrives slightly later.
                 if (ACTION_PLAY.equals(action)) {
                     isPlaying = true;
                 } else if (ACTION_PAUSE.equals(action)) {
                     isPlaying = false;
-                } else if (ACTION_PLAY_PAUSE.equals(action)) {
-                    isPlaying = !isPlaying;
                 }
                 persistState();
                 updateNotification();
@@ -395,8 +396,36 @@ public class PlaybackService extends Service {
     }
 
     @Override
+    public void onTaskRemoved(Intent rootIntent) {
+        super.onTaskRemoved(rootIntent);
+        if (isPlaying) {
+            scheduleSelfRestart();
+        }
+    }
+
+    private void scheduleSelfRestart() {
+        Intent restartIntent = new Intent(getApplicationContext(), PlaybackService.class);
+        restartIntent.setAction(ACTION_GET_STATE);
+        PendingIntent restartServiceIntent = PendingIntent.getService(
+                this,
+                9001,
+                restartIntent,
+                PendingIntent.FLAG_ONE_SHOT | (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_IMMUTABLE : 0)
+        );
+        android.app.AlarmManager alarmManager = (android.app.AlarmManager) getSystemService(ALARM_SERVICE);
+        if (alarmManager != null) {
+            alarmManager.setExactAndAllowWhileIdle(android.app.AlarmManager.ELAPSED_REALTIME,
+                    SystemClock.elapsedRealtime() + 1000,
+                    restartServiceIntent);
+        }
+    }
+
+    @Override
     public void onDestroy() {
         progressHandler.removeCallbacksAndMessages(null);
+        if (isPlaying) {
+            scheduleSelfRestart();
+        }
         super.onDestroy();
     }
 
