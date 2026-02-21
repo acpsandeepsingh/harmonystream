@@ -422,6 +422,7 @@ export function MusicPlayer() {
   const isChangingTrackRef = useRef(false);
   const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const isGlobalPlayingRef = useRef(isGlobalPlaying);
+  const pendingNativeActionRef = useRef<string | null>(null);
 
   // Player-specific UI state
   const [container, setContainer] = useState<HTMLElement | null>(null);
@@ -474,7 +475,6 @@ export function MusicPlayer() {
       case 'com.sansoft.harmonystram.PLAY_PAUSE':
         setGlobalIsPlaying(!isGlobalPlayingRef.current);
         break;
-      }
       case 'com.sansoft.harmonystram.NEXT':
         globalPlayNext();
         break;
