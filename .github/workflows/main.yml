@@ -73,10 +73,16 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Gradle 8.2
+      - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: 8.2
+          # Always cleanup unused files from the Gradle User Home, even if build fails
+          cache-cleanup: always
+          # Build scan publishing for build diagnostics
+          build-scan-publish: true
+          build-scan-terms-of-service-url: "https://gradle.com/terms-of-service"
+          build-scan-terms-of-service-agree: "yes"
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
@@ -156,14 +162,31 @@ jobs:
           sed -i 's/\r$//' android/gradlew
           chmod +x android/gradlew
 
-      - name: Build debug APK
+      - name: Forced Gradle Cleanup
+        run: |
+          # 1. Force kill any existing Java/Gradle processes
+          pkill -9 java || true
+
+          # 2. Clear local build artifacts and caches
+          # We remove the local .gradle and build folders to avoid corruption
+          cd android
+          rm -rf .gradle/
+          rm -rf build/
+          rm -rf app/build/
+
+          # 3. Purge specific corrupted cache directories if they exist
+          rm -rf ~/.gradle/caches/journal-1
+          rm -rf ~/.gradle/caches/build-cache-*
+        shell: bash
+
+      - name: Build with Gradle
         run: |
           set -e
           cd android
           if [ -f gradle/wrapper/gradle-wrapper.jar ]; then
-            ./gradlew assembleDebug --stacktrace --info --warning-mode all --no-daemon
+            ./gradlew assembleDebug --no-daemon --no-build-cache --refresh-dependencies --stacktrace
           else
-            gradle assembleDebug --stacktrace --info --warning-mode all --no-daemon
+            gradle assembleDebug --no-daemon --no-build-cache --refresh-dependencies --stacktrace
           fi
 
       - name: Validate generated BuildConfig API key wiring
