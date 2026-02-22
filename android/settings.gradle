@@ -21,7 +21,7 @@ pluginManagement {
     }
 }
 dependencyResolutionManagement {
-    repositoriesMode.set(RepositoriesMode.PREFER_PROJECT)
+    repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
     repositories {
         def googleMirror = System.getenv("ANDROID_GOOGLE_MAVEN_MIRROR")
         def centralMirror = System.getenv("ANDROID_MAVEN_CENTRAL_MIRROR")
