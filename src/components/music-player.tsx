@@ -68,6 +68,14 @@ declare global {
       updateState?: (title: string, artist: string, playing: boolean, positionMs: number, durationMs: number, artworkBase64: string) => void;
       getState?: () => void;
     };
+    AndroidNative?: {
+      play?: (id?: string, title?: string) => void;
+      pause?: () => void;
+      resume?: () => void;
+      seekTo?: (positionMs: number) => void;
+      setVideoMode?: (enabled: boolean) => void;
+    };
+    updateProgress?: (positionMs: number, durationMs: number) => void;
     __harmonyNativeApplyCommand?: (action: string) => void;
     __harmonyNativeManagedByApp?: boolean;
   }
@@ -694,8 +702,10 @@ export function MusicPlayer() {
         // For all subsequent clicks, toggle based on current player state.
         const state = player.getPlayerState();
         if (state === 1) { // is playing
+            window.AndroidNative?.pause?.();
             player.pauseVideo();
         } else {
+            window.AndroidNative?.play?.(currentTrack.videoId, currentTrack.title);
             player.playVideo();
         }
     }
@@ -719,6 +729,7 @@ export function MusicPlayer() {
       const newDuration = player.getDuration();
       if (newDuration > 0) {
         const newTime = (value[0] / 100) * newDuration;
+        window.AndroidNative?.seekTo?.(Math.floor(newTime * 1000));
         player.seekTo(newTime, true);
       }
     }
@@ -764,6 +775,7 @@ export function MusicPlayer() {
     }
 
     setPlayerMode(newMode);
+    window.AndroidNative?.setVideoMode?.(newMode === 'video');
   }, [isPip, playerMode, setPlayerMode, setInitialLoadIsVideoShare]);
   
   const handleToggleLike = useCallback(() => {
@@ -970,6 +982,22 @@ export function MusicPlayer() {
   useEffect(() => {
     if (!isAndroidAppRuntime || typeof window === 'undefined') return;
 
+    window.updateProgress = (positionMs: number, durationMs: number) => {
+      const nextDuration = Math.max(0, durationMs / 1000);
+      const nextTime = Math.max(0, positionMs / 1000);
+      setDuration(nextDuration);
+      setCurrentTime(nextTime);
+      setProgress(nextDuration > 0 ? Math.min(100, (nextTime / nextDuration) * 100) : 0);
+    };
+
+    return () => {
+      window.updateProgress = undefined;
+    };
+  }, [isAndroidAppRuntime]);
+
+  useEffect(() => {
+    if (!isAndroidAppRuntime || typeof window === 'undefined') return;
+
     window.__harmonyNativeManagedByApp = true;
     window.__harmonyNativeApplyCommand = applyNativeCommand;
     const commandListener = (event: Event) => {
@@ -995,6 +1023,7 @@ export function MusicPlayer() {
 
     const hostResumedListener = () => {
       window.HarmonyNative?.getState?.();
+      window.AndroidNative?.resume?.();
       if (isGlobalPlayingRef.current) {
         const player = playerRef.current;
         if (player && typeof player.playVideo === 'function') {
