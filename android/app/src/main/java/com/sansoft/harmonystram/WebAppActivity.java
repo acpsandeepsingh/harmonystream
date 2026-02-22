@@ -232,22 +232,12 @@ public class WebAppActivity extends AppCompatActivity {
         }
         dispatchPendingMediaAction(intent.getStringExtra(PlaybackService.EXTRA_PENDING_MEDIA_ACTION));
     }
+
     @Override
-    protected void onPause() {
-        super.onPause();
-        webView.onPause();
-        // NO pauseTimers() - this allows background audio
-        
-    }
-    @Override
-        protected void onResume() {
+    protected void onResume() {
         super.onResume();
         // Recovery hook: after lock-screen/app resume, ask web player to re-assert playback if needed.
-        
-        webView.onResume();
-        webView.resumeTimers();
-		dispatchToWeb("window.dispatchEvent(new CustomEvent('nativeHostResumed'));\n");
-		
+        dispatchToWeb("window.dispatchEvent(new CustomEvent('nativeHostResumed'));\n");
     }
 
     private void dispatchPendingMediaAction(String action) {
