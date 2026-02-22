@@ -1,6 +1,8 @@
 package com.sansoft.harmonystram;
 
 import android.Manifest;
+import android.os.PowerManager;
+import android.content.Context;
 import android.annotation.SuppressLint;
 import android.app.PictureInPictureParams;
 import android.content.res.AssetManager;
@@ -235,26 +237,50 @@ public class WebAppActivity extends AppCompatActivity {
 
 @Override
 protected void onPause() {
-    // 1. If we are in Mini Player (PiP), we must call super to let Android handle the window
+    Log.d("Harmony", "onPause triggered");
+
+    // 1. If in Mini Player (PiP), let it play normally
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && isInPictureInPictureMode()) {
-        super.onPause(); 
+        super.onPause();
+        return;
+    }
+
+    // 2. 🔥 SCREEN-OFF DETECTION
+    PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+    boolean isScreenOn = pm.isInteractive();
+
+    if (!isScreenOn) {
+        // User locked the screen. WE SKIP super.onPause() and webView.onPause()
+        // This keeps the YouTube iframe alive in the background.
+        Log.d("Harmony", "Screen Off: Keeping playback active");
         return; 
     }
 
-    // 2. 🔥 FOR CONTINUOUS PLAY:
-    // We DO NOT call super.onPause() or webView.onPause() for regular background/lock events.
-    // This keeps the YouTube JS engine "Warm" and playing.
-    Log.d("Harmony", "onPause triggered: Bypassing pause for continuous playback.");
+    // 3. Normal App Switch (User went to home screen)
+    super.onPause();
+    if (webView != null) {
+        webView.onPause();
+    }
 }
 
 @Override
 protected void onStop() {
-    // 3. Keep the threads alive even when the app is fully hidden
+    // 🔥 Never stop the activity threads during screen-off
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && isInPictureInPictureMode()) {
         super.onStop();
     }
-    Log.d("Harmony", "onStop triggered: Preventing thread sleep.");
 }
+
+@Override
+protected void onResume() {
+    super.onResume();
+    if (webView != null) {
+        webView.onResume();
+        // Sync position back from native service if needed
+        dispatchToWeb("window.dispatchEvent(new CustomEvent('nativeHostResumed'));");
+    }
+}
+
 
     private void dispatchPendingMediaAction(String action) {
         if (action == null || action.isEmpty()) {
