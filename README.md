@@ -65,6 +65,14 @@ This status tracks the Android-only delivery plan and has been updated to reflec
 - [ ] `npm run android:sdk:prepare`
 - [ ] `npm run apk:debug`
 
+
+### APK build troubleshooting
+- Ensure Android SDK is configured before building:
+  - `export ANDROID_SDK_ROOT=/path/to/Android/Sdk`
+  - or create `android/local.properties` with `sdk.dir=/path/to/Android/Sdk`
+- Keep `android/gradle.properties` in key/value lines only (no pasted escaped `\n` text in one line).
+- If Gradle daemon crashes on low-memory environments, reduce `org.gradle.jvmargs` heap size.
+
 ### Behavior checks on device/emulator
 1. [ ] Start playback, minimize app, verify audio continues.
 2. [ ] Use notification Play/Pause/Next/Previous.
