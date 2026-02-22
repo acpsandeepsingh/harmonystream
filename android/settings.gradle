@@ -5,15 +5,13 @@ pluginManagement {
 
         if (googleMirror != null && !googleMirror.isEmpty()) {
             maven { url = uri(googleMirror) }
-        } else {
-            google()
         }
+        google()
 
         if (centralMirror != null && !centralMirror.isEmpty()) {
             maven { url = uri(centralMirror) }
-        } else {
-            mavenCentral()
         }
+        mavenCentral()
 
         maven { url = uri("https://jitpack.io") }
 
@@ -21,22 +19,20 @@ pluginManagement {
     }
 }
 dependencyResolutionManagement {
-    repositoriesMode.set(RepositoriesMode.PREFER_PROJECT)
+    repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
     repositories {
         def googleMirror = System.getenv("ANDROID_GOOGLE_MAVEN_MIRROR")
         def centralMirror = System.getenv("ANDROID_MAVEN_CENTRAL_MIRROR")
 
         if (googleMirror != null && !googleMirror.isEmpty()) {
             maven { url = uri(googleMirror) }
-        } else {
-            google()
         }
+        google()
 
         if (centralMirror != null && !centralMirror.isEmpty()) {
             maven { url = uri(centralMirror) }
-        } else {
-            mavenCentral()
         }
+        mavenCentral()
 
         maven { url = uri("https://jitpack.io") }
     }
