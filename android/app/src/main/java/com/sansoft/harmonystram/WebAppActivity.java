@@ -235,10 +235,9 @@ public class WebAppActivity extends AppCompatActivity {
     @Override
     protected void onPause() {
         super.onPause();
-        if (webView != null) {
-            webView.onPause();
-            // NO pauseTimers() - this allows background audio
-        }
+        webView.onPause();
+        // NO pauseTimers() - this allows background audio
+        
     }
     @Override
         protected void onResume() {
