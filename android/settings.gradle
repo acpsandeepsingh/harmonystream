@@ -1,35 +1,46 @@
 pluginManagement {
     repositories {
+        google()
+        mavenCentral()
+
         def googleMirror = System.getenv("ANDROID_GOOGLE_MAVEN_MIRROR")
         def centralMirror = System.getenv("ANDROID_MAVEN_CENTRAL_MIRROR")
+        def isUsableMirror = { value ->
+            value != null && !value.isEmpty() && !value.toLowerCase().contains("jitpack.io")
+        }
 
-        if (googleMirror != null && !googleMirror.isEmpty()) {
+        if (isUsableMirror(googleMirror)) {
             maven { url = uri(googleMirror) }
         }
         google()
 
-        if (centralMirror != null && !centralMirror.isEmpty()) {
+        if (isUsableMirror(centralMirror)) {
             maven { url = uri(centralMirror) }
         }
         mavenCentral()
 
         maven { url = uri("https://jitpack.io") }
-
         gradlePluginPortal()
     }
 }
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
     repositories {
+        google()
+        mavenCentral()
+
         def googleMirror = System.getenv("ANDROID_GOOGLE_MAVEN_MIRROR")
         def centralMirror = System.getenv("ANDROID_MAVEN_CENTRAL_MIRROR")
+        def isUsableMirror = { value ->
+            value != null && !value.isEmpty() && !value.toLowerCase().contains("jitpack.io")
+        }
 
-        if (googleMirror != null && !googleMirror.isEmpty()) {
+        if (isUsableMirror(googleMirror)) {
             maven { url = uri(googleMirror) }
         }
         google()
 
-        if (centralMirror != null && !centralMirror.isEmpty()) {
+        if (isUsableMirror(centralMirror)) {
             maven { url = uri(centralMirror) }
         }
         mavenCentral()
