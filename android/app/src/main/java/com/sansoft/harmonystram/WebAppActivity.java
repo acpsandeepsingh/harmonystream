@@ -244,11 +244,11 @@ public class WebAppActivity extends AppCompatActivity {
         protected void onResume() {
         super.onResume();
         // Recovery hook: after lock-screen/app resume, ask web player to re-assert playback if needed.
-        if (webView != null) {
+        
         webView.onResume();
         webView.resumeTimers();
 		dispatchToWeb("window.dispatchEvent(new CustomEvent('nativeHostResumed'));\n");
-		}
+		
     }
 
     private void dispatchPendingMediaAction(String action) {
