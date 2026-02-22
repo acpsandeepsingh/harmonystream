@@ -15,11 +15,13 @@ pluginManagement {
             mavenCentral()
         }
 
+        maven { url = uri("https://jitpack.io") }
+
         gradlePluginPortal()
     }
 }
 dependencyResolutionManagement {
-    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositoriesMode.set(RepositoriesMode.PREFER_PROJECT)
     repositories {
         def googleMirror = System.getenv("ANDROID_GOOGLE_MAVEN_MIRROR")
         def centralMirror = System.getenv("ANDROID_MAVEN_CENTRAL_MIRROR")
@@ -35,6 +37,8 @@ dependencyResolutionManagement {
         } else {
             mavenCentral()
         }
+
+        maven { url = uri("https://jitpack.io") }
     }
 }
 rootProject.name = "HarmonyStream"
