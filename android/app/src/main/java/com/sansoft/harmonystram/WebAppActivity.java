@@ -233,12 +233,28 @@ public class WebAppActivity extends AppCompatActivity {
         dispatchPendingMediaAction(intent.getStringExtra(PlaybackService.EXTRA_PENDING_MEDIA_ACTION));
     }
 
-    @Override
-    protected void onResume() {
-        super.onResume();
-        // Recovery hook: after lock-screen/app resume, ask web player to re-assert playback if needed.
-        dispatchToWeb("window.dispatchEvent(new CustomEvent('nativeHostResumed'));\n");
+@Override
+protected void onPause() {
+    // 1. If we are in Mini Player (PiP), we must call super to let Android handle the window
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && isInPictureInPictureMode()) {
+        super.onPause(); 
+        return; 
     }
+
+    // 2. 🔥 FOR CONTINUOUS PLAY:
+    // We DO NOT call super.onPause() or webView.onPause() for regular background/lock events.
+    // This keeps the YouTube JS engine "Warm" and playing.
+    Log.d("Harmony", "onPause triggered: Bypassing pause for continuous playback.");
+}
+
+@Override
+protected void onStop() {
+    // 3. Keep the threads alive even when the app is fully hidden
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && isInPictureInPictureMode()) {
+        super.onStop();
+    }
+    Log.d("Harmony", "onStop triggered: Preventing thread sleep.");
+}
 
     private void dispatchPendingMediaAction(String action) {
         if (action == null || action.isEmpty()) {
