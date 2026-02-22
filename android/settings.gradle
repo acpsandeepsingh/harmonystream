@@ -5,15 +5,13 @@ pluginManagement {
 
         if (googleMirror != null && !googleMirror.isEmpty()) {
             maven { url = uri(googleMirror) }
-        } else {
-            google()
         }
+        google()
 
         if (centralMirror != null && !centralMirror.isEmpty()) {
             maven { url = uri(centralMirror) }
-        } else {
-            mavenCentral()
         }
+        mavenCentral()
 
         maven { url = uri("https://jitpack.io") }
 
@@ -28,15 +26,13 @@ dependencyResolutionManagement {
 
         if (googleMirror != null && !googleMirror.isEmpty()) {
             maven { url = uri(googleMirror) }
-        } else {
-            google()
         }
+        google()
 
         if (centralMirror != null && !centralMirror.isEmpty()) {
             maven { url = uri(centralMirror) }
-        } else {
-            mavenCentral()
         }
+        mavenCentral()
 
         maven { url = uri("https://jitpack.io") }
     }
