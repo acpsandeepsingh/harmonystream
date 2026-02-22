@@ -12,10 +12,12 @@ pluginManagement {
         if (isUsableMirror(googleMirror)) {
             maven { url = uri(googleMirror) }
         }
+        google()
 
         if (isUsableMirror(centralMirror)) {
             maven { url = uri(centralMirror) }
         }
+        mavenCentral()
 
         maven { url = uri("https://jitpack.io") }
         gradlePluginPortal()
@@ -36,10 +38,12 @@ dependencyResolutionManagement {
         if (isUsableMirror(googleMirror)) {
             maven { url = uri(googleMirror) }
         }
+        google()
 
         if (isUsableMirror(centralMirror)) {
             maven { url = uri(centralMirror) }
         }
+        mavenCentral()
 
         maven { url = uri("https://jitpack.io") }
     }
