@@ -160,50 +160,39 @@ android {
 def webOutDir = rootProject.file("../out")
 def bundledAssetsPublicDir = file("src/main/assets/public")
 
-tasks.register("syncBundledWebAssets") {
+tasks.register("syncBundledWebAssets", Sync) {
     group = "build"
     description = "Sync Next export output into Android bundled assets/public"
 
-    inputs.dir(webOutDir)
-    outputs.dir(bundledAssetsPublicDir)
+    from(webOutDir)
+    into(bundledAssetsPublicDir)
+
+    doFirst {
+        if (!webOutDir.exists()) {
+            throw new GradleException("Missing web export directory: ${webOutDir}. Run 'npm run build' before Gradle build.")
+        }
+    }
 
     doLast {
-        if (!webOutDir.exists()) {
-            throw new GradleException("Missing web export directory: ${webOutDir}. Run 'npm run build:android' before Gradle build.")
-        }
-
-        delete(bundledAssetsPublicDir)
-        copy {
-            from(webOutDir)
-            into(bundledAssetsPublicDir)
-        }
-
         File indexFile = new File(bundledAssetsPublicDir, "index.html")
+        if (!indexFile.exists()) {
+            throw new GradleException("Bundled web asset check failed: missing ${indexFile}. APK would blank-screen.")
+        }
+
         File nextDir = new File(bundledAssetsPublicDir, "_next")
         File nextAliasDir = new File(bundledAssetsPublicDir, "next")
-        if (nextDir.exists()) {
-            delete(nextAliasDir)
+        if (nextDir.exists() && !nextAliasDir.exists()) {
             copy {
                 from(nextDir)
                 into(nextAliasDir)
             }
         }
-        if (!indexFile.exists()) {
-            throw new GradleException("Bundled web asset check failed: missing ${indexFile}. APK would blank-screen.")
-        }
-        if (!nextDir.exists() && !nextAliasDir.exists()) {
-            throw new GradleException("Bundled web asset check failed: missing both ${nextDir} and ${nextAliasDir}. APK would blank-screen due to missing chunks.")
-        }
 
         println("[HarmonyBuild] Bundled web assets synced: ${bundledAssetsPublicDir}")
-        println("[HarmonyBuild] Asset checks passed: index.html and next chunk directory present (_next or next)")
     }
 }
 
 
-repositories {
-    maven { url 'https://jitpack.io' }
-}
 
 dependencies {
     implementation 'androidx.appcompat:appcompat:1.6.1'
