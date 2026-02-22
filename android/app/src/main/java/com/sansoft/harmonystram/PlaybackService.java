@@ -8,27 +8,35 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.os.Build;
-import android.os.PowerManager;
-import android.util.Log;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
-import android.os.SystemClock;
-import android.util.Base64;
+import android.os.PowerManager;
+import android.util.Log;
+import android.webkit.WebView;
 
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
 import androidx.core.content.ContextCompat;
 import androidx.media.app.NotificationCompat.MediaStyle;
-import androidx.media.session.MediaButtonReceiver;
 
-import android.support.v4.media.MediaMetadataCompat;
-import android.support.v4.media.session.MediaSessionCompat;
-import android.support.v4.media.session.PlaybackStateCompat;
+import com.google.android.exoplayer2.ExoPlayer;
+import com.google.android.exoplayer2.MediaItem;
+import com.google.android.exoplayer2.PlaybackException;
+import com.google.android.exoplayer2.Player;
+
+import org.schabi.newpipe.extractor.NewPipe;
+import org.schabi.newpipe.extractor.ServiceList;
+import org.schabi.newpipe.extractor.StreamingService;
+import org.schabi.newpipe.extractor.stream.AudioStream;
+import org.schabi.newpipe.extractor.stream.StreamInfo;
+import org.schabi.newpipe.extractor.stream.VideoStream;
+
+import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class PlaybackService extends Service {
 
@@ -49,6 +57,7 @@ public class PlaybackService extends Service {
     public static final String ACTION_GET_STATE = "com.sansoft.harmonystram.GET_STATE";
     public static final String ACTION_STATE_CHANGED = "com.sansoft.harmonystram.STATE_CHANGED";
     public static final String ACTION_CLEAR_PENDING_MEDIA_ACTION = "com.sansoft.harmonystram.CLEAR_PENDING_MEDIA_ACTION";
+    public static final String ACTION_SET_MODE = "com.sansoft.harmonystram.SET_MODE";
     public static final String EXTRA_PENDING_MEDIA_ACTION = "pending_media_action";
 
     private static final String PREFS_NAME = "playback_service_state";
@@ -57,7 +66,12 @@ public class PlaybackService extends Service {
     private static final String KEY_PLAYING = "playing";
     private static final String KEY_POSITION_MS = "position_ms";
     private static final String KEY_DURATION_MS = "duration_ms";
-    private static final String KEY_PENDING_MEDIA_ACTION = "pending_media_action";
+
+    private static volatile WebView linkedWebView;
+
+    public static void attachWebView(@Nullable WebView webView) {
+        linkedWebView = webView;
+    }
 
     public static class PlaybackSnapshot {
         public final String title;
@@ -77,273 +91,228 @@ public class PlaybackService extends Service {
 
     public static PlaybackSnapshot readSnapshot(android.content.Context context) {
         SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, android.content.Context.MODE_PRIVATE);
-        String title = prefs.getString(KEY_TITLE, "HarmonyStream");
-        String artist = prefs.getString(KEY_ARTIST, "");
-        boolean playing = prefs.getBoolean(KEY_PLAYING, false);
-        long positionMs = Math.max(0, prefs.getLong(KEY_POSITION_MS, 0));
-        long durationMs = Math.max(0, prefs.getLong(KEY_DURATION_MS, 0));
-        return new PlaybackSnapshot(title == null || title.isEmpty() ? "HarmonyStream" : title,
-                artist == null ? "" : artist,
-                playing,
-                positionMs,
-                durationMs);
+        return new PlaybackSnapshot(
+                prefs.getString(KEY_TITLE, "HarmonyStream"),
+                prefs.getString(KEY_ARTIST, ""),
+                prefs.getBoolean(KEY_PLAYING, false),
+                Math.max(0, prefs.getLong(KEY_POSITION_MS, 0)),
+                Math.max(0, prefs.getLong(KEY_DURATION_MS, 0))
+        );
     }
 
-    private String currentTitle = "HarmonyStream";
-    private String currentArtist = "";
-    private boolean isPlaying = false;
-    private long currentPositionMs = 0;
-    private long currentDurationMs = 0;
-    private Bitmap artworkBitmap;
-    private String pendingMediaAction;
-    @Nullable
-    private MediaSessionCompat mediaSession;
-    @Nullable
-    private PowerManager.WakeLock playbackWakeLock;
-
-    private final Handler progressHandler = new Handler(Looper.getMainLooper());
-    private final Runnable progressTick = new Runnable() {
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private final ExecutorService resolverExecutor = Executors.newSingleThreadExecutor();
+    private final Runnable progressSyncRunnable = new Runnable() {
         @Override
         public void run() {
-            if (isPlaying && currentDurationMs > 0) {
-                currentPositionMs = Math.min(currentDurationMs, currentPositionMs + 1000);
-                updateNotification();
+            if (player != null) {
+                long pos = Math.max(0, player.getCurrentPosition());
+                long dur = Math.max(0, player.getDuration());
+                currentPositionMs = pos;
+                currentDurationMs = dur;
+                sendProgressToWeb(pos, dur);
                 broadcastState();
                 persistState();
             }
-            progressHandler.postDelayed(this, 1000);
+            mainHandler.postDelayed(this, 500L);
         }
     };
+
+    private ExoPlayer player;
+    private String currentTitle = "HarmonyStream";
+    private String currentArtist = "";
+    private long currentPositionMs = 0L;
+    private long currentDurationMs = 0L;
+    private String currentVideoId;
+    private String audioStreamUrl;
+    private String videoStreamUrl;
+    private boolean videoMode;
+    @Nullable
+    private PowerManager.WakeLock wakeLock;
 
     @Override
     public void onCreate() {
         super.onCreate();
         createNotificationChannel();
-        initMediaSession();
-        initWakeLock();
         restoreState();
-        updateMediaSessionState();
-        syncWakeLock();
-        progressHandler.post(progressTick);
+        initWakeLock();
+        initExtractor();
+        initPlayer();
+        mainHandler.post(progressSyncRunnable);
+    }
+
+    private void initExtractor() {
+        try {
+            if (NewPipe.getDownloader() == null) {
+                NewPipe.init(DownloaderImpl.create());
+            }
+        } catch (Throwable throwable) {
+            Log.w(TAG, "NewPipe init failed", throwable);
+        }
+    }
+
+    private void initPlayer() {
+        player = new ExoPlayer.Builder(this).build();
+        player.addListener(new Player.Listener() {
+            @Override
+            public void onIsPlayingChanged(boolean isPlaying) {
+                syncWakeLock(isPlaying);
+                updateNotification();
+                broadcastState();
+            }
+
+            @Override
+            public void onPlaybackStateChanged(int state) {
+                if (state == Player.STATE_READY || state == Player.STATE_BUFFERING) {
+                    currentDurationMs = Math.max(0, player.getDuration());
+                }
+                if (state == Player.STATE_ENDED) {
+                    dispatchActionToUi(ACTION_NEXT);
+                }
+                updateNotification();
+                broadcastState();
+            }
+
+            @Override
+            public void onPlayerError(PlaybackException error) {
+                Log.e(TAG, "Playback error", error);
+            }
+        });
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent == null || intent.getAction() == null) {
-            ensureForegroundIfPlaying();
-            updateNotification();
             return START_STICKY;
         }
 
         String action = intent.getAction();
         switch (action) {
-            case ACTION_UPDATE_STATE:
-                applyStateUpdate(intent);
-                persistState();
-                updateNotification();
-                updateMediaSessionState();
-                broadcastState();
-                syncWakeLock();
-                break;
-            case ACTION_PREVIOUS:
-            case ACTION_PLAY_PAUSE:
             case ACTION_PLAY:
+                handlePlay(intent);
+                break;
             case ACTION_PAUSE:
-            case ACTION_NEXT:
-                boolean fromWebBridge = "web".equals(intent.getStringExtra("source"));
-
-                if (ACTION_PLAY.equals(action)) {
-                    isPlaying = true;
-                } else if (ACTION_PAUSE.equals(action)) {
-                    isPlaying = false;
-                } else if (ACTION_PLAY_PAUSE.equals(action)) {
-                    isPlaying = !isPlaying;
-                } else if (!fromWebBridge && (ACTION_NEXT.equals(action) || ACTION_PREVIOUS.equals(action))) {
-                    // Next/previous from notifications or lock screen should keep session alive
-                    // and optimistic playing state while the WebView applies the new track.
-                    isPlaying = true;
+                if (player != null) player.pause();
+                break;
+            case ACTION_PLAY_PAUSE:
+                if (player != null) {
+                    if (player.isPlaying()) player.pause(); else player.play();
                 }
-
-                persistState();
-                updateNotification();
-                updateMediaSessionState();
-                broadcastState();
-                syncWakeLock();
-                dispatchActionToUi(action, intent);
                 break;
             case ACTION_SEEK:
-                currentPositionMs = Math.max(0L, intent.getLongExtra("position_ms", currentPositionMs));
-                if (currentDurationMs > 0L) {
-                    currentPositionMs = Math.min(currentDurationMs, currentPositionMs);
-                }
-                persistState();
-                updateNotification();
-                updateMediaSessionState();
-                broadcastState();
-                dispatchActionToUi(action, intent);
-                syncWakeLock();
+                if (player != null) player.seekTo(Math.max(0L, intent.getLongExtra("position_ms", 0L)));
                 break;
+            case ACTION_SET_MODE:
+                boolean enableVideo = intent.getBooleanExtra("video_mode", false);
+                switchMode(enableVideo);
+                break;
+            case ACTION_NEXT:
+            case ACTION_PREVIOUS:
             case ACTION_SET_QUEUE:
-                dispatchActionToUi(action, intent);
+                dispatchActionToUi(action);
                 break;
             case ACTION_GET_STATE:
-                updateMediaSessionState();
                 broadcastState();
-                break;
-            case ACTION_CLEAR_PENDING_MEDIA_ACTION:
-                pendingMediaAction = null;
-                persistState();
-                updateNotification();
-                updateMediaSessionState();
                 break;
             default:
                 break;
         }
 
+        updateNotification();
+        persistState();
         return START_STICKY;
     }
 
-    private String valueOrDefault(@Nullable String value, String fallback) {
-        return (value == null || value.isEmpty()) ? fallback : value;
-    }
-
-    private PendingIntent createServiceActionIntent(String action) {
-        Intent intent = new Intent(this, PlaybackService.class);
-        intent.setAction(action);
-        int flags = PendingIntent.FLAG_UPDATE_CURRENT;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            flags |= PendingIntent.FLAG_IMMUTABLE;
-        }
-        return PendingIntent.getService(this, action.hashCode(), intent, flags);
-    }
-
-    private PendingIntent createContentIntent() {
-        Intent launchIntent = new Intent(this, WebAppActivity.class);
-        launchIntent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        if (pendingMediaAction != null && !pendingMediaAction.isEmpty()) {
-            launchIntent.putExtra(EXTRA_PENDING_MEDIA_ACTION, pendingMediaAction);
-        }
-        int flags = PendingIntent.FLAG_UPDATE_CURRENT;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            flags |= PendingIntent.FLAG_IMMUTABLE;
-        }
-        return PendingIntent.getActivity(this, 2000, launchIntent, flags);
-    }
-
-    private void dispatchActionToUi(String action, @Nullable Intent sourceIntent) {
-        boolean fromWebBridge = sourceIntent != null && "web".equals(sourceIntent.getStringExtra("source"));
-        if (!fromWebBridge) {
-            pendingMediaAction = action;
-            persistState();
-        }
-
-        Intent intent = new Intent(ACTION_MEDIA_CONTROL);
-        intent.setPackage(getPackageName());
-        intent.putExtra("action", action);
-        if (sourceIntent != null) {
-            if (sourceIntent.hasExtra("position_ms")) {
-                intent.putExtra("position_ms", Math.max(0L, sourceIntent.getLongExtra("position_ms", 0L)));
-            }
-            if (sourceIntent.hasExtra("queue_json")) {
-                intent.putExtra("queue_json", valueOrDefault(sourceIntent.getStringExtra("queue_json"), "[]"));
-            }
-        }
-
-        if (!fromWebBridge) {
-            sendBroadcast(intent);
-        }
-    }
-
-    private void applyStateUpdate(Intent intent) {
-        if (intent.hasExtra("title")) {
-            currentTitle = valueOrDefault(intent.getStringExtra("title"), currentTitle);
-        }
-        if (intent.hasExtra("artist")) {
-            currentArtist = valueOrDefault(intent.getStringExtra("artist"), currentArtist);
-        }
-        if (intent.hasExtra("playing")) {
-            isPlaying = intent.getBooleanExtra("playing", isPlaying);
-        }
-        if (intent.hasExtra("position_ms")) {
-            currentPositionMs = Math.max(0L, intent.getLongExtra("position_ms", currentPositionMs));
-        }
-        if (intent.hasExtra("duration_ms")) {
-            currentDurationMs = Math.max(0L, intent.getLongExtra("duration_ms", currentDurationMs));
-        }
-
-        String artworkBase64 = intent.getStringExtra("artwork_base64");
-        if (artworkBase64 != null && !artworkBase64.isEmpty()) {
-            try {
-                byte[] data = Base64.decode(artworkBase64, Base64.DEFAULT);
-                artworkBitmap = BitmapFactory.decodeByteArray(data, 0, data.length);
-            } catch (Exception ignored) {
-            }
-        }
-
-        updateMediaSessionState();
-    }
-
-    private void initMediaSession() {
-        mediaSession = new MediaSessionCompat(this, TAG);
-        mediaSession.setFlags(
-                MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS
-                        | MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS
-        );
-        mediaSession.setCallback(new MediaSessionCompat.Callback() {
-            @Override
-            public void onPlay() {
-                dispatchActionToUi(ACTION_PLAY, null);
-            }
-
-            @Override
-            public void onPause() {
-                dispatchActionToUi(ACTION_PAUSE, null);
-            }
-
-            @Override
-            public void onSkipToNext() {
-                dispatchActionToUi(ACTION_NEXT, null);
-            }
-
-            @Override
-            public void onSkipToPrevious() {
-                dispatchActionToUi(ACTION_PREVIOUS, null);
-            }
-
-            @Override
-            public void onSeekTo(long pos) {
-                Intent seekIntent = new Intent();
-                seekIntent.putExtra("position_ms", Math.max(0L, pos));
-                dispatchActionToUi(ACTION_SEEK, seekIntent);
-            }
-        });
-        mediaSession.setActive(true);
-    }
-
-    private void updateMediaSessionState() {
-        if (mediaSession == null) {
+    private void handlePlay(Intent intent) {
+        String videoId = intent.getStringExtra("video_id");
+        if (videoId == null || videoId.isEmpty()) {
+            if (player != null) player.play();
             return;
         }
 
-        mediaSession.setMetadata(new MediaMetadataCompat.Builder()
-                .putString(MediaMetadataCompat.METADATA_KEY_TITLE, currentTitle)
-                .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, currentArtist)
-                .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, currentDurationMs)
-                .build());
+        currentVideoId = videoId;
+        currentTitle = intent.getStringExtra("title") == null ? "HarmonyStream" : intent.getStringExtra("title");
+        resolveAndPlay(videoId, 0L);
+    }
 
-        long actions = PlaybackStateCompat.ACTION_PLAY
-                | PlaybackStateCompat.ACTION_PAUSE
-                | PlaybackStateCompat.ACTION_PLAY_PAUSE
-                | PlaybackStateCompat.ACTION_SKIP_TO_NEXT
-                | PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS
-                | PlaybackStateCompat.ACTION_SEEK_TO
-                | PlaybackStateCompat.ACTION_STOP;
+    private void resolveAndPlay(String videoId, long seekMs) {
+        resolverExecutor.execute(() -> {
+            try {
+                StreamingService yt = ServiceList.YouTube;
+                StreamInfo info = StreamInfo.getInfo(yt, videoId);
+                List<AudioStream> audioStreams = info.getAudioStreams();
+                List<VideoStream> videoStreams = info.getVideoStreams();
 
-        int state = isPlaying ? PlaybackStateCompat.STATE_PLAYING : PlaybackStateCompat.STATE_PAUSED;
-        mediaSession.setPlaybackState(new PlaybackStateCompat.Builder()
-                .setActions(actions)
-                .setState(state, currentPositionMs, isPlaying ? 1f : 0f)
-                .build());
+                audioStreamUrl = pickItag140(audioStreams);
+                if (videoStreams != null && !videoStreams.isEmpty()) {
+                    videoStreamUrl = videoStreams.get(0).getContent();
+                }
+
+                String selected = videoMode && videoStreamUrl != null ? videoStreamUrl : audioStreamUrl;
+                if (selected == null || !selected.contains("googlevideo.com")) {
+                    throw new IllegalStateException("No playable googlevideo stream found");
+                }
+
+                mainHandler.post(() -> {
+                    if (player == null) return;
+                    player.setMediaItem(MediaItem.fromUri(selected));
+                    player.prepare();
+                    if (seekMs > 0) {
+                        player.seekTo(seekMs);
+                    }
+                    player.play();
+                    updateNotification();
+                    broadcastState();
+                });
+            } catch (Throwable throwable) {
+                Log.e(TAG, "Unable to resolve stream URL", throwable);
+            }
+        });
+    }
+
+    private String pickItag140(List<AudioStream> streams) {
+        if (streams == null) return null;
+        for (AudioStream stream : streams) {
+            if (stream != null && stream.getItag() == 140 && stream.getContent() != null) {
+                return stream.getContent();
+            }
+        }
+        for (AudioStream stream : streams) {
+            if (stream != null && stream.getContent() != null && stream.getContent().contains("googlevideo.com")) {
+                return stream.getContent();
+            }
+        }
+        return null;
+    }
+
+    private void switchMode(boolean enableVideo) {
+        if (videoMode == enableVideo) return;
+        videoMode = enableVideo;
+        long ts = player == null ? 0L : player.getCurrentPosition();
+        String url = enableVideo ? videoStreamUrl : audioStreamUrl;
+        if (url == null && currentVideoId != null) {
+            resolveAndPlay(currentVideoId, ts);
+            return;
+        }
+        if (player != null && url != null) {
+            player.setMediaItem(MediaItem.fromUri(url));
+            player.prepare();
+            player.seekTo(ts);
+            player.play();
+        }
+    }
+
+    private void sendProgressToWeb(long pos, long dur) {
+        WebView webView = linkedWebView;
+        if (webView == null) return;
+        webView.post(() -> webView.evaluateJavascript("window.updateProgress(" + pos + "," + dur + ")", null));
+    }
+
+    private void dispatchActionToUi(String action) {
+        Intent intent = new Intent(ACTION_MEDIA_CONTROL);
+        intent.setPackage(getPackageName());
+        intent.putExtra("action", action);
+        sendBroadcast(intent);
     }
 
     private void broadcastState() {
@@ -351,223 +320,121 @@ public class PlaybackService extends Service {
         stateIntent.setPackage(getPackageName());
         stateIntent.putExtra("title", currentTitle);
         stateIntent.putExtra("artist", currentArtist);
-        stateIntent.putExtra("playing", isPlaying);
-        stateIntent.putExtra("position_ms", currentPositionMs);
-        stateIntent.putExtra("duration_ms", currentDurationMs);
+        stateIntent.putExtra("playing", player != null && player.isPlaying());
+        stateIntent.putExtra("position_ms", player == null ? currentPositionMs : Math.max(0, player.getCurrentPosition()));
+        stateIntent.putExtra("duration_ms", player == null ? currentDurationMs : Math.max(0, player.getDuration()));
         sendBroadcast(stateIntent);
         PlaybackWidgetProvider.requestRefresh(this);
     }
 
-    private void ensureForegroundIfPlaying() {
-        if (!isPlaying) {
-            return;
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
-                    .setSmallIcon(android.R.drawable.ic_media_play)
-                    .setContentTitle(currentTitle)
-                    .setContentText(currentArtist)
-                    .setContentIntent(createContentIntent())
-                    .setOnlyAlertOnce(true)
-                    .setOngoing(true)
-                    .build();
-            startForeground(NOTIFICATION_ID, notification);
-        }
-    }
-
     private void updateNotification() {
-        NotificationCompat.Action prevAction = new NotificationCompat.Action(
-                android.R.drawable.ic_media_previous,
-                "Previous",
-                createServiceActionIntent(ACTION_PREVIOUS)
-        );
-
+        boolean playing = player != null && player.isPlaying();
         NotificationCompat.Action playPauseAction = new NotificationCompat.Action(
-                isPlaying ? android.R.drawable.ic_media_pause : android.R.drawable.ic_media_play,
-                isPlaying ? "Pause" : "Play",
+                playing ? android.R.drawable.ic_media_pause : android.R.drawable.ic_media_play,
+                playing ? "Pause" : "Play",
                 createServiceActionIntent(ACTION_PLAY_PAUSE)
         );
 
-        NotificationCompat.Action nextAction = new NotificationCompat.Action(
-                android.R.drawable.ic_media_next,
-                "Next",
-                createServiceActionIntent(ACTION_NEXT)
-        );
-
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
+        Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.ic_media_play)
                 .setContentTitle(currentTitle)
                 .setContentText(currentArtist)
-                .setContentIntent(createContentIntent())
                 .setOnlyAlertOnce(true)
-                .setOngoing(isPlaying)
-                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-                .addAction(prevAction)
+                .setOngoing(playing)
+                .setContentIntent(createContentIntent())
+                .addAction(new NotificationCompat.Action(android.R.drawable.ic_media_previous, "Previous", createServiceActionIntent(ACTION_PREVIOUS)))
                 .addAction(playPauseAction)
-                .addAction(nextAction)
-                .setStyle(new MediaStyle()
-                        .setShowActionsInCompactView(0, 1, 2)
-                        .setMediaSession(mediaSession == null ? null : mediaSession.getSessionToken()))
-                .setDeleteIntent(MediaButtonReceiver.buildMediaButtonPendingIntent(
-                        this,
-                        PlaybackStateCompat.ACTION_STOP
-                ));
+                .addAction(new NotificationCompat.Action(android.R.drawable.ic_media_next, "Next", createServiceActionIntent(ACTION_NEXT)))
+                .setStyle(new MediaStyle().setShowActionsInCompactView(0, 1, 2))
+                .build();
 
-        if (artworkBitmap != null) {
-            builder.setLargeIcon(artworkBitmap);
-        }
+        if (!hasNotificationPermission()) return;
 
-        if (currentDurationMs > 0) {
-            builder.setProgress((int) currentDurationMs, (int) Math.min(currentPositionMs, currentDurationMs), false);
+        if (playing) {
+            startForeground(NOTIFICATION_ID, notification);
         } else {
-            builder.setProgress(0, 0, false);
+            stopForeground(false);
+            NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, notification);
         }
+    }
 
-        Notification notification = builder.build();
+    private PendingIntent createServiceActionIntent(String action) {
+        Intent intent = new Intent(this, PlaybackService.class);
+        intent.setAction(action);
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) flags |= PendingIntent.FLAG_IMMUTABLE;
+        return PendingIntent.getService(this, action.hashCode(), intent, flags);
+    }
 
-        if (!hasNotificationPermission()) {
-            Log.w(TAG, "POST_NOTIFICATIONS permission is not granted. Continuing playback service without drawer notification.");
-            if (isPlaying) {
-                try {
-                    startForeground(NOTIFICATION_ID, notification);
-                } catch (SecurityException securityException) {
-                    Log.e(TAG, "Unable to start foreground playback without notification permission", securityException);
-                }
-            }
-            return;
-        }
-
-        try {
-            if (isPlaying) {
-                startForeground(NOTIFICATION_ID, notification);
-            } else {
-                stopForeground(false);
-                NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, notification);
-            }
-        } catch (SecurityException securityException) {
-            Log.e(TAG, "Unable to publish playback notification", securityException);
-        }
+    private PendingIntent createContentIntent() {
+        Intent launchIntent = new Intent(this, WebAppActivity.class);
+        launchIntent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) flags |= PendingIntent.FLAG_IMMUTABLE;
+        return PendingIntent.getActivity(this, 2000, launchIntent, flags);
     }
 
     private boolean hasNotificationPermission() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-            return true;
-        }
-        return ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
-                == android.content.pm.PackageManager.PERMISSION_GRANTED;
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return true;
+        return ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED;
+    }
+
+    private void createNotificationChannel() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
+        NotificationChannel channel = new NotificationChannel(CHANNEL_ID, "Playback", NotificationManager.IMPORTANCE_LOW);
+        channel.setDescription("HarmonyStream playback controls");
+        NotificationManager manager = getSystemService(NotificationManager.class);
+        if (manager != null) manager.createNotificationChannel(channel);
     }
 
     private void persistState() {
-        SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
-        prefs.edit()
+        boolean playing = player != null && player.isPlaying();
+        long position = player == null ? currentPositionMs : Math.max(0L, player.getCurrentPosition());
+        long duration = player == null ? currentDurationMs : Math.max(0L, player.getDuration());
+        getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                .edit()
                 .putString(KEY_TITLE, currentTitle)
                 .putString(KEY_ARTIST, currentArtist)
-                .putBoolean(KEY_PLAYING, isPlaying)
-                .putLong(KEY_POSITION_MS, currentPositionMs)
-                .putLong(KEY_DURATION_MS, currentDurationMs)
-                .putString(KEY_PENDING_MEDIA_ACTION, pendingMediaAction)
+                .putBoolean(KEY_PLAYING, playing)
+                .putLong(KEY_POSITION_MS, position)
+                .putLong(KEY_DURATION_MS, duration)
                 .apply();
-        PlaybackWidgetProvider.requestRefresh(this);
     }
 
     private void restoreState() {
         SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
-        currentTitle = valueOrDefault(prefs.getString(KEY_TITLE, currentTitle), "HarmonyStream");
-        currentArtist = valueOrDefault(prefs.getString(KEY_ARTIST, currentArtist), "");
-        isPlaying = prefs.getBoolean(KEY_PLAYING, false);
+        currentTitle = prefs.getString(KEY_TITLE, "HarmonyStream");
+        currentArtist = prefs.getString(KEY_ARTIST, "");
         currentPositionMs = Math.max(0, prefs.getLong(KEY_POSITION_MS, 0));
         currentDurationMs = Math.max(0, prefs.getLong(KEY_DURATION_MS, 0));
-        pendingMediaAction = prefs.getString(KEY_PENDING_MEDIA_ACTION, null);
-    }
-
-    private void createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel channel = new NotificationChannel(
-                    CHANNEL_ID,
-                    "Playback",
-                    NotificationManager.IMPORTANCE_LOW
-            );
-            channel.setDescription("HarmonyStream playback controls");
-            NotificationManager manager = getSystemService(NotificationManager.class);
-            if (manager != null) {
-                manager.createNotificationChannel(channel);
-            }
-        }
     }
 
     private void initWakeLock() {
         PowerManager powerManager = (PowerManager) getSystemService(POWER_SERVICE);
-        if (powerManager == null) {
-            return;
-        }
-        playbackWakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,
-                getPackageName() + ":PlaybackWakeLock");
-        playbackWakeLock.setReferenceCounted(false);
+        if (powerManager == null) return;
+        wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, getPackageName() + ":PlaybackWakeLock");
+        wakeLock.setReferenceCounted(false);
     }
 
-    private void syncWakeLock() {
-        if (playbackWakeLock == null) {
-            return;
-        }
+    private void syncWakeLock(boolean playing) {
+        if (wakeLock == null) return;
         try {
-            if (isPlaying && !playbackWakeLock.isHeld()) {
-                playbackWakeLock.acquire();
-            } else if (!isPlaying && playbackWakeLock.isHeld()) {
-                playbackWakeLock.release();
-            }
-        } catch (RuntimeException runtimeException) {
-            Log.w(TAG, "Failed to update playback wake lock state", runtimeException);
-        }
-    }
-
-    private void releaseWakeLock() {
-        if (playbackWakeLock == null || !playbackWakeLock.isHeld()) {
-            return;
-        }
-        try {
-            playbackWakeLock.release();
-        } catch (RuntimeException runtimeException) {
-            Log.w(TAG, "Failed to release playback wake lock", runtimeException);
-        }
-    }
-
-    @Override
-    public void onTaskRemoved(Intent rootIntent) {
-        super.onTaskRemoved(rootIntent);
-        if (isPlaying) {
-            scheduleSelfRestart();
-        }
-    }
-
-    private void scheduleSelfRestart() {
-        Intent restartIntent = new Intent(getApplicationContext(), PlaybackService.class);
-        restartIntent.setAction(ACTION_GET_STATE);
-        PendingIntent restartServiceIntent = PendingIntent.getService(
-                this,
-                9001,
-                restartIntent,
-                PendingIntent.FLAG_ONE_SHOT | (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_IMMUTABLE : 0)
-        );
-        android.app.AlarmManager alarmManager = (android.app.AlarmManager) getSystemService(ALARM_SERVICE);
-        if (alarmManager != null) {
-            alarmManager.setExactAndAllowWhileIdle(android.app.AlarmManager.ELAPSED_REALTIME,
-                    SystemClock.elapsedRealtime() + 1000,
-                    restartServiceIntent);
+            if (playing && !wakeLock.isHeld()) wakeLock.acquire();
+            if (!playing && wakeLock.isHeld()) wakeLock.release();
+        } catch (RuntimeException e) {
+            Log.w(TAG, "Wake lock sync failed", e);
         }
     }
 
     @Override
     public void onDestroy() {
-        progressHandler.removeCallbacksAndMessages(null);
-        releaseWakeLock();
-        if (mediaSession != null) {
-            mediaSession.setActive(false);
-            mediaSession.release();
-            mediaSession = null;
+        mainHandler.removeCallbacksAndMessages(null);
+        resolverExecutor.shutdownNow();
+        if (player != null) {
+            player.release();
+            player = null;
         }
-        if (isPlaying) {
-            scheduleSelfRestart();
-        }
+        syncWakeLock(false);
         super.onDestroy();
     }
 

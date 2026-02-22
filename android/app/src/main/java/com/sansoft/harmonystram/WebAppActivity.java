@@ -143,7 +143,10 @@ public class WebAppActivity extends AppCompatActivity {
                 .addPathHandler("/", new PublicRoutesPathHandler())
                 .build();
 
-        webView.addJavascriptInterface(new NativePlaybackBridge(), "HarmonyNative");
+        NativePlaybackBridge bridge = new NativePlaybackBridge();
+        webView.addJavascriptInterface(bridge, "HarmonyNative");
+        webView.addJavascriptInterface(bridge, "AndroidNative");
+        PlaybackService.attachWebView(webView);
         webView.setWebChromeClient(new WebChromeClient() {
             @Override
             public boolean onConsoleMessage(ConsoleMessage consoleMessage) {
@@ -614,7 +617,20 @@ protected void onResume() {
         public void play() { sendCommand(PlaybackService.ACTION_PLAY); }
 
         @JavascriptInterface
+        public void play(String id, String title) {
+            Intent serviceIntent = new Intent(WebAppActivity.this, PlaybackService.class);
+            serviceIntent.setAction(PlaybackService.ACTION_PLAY);
+            serviceIntent.putExtra("video_id", id);
+            serviceIntent.putExtra("title", title == null ? "HarmonyStream" : title);
+            serviceIntent.putExtra("source", "web");
+            startPlaybackService(serviceIntent);
+        }
+
+        @JavascriptInterface
         public void pause() { sendCommand(PlaybackService.ACTION_PAUSE); }
+
+        @JavascriptInterface
+        public void resume() { sendCommand(PlaybackService.ACTION_PLAY); }
 
         @JavascriptInterface
         public void next() { sendCommand(PlaybackService.ACTION_NEXT); }
@@ -624,11 +640,25 @@ protected void onResume() {
 
         @JavascriptInterface
         public void seek(long positionMs) {
+            seekTo(positionMs);
+        }
+
+        @JavascriptInterface
+        public void seekTo(long positionMs) {
             Intent stateIntent = new Intent(WebAppActivity.this, PlaybackService.class);
             stateIntent.setAction(PlaybackService.ACTION_SEEK);
             stateIntent.putExtra("position_ms", Math.max(0L, positionMs));
             stateIntent.putExtra("source", "web");
             startPlaybackService(stateIntent);
+        }
+
+        @JavascriptInterface
+        public void setVideoMode(boolean enabled) {
+            Intent modeIntent = new Intent(WebAppActivity.this, PlaybackService.class);
+            modeIntent.setAction(PlaybackService.ACTION_SET_MODE);
+            modeIntent.putExtra("video_mode", enabled);
+            modeIntent.putExtra("source", "web");
+            startPlaybackService(modeIntent);
         }
 
         @JavascriptInterface
@@ -740,6 +770,7 @@ protected void onResume() {
             unregisterReceiver(mediaActionReceiver);
         } catch (IllegalArgumentException ignored) {
         }
+        PlaybackService.attachWebView(null);
         if (webView != null) {
             webView.destroy();
         }
