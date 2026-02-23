@@ -133,7 +133,11 @@ jobs:
           ./gradlew clean assembleRelease --stacktrace --info 2>&1 | tee build-log.txt
 
       - name: Upload Build Log
+<<<<<<< codex/extract-real-failure-from-ci-logs-985tgj
+        uses: actions/upload-artifact@v4
+=======
         uses: actions/upload-artifact@v3
+>>>>>>> main
         with:
           name: full-build-log
           path: android/build-log.txt
