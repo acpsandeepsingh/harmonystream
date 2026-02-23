@@ -20,18 +20,11 @@ public class DownloaderImpl extends Downloader {
         return new DownloaderImpl();
     }
 
-    /**
-     * Required for standard GET requests.
-     */
     @Override
     public Response execute(Request request) throws IOException, ReCaptchaException {
         return makeRequest(request);
     }
 
-    /**
-     * Required for POST requests in NewPipeExtractor v0.25+.
-     * Note: This method is abstract in the parent class and MUST be overridden.
-     */
     @Override
     public Response post(Request request) throws IOException, ReCaptchaException {
         return makeRequest(request);
@@ -43,7 +36,7 @@ public class DownloaderImpl extends Downloader {
         connection.setConnectTimeout(15000);
         connection.setReadTimeout(15000);
 
-        // Map request headers
+        // Set Headers
         Map<String, List<String>> headers = request.headers();
         if (headers != null) {
             for (Map.Entry<String, List<String>> entry : headers.entrySet()) {
@@ -65,14 +58,16 @@ public class DownloaderImpl extends Downloader {
 
         connection.connect();
         int code = connection.getResponseCode();
+        String message = connection.getResponseMessage();
+        Map<String, List<String>> responseHeaders = connection.getHeaderFields();
+        String finalUrl = connection.getURL().toString();
         
-        // Read response stream
+        // Handle stream and conversion to String
         InputStream stream = (code >= 200 && code < 400) ? connection.getInputStream() : connection.getErrorStream();
-        
-        // FIX: Library v0.25+ requires String body
         String body = readAllAsString(stream);
         
-        return new Response(code, connection.getResponseMessage(), connection.getHeaderFields(), body, request.url());
+        // Exact constructor: (int responseCode, String responseMessage, Map<String, List<String>> responseHeaders, String responseBody, String latestUrl)
+        return new Response(code, message, responseHeaders, body, finalUrl);
     }
 
     private static String readAllAsString(InputStream stream) throws IOException {
