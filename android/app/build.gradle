@@ -40,12 +40,12 @@ def hasReleaseSigning = [
 android {
 
     namespace 'com.sansoft.harmonystram'
-    compileSdk 34
+    compileSdk 35
 
     defaultConfig {
         applicationId "com.sansoft.harmonystram"
         minSdk 23
-        targetSdk 34
+        targetSdk 35
         versionCode 1
         versionName "1.0"
 
@@ -120,9 +120,11 @@ android {
 
     buildTypes {
         release {
-            minifyEnabled false
+            minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-            signingConfig hasReleaseSigning ? signingConfigs.release : signingConfigs.debug
+            if (hasReleaseSigning) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 
@@ -202,38 +204,3 @@ dependencies {
 
 
 preBuild.dependsOn("syncBundledWebAssets")
-
-tasks.register("ensureReleaseApkForCi") {
-    group = "build"
-    description = "Build release APK and normalize artifact path for CI uploads."
-    dependsOn("assembleRelease")
-
-    doLast {
-        File expectedReleaseDir = file("$buildDir/outputs/apk/release")
-        File expectedApk = new File(expectedReleaseDir, "app-release.apk")
-
-        if (expectedApk.exists()) {
-            println("[HarmonyBuild] Release APK ready at ${expectedApk}")
-            return
-        }
-
-        List<File> discoveredApks = fileTree("$buildDir/outputs/apk") {
-            include "**/*.apk"
-        }.files.findAll { file ->
-            file.name.toLowerCase().contains("release")
-        }.sort { a, b -> a.path <=> b.path }
-
-        if (discoveredApks.isEmpty()) {
-            throw new GradleException("No release APK found under $buildDir/outputs/apk after assembleRelease.")
-        }
-
-        expectedReleaseDir.mkdirs()
-        copy {
-            from(discoveredApks.first())
-            into(expectedReleaseDir)
-            rename { "app-release.apk" }
-        }
-
-        println("[HarmonyBuild] Normalized APK artifact: ${discoveredApks.first()} -> ${expectedApk}")
-    }
-}

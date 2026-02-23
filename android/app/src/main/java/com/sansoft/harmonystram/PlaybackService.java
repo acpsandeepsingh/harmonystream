@@ -646,15 +646,6 @@ public class PlaybackService extends Service {
         stopSelf();
     }
 
-    @Nullable
-    public ExoPlayer getPlayer() {
-        return player;
-    }
-
-    public boolean isVideoMode() {
-        return videoMode;
-    }
-
     public PlaybackSnapshot getCurrentSnapshot() {
         return new PlaybackSnapshot(
                 currentTitle,
