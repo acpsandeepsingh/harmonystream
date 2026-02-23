@@ -87,7 +87,7 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
         with:
-          gradle-version: 8.2
+          gradle-version: wrapper
           cache-cleanup: always
           build-scan-publish: true
           build-scan-terms-of-service-url: "https://gradle.com/terms-of-service"
@@ -95,6 +95,9 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+
+      - name: Accept Android SDK licenses
+        run: yes | sdkmanager --licenses
 
       - name: Install required Android SDK components
         run: |
@@ -105,9 +108,6 @@ jobs:
 
       - name: Configure Android SDK path for Gradle
         run: ./scripts.ensure-android-sdk.sh
-
-      - name: Accept Android SDK licenses
-        run: yes | sdkmanager --licenses
 
       - name: Prepare Android project assets
         run: |
@@ -125,11 +125,17 @@ jobs:
 
       - name: Forced Cleanup and Build (debug + release)
         run: |
-          pkill -9 java || true
           cd android
           # Removing .gradle ensures a fresh workspace assignment to avoid IdentityCache errors
           rm -rf .gradle/ build/ app/build/
-          ./gradlew assembleDebug assembleRelease --no-daemon --no-build-cache --refresh-dependencies --stacktrace --info
+          ./gradlew --version
+          ./gradlew assembleDebug assembleRelease \
+            --no-daemon \
+            --no-build-cache \
+            --refresh-dependencies \
+            --stacktrace \
+            --info \
+            --warning-mode all
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
