@@ -124,10 +124,39 @@ jobs:
           chmod +x gradlew
 
       - name: Build Android Release
+        id: android_build
         run: |
           cd android
           ./gradlew clean assembleRelease --stacktrace --info --warning-mode all | tee full-build-log.txt
         continue-on-error: false
+
+      - name: Debug Build Output
+        run: |
+          echo "Gradle task executed: assembleRelease"
+          echo "Listing Android build outputs"
+          ls -R android/app/build/outputs/
+
+      - name: Detect Built Android Artifact Paths
+        id: detect_android_artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mapfile -t artifacts < <(find android/app/build/outputs -type f \( -name '*.apk' -o -name '*.aab' \) | sort)
+
+          if [ ${#artifacts[@]} -eq 0 ]; then
+            echo "No APK or AAB artifacts were found under android/app/build/outputs"
+            exit 1
+          fi
+
+          echo "Detected Android artifacts:"
+          printf ' - %s\n' "${artifacts[@]}"
+
+          {
+            echo 'artifact_paths<<EOF'
+            printf '%s\n' "${artifacts[@]}"
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
 
       - name: Extract First Build Error
         if: failure()
@@ -169,19 +198,11 @@ jobs:
           name: android-full-build-log
           path: android/full-build-log.txt
 
-      - name: Upload Release APK
+      - name: Upload Android Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: harmonystream-release-apk
-          path: android/app/build/outputs/apk/release/*.apk
-          if-no-files-found: error
-
-      - name: Upload Variant APK Fallback
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: harmonystream-variant-apk
-          path: android/app/build/outputs/apk/**/*.apk
+          name: harmonystream-android-artifacts
+          path: ${{ steps.detect_android_artifacts.outputs.artifact_paths }}
           if-no-files-found: error
 
       - name: Upload R8 Mapping File
