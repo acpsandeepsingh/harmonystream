@@ -96,6 +96,9 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Configure Android SDK path for Gradle
+        run: ./scripts.ensure-android-sdk.sh
+
       - name: Accept Android SDK licenses
         run: yes | sdkmanager --licenses
 
@@ -119,7 +122,7 @@ jobs:
           cd android
           # Removing .gradle ensures a fresh workspace assignment to avoid IdentityCache errors
           rm -rf .gradle/ build/ app/build/
-          ./gradlew assembleDebug assembleRelease --no-daemon --no-build-cache --refresh-dependencies --stacktrace
+          ./gradlew assembleDebug assembleRelease --no-daemon --no-build-cache --refresh-dependencies --stacktrace --info
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
