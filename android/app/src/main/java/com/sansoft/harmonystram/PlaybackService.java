@@ -41,7 +41,11 @@ import org.schabi.newpipe.extractor.StreamingService;
 import org.schabi.newpipe.extractor.stream.AudioStream;
 import org.schabi.newpipe.extractor.stream.StreamInfo;
 import org.schabi.newpipe.extractor.stream.VideoStream;
+import org.json.JSONArray;
+import org.json.JSONObject;
+import org.json.JSONException;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -75,6 +79,8 @@ public class PlaybackService extends Service {
     private static final String KEY_PLAYING = "playing";
     private static final String KEY_POSITION_MS = "position_ms";
     private static final String KEY_DURATION_MS = "duration_ms";
+    private static final String KEY_QUEUE_JSON = "queue_json";
+    private static final String KEY_QUEUE_INDEX = "queue_index";
 
     private static volatile WebView linkedWebView;
 
@@ -141,6 +147,8 @@ public class PlaybackService extends Service {
     private boolean videoMode;
     private boolean progressLoopRunning;
     private volatile long pendingPlayRequestedAtMs;
+    private final List<QueueItem> playbackQueue = new ArrayList<>();
+    private int currentQueueIndex = -1;
     private MediaSessionCompat mediaSession;
     private MediaSessionConnector mediaSessionConnector;
     private PlaybackStateCompat.Builder playbackStateBuilder;
@@ -150,6 +158,20 @@ public class PlaybackService extends Service {
     public class LocalBinder extends Binder {
         PlaybackService getService() {
             return PlaybackService.this;
+        }
+    }
+
+    private static class QueueItem {
+        final String id;
+        final String title;
+        final String artist;
+        final String videoId;
+
+        QueueItem(String id, String title, String artist, String videoId) {
+            this.id = id;
+            this.title = title;
+            this.artist = artist;
+            this.videoId = videoId;
         }
     }
 
@@ -185,11 +207,13 @@ public class PlaybackService extends Service {
 
             @Override
             public void onSkipToNext() {
+                handleSkip(+1);
                 dispatchActionToUi(ACTION_NEXT);
             }
 
             @Override
             public void onSkipToPrevious() {
+                handleSkip(-1);
                 dispatchActionToUi(ACTION_PREVIOUS);
             }
         });
@@ -253,6 +277,7 @@ public class PlaybackService extends Service {
                     currentDurationMs = Math.max(0, player.getDuration());
                 }
                 if (state == Player.STATE_ENDED) {
+                    handleSkip(+1);
                     dispatchActionToUi(ACTION_NEXT);
                 }
                 updatePlaybackState();
@@ -312,8 +337,15 @@ public class PlaybackService extends Service {
                 switchMode(enableVideo);
                 break;
             case ACTION_NEXT:
+                handleSkip(+1);
+                dispatchActionToUi(action);
+                break;
             case ACTION_PREVIOUS:
+                handleSkip(-1);
+                dispatchActionToUi(action);
+                break;
             case ACTION_SET_QUEUE:
+                handleSetQueue(intent);
                 dispatchActionToUi(action);
                 break;
             case ACTION_GET_STATE:
@@ -341,7 +373,13 @@ public class PlaybackService extends Service {
 
         currentVideoId = videoId;
         currentTitle = intent.getStringExtra("title") == null ? "HarmonyStream" : intent.getStringExtra("title");
+        String artist = intent.getStringExtra("artist");
+        if (artist != null) {
+            currentArtist = artist;
+        }
+        syncQueueIndexForVideo(videoId);
         pendingPlayRequestedAtMs = System.currentTimeMillis();
+        ensureForegroundWithCurrentState();
         broadcastState();
         resolveAndPlay(videoId, 0L);
     }
@@ -356,6 +394,14 @@ public class PlaybackService extends Service {
         currentArtist = artist == null ? "" : artist;
         currentPositionMs = Math.max(0L, intent.getLongExtra("position_ms", currentPositionMs));
         currentDurationMs = Math.max(0L, intent.getLongExtra("duration_ms", currentDurationMs));
+        boolean shouldPlay = intent.getBooleanExtra("playing", player != null && player.isPlaying());
+        if (player != null) {
+            if (shouldPlay && !player.isPlaying()) {
+                player.play();
+            } else if (!shouldPlay && player.isPlaying()) {
+                player.pause();
+            }
+        }
         if (player == null || !player.isPlaying()) {
             broadcastState();
         }
@@ -365,7 +411,7 @@ public class PlaybackService extends Service {
         resolverExecutor.execute(() -> {
             try {
                 StreamingService yt = ServiceList.YouTube;
-                StreamInfo info = StreamInfo.getInfo(yt, videoId);
+                StreamInfo info = resolveStreamInfo(yt, videoId);
                 List<AudioStream> audioStreams = info.getAudioStreams();
                 List<VideoStream> videoStreams = info.getVideoStreams();
 
@@ -396,6 +442,94 @@ public class PlaybackService extends Service {
                 Log.e(TAG, "Unable to resolve stream URL", throwable);
             }
         });
+    }
+
+    private StreamInfo resolveStreamInfo(StreamingService yt, String videoIdOrUrl) throws Exception {
+        try {
+            return StreamInfo.getInfo(yt, videoIdOrUrl);
+        } catch (Throwable directFailure) {
+            String normalized = normalizeYouTubeWatchUrl(videoIdOrUrl);
+            if (normalized.equals(videoIdOrUrl)) {
+                throw directFailure;
+            }
+            Log.w(TAG, "Direct stream resolve failed, retrying with normalized URL", directFailure);
+            return StreamInfo.getInfo(yt, normalized);
+        }
+    }
+
+    private String normalizeYouTubeWatchUrl(String videoIdOrUrl) {
+        if (videoIdOrUrl == null) return "";
+        String trimmed = videoIdOrUrl.trim();
+        if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+            return trimmed;
+        }
+        return "https://www.youtube.com/watch?v=" + trimmed;
+    }
+
+    private void handleSetQueue(Intent intent) {
+        if (intent == null) return;
+        String queueJson = intent.getStringExtra("queue_json");
+        playbackQueue.clear();
+        if (queueJson == null || queueJson.trim().isEmpty()) {
+            currentQueueIndex = -1;
+            persistState();
+            return;
+        }
+        try {
+            JSONArray array = new JSONArray(queueJson);
+            for (int i = 0; i < array.length(); i++) {
+                JSONObject item = array.optJSONObject(i);
+                if (item == null) continue;
+                String videoId = item.optString("videoId", "");
+                if (videoId.isEmpty()) continue;
+                playbackQueue.add(new QueueItem(
+                        item.optString("id", ""),
+                        item.optString("title", "HarmonyStream"),
+                        item.optString("artist", ""),
+                        videoId
+                ));
+            }
+            syncQueueIndexForVideo(currentVideoId);
+        } catch (JSONException jsonException) {
+            Log.w(TAG, "Invalid queue_json payload", jsonException);
+            currentQueueIndex = -1;
+        }
+        persistState();
+    }
+
+    private void handleSkip(int direction) {
+        if (playbackQueue.isEmpty()) return;
+        int seedIndex = currentQueueIndex;
+        if (seedIndex < 0) {
+            seedIndex = 0;
+            syncQueueIndexForVideo(currentVideoId);
+            if (currentQueueIndex >= 0) {
+                seedIndex = currentQueueIndex;
+            }
+        }
+        int nextIndex = (seedIndex + direction + playbackQueue.size()) % playbackQueue.size();
+        QueueItem item = playbackQueue.get(nextIndex);
+        currentQueueIndex = nextIndex;
+        currentVideoId = item.videoId;
+        currentTitle = item.title;
+        currentArtist = item.artist;
+        pendingPlayRequestedAtMs = System.currentTimeMillis();
+        ensureForegroundWithCurrentState();
+        resolveAndPlay(item.videoId, 0L);
+        persistState();
+    }
+
+    private void syncQueueIndexForVideo(String videoId) {
+        if (videoId == null || playbackQueue.isEmpty()) {
+            currentQueueIndex = -1;
+            return;
+        }
+        for (int i = 0; i < playbackQueue.size(); i++) {
+            if (videoId.equals(playbackQueue.get(i).videoId)) {
+                currentQueueIndex = i;
+                return;
+            }
+        }
     }
 
     private String pickItag140(List<AudioStream> streams) {
@@ -492,6 +626,20 @@ public class PlaybackService extends Service {
         }
     }
 
+    private void ensureForegroundWithCurrentState() {
+        if (!hasNotificationPermission()) return;
+        Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
+                .setSmallIcon(android.R.drawable.ic_media_play)
+                .setContentTitle(currentTitle)
+                .setContentText(currentArtist)
+                .setOnlyAlertOnce(true)
+                .setOngoing(true)
+                .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
+                .setContentIntent(createContentIntent())
+                .build();
+        startForeground(NOTIFICATION_ID, notification);
+    }
+
     private PendingIntent createServiceActionIntent(String action) {
         Intent intent = new Intent(this, PlaybackService.class);
         intent.setAction(action);
@@ -541,7 +689,25 @@ public class PlaybackService extends Service {
                 .putBoolean(KEY_PLAYING, playing)
                 .putLong(KEY_POSITION_MS, position)
                 .putLong(KEY_DURATION_MS, duration)
+                .putString(KEY_QUEUE_JSON, serializeQueue())
+                .putInt(KEY_QUEUE_INDEX, currentQueueIndex)
                 .apply();
+    }
+
+    private String serializeQueue() {
+        JSONArray array = new JSONArray();
+        for (QueueItem item : playbackQueue) {
+            JSONObject json = new JSONObject();
+            try {
+                json.put("id", item.id);
+                json.put("title", item.title);
+                json.put("artist", item.artist);
+                json.put("videoId", item.videoId);
+                array.put(json);
+            } catch (JSONException ignored) {
+            }
+        }
+        return array.toString();
     }
 
     private void updatePlaybackState() {
@@ -591,6 +757,27 @@ public class PlaybackService extends Service {
         currentArtist = prefs.getString(KEY_ARTIST, "");
         currentPositionMs = Math.max(0, prefs.getLong(KEY_POSITION_MS, 0));
         currentDurationMs = Math.max(0, prefs.getLong(KEY_DURATION_MS, 0));
+        currentQueueIndex = prefs.getInt(KEY_QUEUE_INDEX, -1);
+        playbackQueue.clear();
+        String queueJson = prefs.getString(KEY_QUEUE_JSON, "[]");
+        try {
+            JSONArray array = new JSONArray(queueJson == null ? "[]" : queueJson);
+            for (int i = 0; i < array.length(); i++) {
+                JSONObject item = array.optJSONObject(i);
+                if (item == null) continue;
+                String videoId = item.optString("videoId", "");
+                if (videoId.isEmpty()) continue;
+                playbackQueue.add(new QueueItem(
+                        item.optString("id", ""),
+                        item.optString("title", "HarmonyStream"),
+                        item.optString("artist", ""),
+                        videoId
+                ));
+            }
+        } catch (JSONException ignored) {
+            playbackQueue.clear();
+            currentQueueIndex = -1;
+        }
     }
 
     private void initWakeLock() {
