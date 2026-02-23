@@ -164,7 +164,7 @@ jobs:
 
       - name: Upload Full Build Log
         if: failure()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: android-full-build-log
           path: android/full-build-log.txt
