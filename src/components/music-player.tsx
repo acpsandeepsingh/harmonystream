@@ -431,6 +431,8 @@ export function MusicPlayer() {
   const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const isGlobalPlayingRef = useRef(isGlobalPlaying);
   const pendingNativeActionRef = useRef<string | null>(null);
+  const nativePlayRequestAtMsRef = useRef(0);
+  const lastNativeStateTsRef = useRef(0);
 
   // Player-specific UI state
   const [container, setContainer] = useState<HTMLElement | null>(null);
@@ -663,6 +665,7 @@ export function MusicPlayer() {
 
   // Effect to sync player's play/pause state with global state
   useEffect(() => {
+    if (isAndroidAppRuntime) return;
     const player = playerRef.current;
     if (!player || isChangingTrackRef.current || !player.getPlayerState) return;
 
@@ -673,7 +676,7 @@ export function MusicPlayer() {
     } else if (!isGlobalPlaying && playerState === 1) {
       player.pauseVideo();
     }
-  }, [isGlobalPlaying]);
+  }, [isAndroidAppRuntime, isGlobalPlaying]);
 
   useEffect(() => {
     if (playerRef.current && typeof playerRef.current.setVolume === 'function') {
@@ -703,13 +706,21 @@ export function MusicPlayer() {
         const state = player.getPlayerState();
         if (state === 1) { // is playing
             window.AndroidNative?.pause?.();
-            player.pauseVideo();
+            if (!isAndroidAppRuntime) {
+              player.pauseVideo();
+            }
         } else {
+            if (isAndroidAppRuntime) {
+              nativePlayRequestAtMsRef.current = Date.now();
+              setGlobalIsPlaying(true);
+            }
             window.AndroidNative?.play?.(currentTrack.videoId, currentTrack.title);
-            player.playVideo();
+            if (!isAndroidAppRuntime) {
+              player.playVideo();
+            }
         }
     }
-  }, [currentTrack, initialLoadIsVideoShare, playerMode, setInitialLoadIsVideoShare]);
+  }, [currentTrack, initialLoadIsVideoShare, isAndroidAppRuntime, playerMode, setGlobalIsPlaying, setInitialLoadIsVideoShare]);
 
   const handleSeekChange = useCallback((value: number[]) => {
     isSeekingRef.current = true;
@@ -1006,11 +1017,26 @@ export function MusicPlayer() {
     };
 
     const nativeStateListener = (event: Event) => {
-      const detail = (event as CustomEvent<{ playing?: boolean }>).detail;
+      const detail = (event as CustomEvent<{ playing?: boolean; pending_play?: boolean; event_ts?: number }>).detail;
       if (typeof detail?.playing !== 'boolean') return;
 
-      setGlobalIsPlaying(detail.playing);
+      const eventTs = typeof detail.event_ts === 'number' ? detail.event_ts : Date.now();
+      if (eventTs < lastNativeStateTsRef.current) return;
+      lastNativeStateTsRef.current = eventTs;
+
+      const isPendingNativePlay = !!detail.pending_play;
+      const recentPlayRequest = nativePlayRequestAtMsRef.current > 0 && Date.now() - nativePlayRequestAtMsRef.current < 3000;
+
+      if (!detail.playing && (isPendingNativePlay || recentPlayRequest)) {
+        return;
+      }
+
       if (detail.playing) {
+        nativePlayRequestAtMsRef.current = 0;
+      }
+
+      setGlobalIsPlaying(detail.playing);
+      if (!isAndroidAppRuntime && detail.playing) {
         const player = playerRef.current;
         if (player && typeof player.getPlayerState === 'function' && typeof player.playVideo === 'function') {
           const state = player.getPlayerState();

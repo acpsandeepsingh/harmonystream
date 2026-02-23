@@ -127,6 +127,7 @@ public class PlaybackService extends Service {
     private String audioStreamUrl;
     private String videoStreamUrl;
     private boolean videoMode;
+    private volatile long pendingPlayRequestedAtMs;
     @Nullable
     private PowerManager.WakeLock wakeLock;
 
@@ -191,6 +192,9 @@ public class PlaybackService extends Service {
             case ACTION_PLAY:
                 handlePlay(intent);
                 break;
+            case ACTION_UPDATE_STATE:
+                handleUpdateState(intent);
+                break;
             case ACTION_PAUSE:
                 if (player != null) player.pause();
                 break;
@@ -214,6 +218,9 @@ public class PlaybackService extends Service {
             case ACTION_GET_STATE:
                 broadcastState();
                 break;
+            case ACTION_CLEAR_PENDING_MEDIA_ACTION:
+                Log.d(TAG, "Cleared pending media action request");
+                break;
             default:
                 break;
         }
@@ -232,7 +239,24 @@ public class PlaybackService extends Service {
 
         currentVideoId = videoId;
         currentTitle = intent.getStringExtra("title") == null ? "HarmonyStream" : intent.getStringExtra("title");
+        pendingPlayRequestedAtMs = System.currentTimeMillis();
+        broadcastState();
         resolveAndPlay(videoId, 0L);
+    }
+
+    private void handleUpdateState(Intent intent) {
+        if (intent == null) return;
+        String title = intent.getStringExtra("title");
+        String artist = intent.getStringExtra("artist");
+        if (title != null && !title.trim().isEmpty()) {
+            currentTitle = title;
+        }
+        currentArtist = artist == null ? "" : artist;
+        currentPositionMs = Math.max(0L, intent.getLongExtra("position_ms", currentPositionMs));
+        currentDurationMs = Math.max(0L, intent.getLongExtra("duration_ms", currentDurationMs));
+        if (player == null || !player.isPlaying()) {
+            broadcastState();
+        }
     }
 
     private void resolveAndPlay(String videoId, long seekMs) {
@@ -261,10 +285,12 @@ public class PlaybackService extends Service {
                         player.seekTo(seekMs);
                     }
                     player.play();
+                    pendingPlayRequestedAtMs = 0L;
                     updateNotification();
                     broadcastState();
                 });
             } catch (Throwable throwable) {
+                pendingPlayRequestedAtMs = 0L;
                 Log.e(TAG, "Unable to resolve stream URL", throwable);
             }
         });
@@ -323,6 +349,8 @@ public class PlaybackService extends Service {
         stateIntent.putExtra("playing", player != null && player.isPlaying());
         stateIntent.putExtra("position_ms", player == null ? currentPositionMs : Math.max(0, player.getCurrentPosition()));
         stateIntent.putExtra("duration_ms", player == null ? currentDurationMs : Math.max(0, player.getDuration()));
+        stateIntent.putExtra("pending_play", pendingPlayRequestedAtMs > 0L);
+        stateIntent.putExtra("event_ts", System.currentTimeMillis());
         sendBroadcast(stateIntent);
         PlaybackWidgetProvider.requestRefresh(this);
     }

@@ -113,16 +113,22 @@ jobs:
           sed -i 's/\\r$//' gradlew || true
           chmod +x gradlew
 
-      - name: Forced Cleanup and Build
+      - name: Forced Cleanup and Build (debug + release)
         run: |
           pkill -9 java || true
           cd android
           # Removing .gradle ensures a fresh workspace assignment to avoid IdentityCache errors
           rm -rf .gradle/ build/ app/build/
-          ./gradlew assembleDebug --no-daemon --no-build-cache --refresh-dependencies --stacktrace
+          ./gradlew assembleDebug assembleRelease --no-daemon --no-build-cache --refresh-dependencies --stacktrace
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: HarmonyStream-Android-APK
+          name: HarmonyStream-Android-APK-Debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Upload release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: HarmonyStream-Android-APK-Release
+          path: android/app/build/outputs/apk/release/app-release.apk

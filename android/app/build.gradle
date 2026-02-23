@@ -40,12 +40,12 @@ def hasReleaseSigning = [
 android {
 
     namespace 'com.sansoft.harmonystram'
-    compileSdk 34
+    compileSdk 35
 
     defaultConfig {
         applicationId "com.sansoft.harmonystram"
-        minSdk 21
-        targetSdk 34
+        minSdk 23
+        targetSdk 35
         versionCode 1
         versionName "1.0"
 
@@ -120,7 +120,7 @@ android {
 
     buildTypes {
         release {
-            minifyEnabled false
+            minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             if (hasReleaseSigning) {
                 signingConfig signingConfigs.release
@@ -148,12 +148,6 @@ android {
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
-    }
-    
-    // Ignore the old test directories to prevent build errors
-    sourceSets {
-        test.java.srcDirs = []
-        androidTest.java.srcDirs = []
     }
 }
 
@@ -192,12 +186,6 @@ tasks.register("syncBundledWebAssets", Sync) {
     }
 }
 
-
-repositories {
-    google()
-    mavenCentral()
-    maven { url 'https://jitpack.io' }
-}
 
 dependencies {
     implementation 'androidx.appcompat:appcompat:1.6.1'
