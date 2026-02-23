@@ -29,9 +29,8 @@ public class DownloaderImpl extends Downloader {
     }
 
     /**
-     * Handles POST requests. In 0.25.2+, this is an ABSTRACT method and must be implemented.
+     * Handles POST requests when the extractor invokes this overload.
      */
-    @Override
     public Response post(Request request) throws IOException, ReCaptchaException {
         return makeRequest(request);
     }
