@@ -8,6 +8,7 @@ import org.schabi.newpipe.extractor.exceptions.ReCaptchaException;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.List;
@@ -26,6 +27,7 @@ public class DownloaderImpl extends Downloader {
         connection.setConnectTimeout(15000);
         connection.setReadTimeout(15000);
 
+        // Set request headers
         Map<String, List<String>> headers = request.headers();
         if (headers != null) {
             for (Map.Entry<String, List<String>> entry : headers.entrySet()) {
@@ -36,16 +38,24 @@ public class DownloaderImpl extends Downloader {
             }
         }
 
+        // Handle POST/PUT data if provided
+        byte[] dataToSend = request.dataToSend();
+        if (dataToSend != null && dataToSend.length > 0) {
+            connection.setDoOutput(true);
+            try (OutputStream os = connection.getOutputStream()) {
+                os.write(dataToSend);
+            }
+        }
+
         connection.connect();
         int code = connection.getResponseCode();
         
         // Use error stream if the request was not successful
         InputStream stream = (code >= 200 && code < 400) ? connection.getInputStream() : connection.getErrorStream();
         
-        // 🔥 FIX 1: Read the stream and convert it to a String
+        // 🔥 FIX: Convert stream to String to satisfy the new Response constructor
         String body = readAllAsString(stream);
         
-        // 🔥 FIX 2: The Response constructor now expects a String body
         return new Response(code, connection.getResponseMessage(), connection.getHeaderFields(), body, request.url());
     }
 
