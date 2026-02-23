@@ -169,14 +169,24 @@ jobs:
           name: android-full-build-log
           path: android/full-build-log.txt
 
-      - name: Upload debug APK
+      - name: Upload Release APK
         uses: actions/upload-artifact@v4
         with:
-          name: HarmonyStream-Android-APK-Debug
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: harmonystream-release-apk
+          path: android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
 
-      - name: Upload release APK
+      - name: Upload Variant APK Fallback
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: HarmonyStream-Android-APK-Release
-          path: android/app/build/outputs/apk/release/app-release.apk
+          name: harmonystream-variant-apk
+          path: android/app/build/outputs/apk/**/*.apk
+          if-no-files-found: error
+
+      - name: Upload R8 Mapping File
+        uses: actions/upload-artifact@v4
+        with:
+          name: r8-mapping-file
+          path: android/app/build/outputs/mapping/release/mapping.txt
+          if-no-files-found: ignore
