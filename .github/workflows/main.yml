@@ -54,12 +54,11 @@ jobs:
         uses: actions/deploy-pages@v4
 
   apk:
-    needs: website # Ensures website finishes before starting APK build
+    needs: website
     runs-on: ubuntu-latest
     env:
       YOUTUBE_API_KEY: ${{ secrets.NEXT_PUBLIC_YOUTUBE_API_KEY }}
-      # LIMIT MEMORY TO PREVENT SILENT CRASH (Exit Code 1)
-      # 3GB for Gradle + 1.5GB for Kotlin = 4.5GB (fits in 7GB runner)
+      # Prevent silent OOM crashes on the runner
       GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx3072m -Dkotlin.daemon.jvm.options=-Xmx1536m -XX:MaxMetaspaceSize=512m -Dorg.gradle.daemon=false"
 
     steps:
@@ -69,13 +68,13 @@ jobs:
       - name: Download website build
         uses: actions/download-artifact@v4
         with:
-          name: github-pages # Matches default name from upload-pages-artifact
+          name: github-pages
           path: ./out-raw
 
       - name: Extract website files
         run: |
           mkdir -p out
-          # upload-pages-artifact stores content as a tarball inside the artifact
+          # Handle both tarball (from upload-pages) and raw folder cases
           tar -xvf out-raw/artifact.tar -C out/ || cp -R out-raw/* out/ || true
 
       - name: Set up Java 17
@@ -88,10 +87,6 @@ jobs:
         uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: wrapper
-          cache-cleanup: always
-          build-scan-publish: true
-          build-scan-terms-of-service-url: "https://gradle.com/terms-of-service"
-          build-scan-terms-of-service-agree: "yes"
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
@@ -101,121 +96,27 @@ jobs:
 
       - name: Install required Android SDK components
         run: |
-          sdkmanager --install \
-            "platform-tools" \
-            "platforms;android-34" \
-            "build-tools;34.0.0"
-
-      - name: Configure Android SDK path for Gradle
-        run: ./scripts.ensure-android-sdk.sh
+          sdkmanager --install "platform-tools" "platforms;android-34" "build-tools;34.0.0"
 
       - name: Prepare Android project assets
         run: |
           set -e
-          mkdir -p android/app/src/main/assets/public
+          # Clean old assets and copy new web build into the Android project
           rm -rf android/app/src/main/assets/*
           mkdir -p android/app/src/main/assets/public
           cp -R out/. android/app/src/main/assets/public/
 
-      - name: Ensure Gradle wrapper
+      - name: Build Android APKs
         run: |
           cd android
-          sed -i 's/\\r$//' gradlew || true
           chmod +x gradlew
-
-      - name: List Gradle tasks (CI debug)
-        run: |
-          cd android
-          ./gradlew :app:tasks --all
-
-      - name: Build Android Release
-        id: android_build
-        run: |
-          cd android
-          ./gradlew :app:ensureReleaseApkForCi --stacktrace --info --warning-mode all | tee full-build-log.txt
-        continue-on-error: false
-
-      - name: Debug Build Output
-        run: |
-          echo "Gradle task executed: ensureReleaseApkForCi"
-          echo "Listing Android build outputs"
-          ls -R android/app/build/outputs/apk || true
-
-      - name: Detect Built Android Artifact Paths
-        id: detect_android_artifacts
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd android
-
-          mapfile -t artifacts < <(find app/build/outputs/apk -type f -name '*.apk' | sort)
-
-          if [ ${#artifacts[@]} -eq 0 ]; then
-            echo "No APK artifacts were found under app/build/outputs/apk"
-            exit 1
-          fi
-
-          echo "Detected Android artifacts:"
-          printf ' - %s\n' "${artifacts[@]}"
-
-          {
-            echo 'artifact_paths<<EOF'
-            for artifact in "${artifacts[@]}"; do
-              printf 'android/%s\n' "$artifact"
-            done
-            echo 'EOF'
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Extract First Build Error
-        if: failure()
-        run: |
-          python3 - <<'PY'
-          import pathlib
-          import re
-
-          log_path = pathlib.Path("android/full-build-log.txt")
-          if not log_path.exists():
-              raise SystemExit("Build log not found: android/full-build-log.txt")
-
-          patterns = [
-              r"error:",
-              r"FAILURE:",
-              r"Execution failed for task",
-              r"Manifest merger failed",
-              r"Resource linking failed",
-              r"Unresolved reference",
-              r"cannot find symbol",
-              r"duplicate class",
-              r"AAPT:",
-          ]
-
-          regexes = [re.compile(p, re.IGNORECASE) for p in patterns]
-          for line_number, line in enumerate(log_path.read_text(errors="replace").splitlines(), start=1):
-              if any(regex.search(line) for regex in regexes):
-                  print(f"First matching error signal (line {line_number}):")
-                  print(line)
-                  break
-          else:
-              print("No known error signal found in full-build-log.txt")
-          PY
-
-      - name: Upload Full Build Log
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: android-full-build-log
-          path: android/full-build-log.txt
+          # Standard assemble tasks for both Debug and Release
+          ./gradlew assembleDebug assembleRelease --stacktrace --info
 
       - name: Upload Android Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: harmonystream-android-artifacts
-          path: ${{ steps.detect_android_artifacts.outputs.artifact_paths }}
+          name: harmonystream-android-apks
+          # Wildcard path ensures all generated APKs are caught regardless of exact name
+          path: android/app/build/outputs/apk/**/*.apk
           if-no-files-found: error
-
-      - name: Upload R8 Mapping File
-        uses: actions/upload-artifact@v4
-        with:
-          name: r8-mapping-file
-          path: android/app/build/outputs/mapping/release/mapping.txt
-          if-no-files-found: ignore
