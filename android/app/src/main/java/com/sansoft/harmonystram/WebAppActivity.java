@@ -98,6 +98,8 @@ public class WebAppActivity extends AppCompatActivity {
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final Runnable mainFrameTimeoutRunnable = this::handleMainFrameTimeout;
     private boolean playbackActive;
+    private boolean videoModeEnabled;
+    private boolean doubleTapHandled;
 
     private final ServiceConnection playbackServiceConnection = new ServiceConnection() {
         @Override
@@ -688,6 +690,11 @@ public class WebAppActivity extends AppCompatActivity {
 
         @JavascriptInterface
         public void setVideoMode(boolean enabled) {
+            videoModeEnabled = enabled;
+            if (!enabled && seekOverlayIndicator != null) {
+                seekOverlayIndicator.animate().cancel();
+                seekOverlayIndicator.setVisibility(View.GONE);
+            }
             Intent modeIntent = new Intent(WebAppActivity.this, PlaybackService.class);
             modeIntent.setAction(PlaybackService.ACTION_SET_MODE);
             modeIntent.putExtra("video_mode", enabled);
@@ -805,6 +812,7 @@ public class WebAppActivity extends AppCompatActivity {
         gestureDetector = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
             @Override
             public boolean onDoubleTap(MotionEvent e) {
+                doubleTapHandled = true;
                 float x = e.getX();
                 int width = webView.getWidth();
                 long delta = x > (width / 2f) ? 20_000L : -20_000L;
@@ -823,15 +831,18 @@ public class WebAppActivity extends AppCompatActivity {
         });
 
         webView.setOnTouchListener((v, event) -> {
-            if (gestureDetector != null && gestureDetector.onTouchEvent(event)) {
-                return true;
+            if (!videoModeEnabled || gestureDetector == null) {
+                return false;
             }
-            return false;
+
+            doubleTapHandled = false;
+            gestureDetector.onTouchEvent(event);
+            return doubleTapHandled;
         });
     }
 
     private void showSeekOverlay(String label) {
-        if (seekOverlayIndicator == null) {
+        if (seekOverlayIndicator == null || !videoModeEnabled) {
             return;
         }
         seekOverlayIndicator.setText(label);
