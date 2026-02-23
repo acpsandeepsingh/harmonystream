@@ -98,6 +98,7 @@ public class WebAppActivity extends AppCompatActivity {
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final Runnable mainFrameTimeoutRunnable = this::handleMainFrameTimeout;
     private boolean playbackActive;
+    private boolean videoModeEnabled;
 
     private final ServiceConnection playbackServiceConnection = new ServiceConnection() {
         @Override
@@ -688,6 +689,7 @@ public class WebAppActivity extends AppCompatActivity {
 
         @JavascriptInterface
         public void setVideoMode(boolean enabled) {
+            videoModeEnabled = enabled;
             Intent modeIntent = new Intent(WebAppActivity.this, PlaybackService.class);
             modeIntent.setAction(PlaybackService.ACTION_SET_MODE);
             modeIntent.putExtra("video_mode", enabled);
@@ -831,7 +833,7 @@ public class WebAppActivity extends AppCompatActivity {
     }
 
     private void showSeekOverlay(String label) {
-        if (seekOverlayIndicator == null) {
+        if (seekOverlayIndicator == null || !videoModeEnabled) {
             return;
         }
         seekOverlayIndicator.setText(label);
