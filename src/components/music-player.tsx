@@ -459,11 +459,13 @@ export function MusicPlayer() {
     return isAndroidUa && (isFileProtocol || isWebViewAssetHost || hasNativeBridge);
   }, []);
 
+  const shouldControlIframePlayback = !isAndroidAppRuntime || playerMode === 'video';
+
   const applyNativeCommand = useCallback((action: string) => {
     if (!action) return;
 
     const player = playerRef.current;
-    const canControlPlayer = !!player && typeof player.getPlayerState === 'function';
+    const canControlPlayer = shouldControlIframePlayback && !!player && typeof player.getPlayerState === 'function';
 
     if (!canControlPlayer) {
       pendingNativeActionRef.current = action;
@@ -507,7 +509,7 @@ export function MusicPlayer() {
       default:
         break;
     }
-  }, [setGlobalIsPlaying, globalPlayNext, globalPlayPrev]);
+  }, [setGlobalIsPlaying, globalPlayNext, globalPlayPrev, shouldControlIframePlayback]);
 
   useEffect(() => {
     isGlobalPlayingRef.current = isGlobalPlaying;
@@ -595,6 +597,10 @@ export function MusicPlayer() {
   }, [volume]);
 
   const onStateChange: YouTubeProps['onStateChange'] = useCallback((event: YouTubeEvent<number>) => {
+    if (!shouldControlIframePlayback) {
+      return;
+    }
+
     const playerState = event.data;
     const player = event.target;
 
@@ -627,7 +633,7 @@ export function MusicPlayer() {
         }
         break;
     }
-  }, [setGlobalIsPlaying, globalPlayNext, startProgressInterval, stopProgressInterval, isGlobalPlaying]);
+  }, [setGlobalIsPlaying, globalPlayNext, startProgressInterval, stopProgressInterval, isGlobalPlaying, shouldControlIframePlayback]);
   
   const onError: YouTubeProps['onError'] = useCallback((event: YouTubeEvent<number>) => {
     const errorCode = event.data;
@@ -653,6 +659,11 @@ export function MusicPlayer() {
   
   // Effect to load a new track when the global currentTrack changes
   useEffect(() => {
+    if (!shouldControlIframePlayback) {
+      stopProgressInterval();
+      return;
+    }
+
     if (currentTrack && playerRef.current && typeof playerRef.current.loadVideoById === 'function') {
         isChangingTrackRef.current = true;
         stopProgressInterval();
@@ -661,7 +672,7 @@ export function MusicPlayer() {
         setDuration(0);
         playerRef.current.loadVideoById(currentTrack.videoId);
     }
-  }, [currentTrack, stopProgressInterval]);
+  }, [currentTrack, stopProgressInterval, shouldControlIframePlayback]);
 
   // Effect to sync player's play/pause state with global state
   useEffect(() => {
@@ -687,7 +698,21 @@ export function MusicPlayer() {
   // --- UI Handlers ---
 
   const handleTogglePlayPause = useCallback(() => {
-    if (!currentTrack || !playerRef.current) return;
+    if (!currentTrack) return;
+
+    if (isAndroidAppRuntime && !shouldControlIframePlayback) {
+      if (isGlobalPlayingRef.current) {
+        window.AndroidNative?.pause?.();
+        setGlobalIsPlaying(false);
+      } else {
+        nativePlayRequestAtMsRef.current = Date.now();
+        setGlobalIsPlaying(true);
+        window.AndroidNative?.play?.(currentTrack.videoId, currentTrack.title);
+      }
+      return;
+    }
+
+    if (!playerRef.current) return;
     const player = playerRef.current;
 
     // If it's the first interaction for a shared video, GUARANTEE playback and fullscreen.
@@ -720,7 +745,7 @@ export function MusicPlayer() {
             }
         }
     }
-  }, [currentTrack, initialLoadIsVideoShare, isAndroidAppRuntime, playerMode, setGlobalIsPlaying, setInitialLoadIsVideoShare]);
+  }, [currentTrack, initialLoadIsVideoShare, isAndroidAppRuntime, playerMode, setGlobalIsPlaying, setInitialLoadIsVideoShare, shouldControlIframePlayback]);
 
   const handleSeekChange = useCallback((value: number[]) => {
     isSeekingRef.current = true;
@@ -1203,7 +1228,7 @@ export function MusicPlayer() {
             >
               <YouTube
                   videoId={currentTrack.videoId}
-                  opts={{ playerVars: { playsinline: 1, controls: 0, modestbranding: 1, rel: 0, iv_load_policy: 3, autoplay: 1, origin: typeof window !== 'undefined' ? window.location.origin : undefined } }}
+                  opts={{ playerVars: { playsinline: 1, controls: 0, modestbranding: 1, rel: 0, iv_load_policy: 3, autoplay: shouldControlIframePlayback ? 1 : 0, origin: typeof window !== 'undefined' ? window.location.origin : undefined } }}
                   onReady={onReady}
                   onStateChange={onStateChange}
                   onError={onError}
