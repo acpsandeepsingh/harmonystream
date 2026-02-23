@@ -1,14 +1,12 @@
 package com.sansoft.harmonystram;
 
 import android.Manifest;
-import android.os.PowerManager;
 import android.content.Context;
 import android.annotation.SuppressLint;
 import android.app.PictureInPictureParams;
 import android.content.res.AssetManager;
 import android.content.res.Configuration;
 import android.content.BroadcastReceiver;
-import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
@@ -98,6 +96,8 @@ public class WebAppActivity extends AppCompatActivity {
                 payload.put("playing", playbackActive);
                 payload.put("position_ms", intent.getLongExtra("position_ms", 0));
                 payload.put("duration_ms", intent.getLongExtra("duration_ms", 0));
+                payload.put("pending_play", intent.getBooleanExtra("pending_play", false));
+                payload.put("event_ts", intent.getLongExtra("event_ts", System.currentTimeMillis()));
             } catch (JSONException ignored) {
             }
             dispatchToWeb("window.dispatchEvent(new CustomEvent('nativePlaybackState', { detail: " + payload + " }));");
@@ -238,51 +238,27 @@ public class WebAppActivity extends AppCompatActivity {
         dispatchPendingMediaAction(intent.getStringExtra(PlaybackService.EXTRA_PENDING_MEDIA_ACTION));
     }
 
-@Override
-protected void onPause() {
-    Log.d("Harmony", "onPause triggered");
-
-    // 1. If in Mini Player (PiP), let it play normally
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && isInPictureInPictureMode()) {
+    @Override
+    protected void onPause() {
         super.onPause();
-        return;
+        if (webView != null) {
+            webView.onPause();
+        }
     }
 
-    // 2. 🔥 SCREEN-OFF DETECTION
-    PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
-    boolean isScreenOn = pm.isInteractive();
-
-    if (!isScreenOn) {
-        // User locked the screen. WE SKIP super.onPause() and webView.onPause()
-        // This keeps the YouTube iframe alive in the background.
-        Log.d("Harmony", "Screen Off: Keeping playback active");
-        return; 
-    }
-
-    // 3. Normal App Switch (User went to home screen)
-    super.onPause();
-    if (webView != null) {
-        webView.onPause();
-    }
-}
-
-@Override
-protected void onStop() {
-    // 🔥 Never stop the activity threads during screen-off
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && isInPictureInPictureMode()) {
+    @Override
+    protected void onStop() {
         super.onStop();
     }
-}
 
-@Override
-protected void onResume() {
-    super.onResume();
-    if (webView != null) {
-        webView.onResume();
-        // Sync position back from native service if needed
-        dispatchToWeb("window.dispatchEvent(new CustomEvent('nativeHostResumed'));");
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (webView != null) {
+            webView.onResume();
+            dispatchToWeb("window.dispatchEvent(new CustomEvent('nativeHostResumed'));");
+        }
     }
-}
 
 
     private void dispatchPendingMediaAction(String action) {
