@@ -123,20 +123,51 @@ jobs:
           sed -i 's/\\r$//' gradlew || true
           chmod +x gradlew
 
-      - name: Forced Cleanup and Build (release, full diagnostics)
+      - name: Build Android Release
         run: |
           cd android
-          # Removing .gradle ensures a fresh workspace assignment to avoid IdentityCache errors
-          rm -rf .gradle/ build/ app/build/
-          ./gradlew --version
-          ./gradlew clean assembleRelease --stacktrace --info --warning-mode all
-          ./gradlew clean assembleRelease --stacktrace --info 2>&1 | tee build-log.txt
+          ./gradlew clean assembleRelease --stacktrace --info --warning-mode all | tee full-build-log.txt
+        continue-on-error: false
 
-      - name: Upload Build Log
-        uses: actions/upload-artifact@v4
+      - name: Extract First Build Error
+        if: failure()
+        run: |
+          python3 - <<'PY'
+          import pathlib
+          import re
+
+          log_path = pathlib.Path("android/full-build-log.txt")
+          if not log_path.exists():
+              raise SystemExit("Build log not found: android/full-build-log.txt")
+
+          patterns = [
+              r"error:",
+              r"FAILURE:",
+              r"Execution failed for task",
+              r"Manifest merger failed",
+              r"Resource linking failed",
+              r"Unresolved reference",
+              r"cannot find symbol",
+              r"duplicate class",
+              r"AAPT:",
+          ]
+
+          regexes = [re.compile(p, re.IGNORECASE) for p in patterns]
+          for line_number, line in enumerate(log_path.read_text(errors="replace").splitlines(), start=1):
+              if any(regex.search(line) for regex in regexes):
+                  print(f"First matching error signal (line {line_number}):")
+                  print(line)
+                  break
+          else:
+              print("No known error signal found in full-build-log.txt")
+          PY
+
+      - name: Upload Full Build Log
+        if: failure()
+        uses: actions/upload-artifact@v3
         with:
-          name: full-build-log
-          path: android/build-log.txt
+          name: android-full-build-log
+          path: android/full-build-log.txt
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
