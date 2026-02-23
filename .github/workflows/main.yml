@@ -129,13 +129,14 @@ jobs:
           # Removing .gradle ensures a fresh workspace assignment to avoid IdentityCache errors
           rm -rf .gradle/ build/ app/build/
           ./gradlew --version
-          ./gradlew clean assembleRelease \
-            --no-daemon \
-            --no-build-cache \
-            --refresh-dependencies \
-            --stacktrace \
-            --info \
-            --warning-mode all
+          ./gradlew clean assembleRelease --stacktrace --info --warning-mode all
+          ./gradlew clean assembleRelease --stacktrace --info 2>&1 | tee build-log.txt
+
+      - name: Upload Build Log
+        uses: actions/upload-artifact@v3
+        with:
+          name: full-build-log
+          path: android/build-log.txt
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
