@@ -103,8 +103,8 @@ jobs:
         run: |
           sdkmanager --install \
             "platform-tools" \
-            "platforms;android-35" \
-            "build-tools;35.0.0"
+            "platforms;android-34" \
+            "build-tools;34.0.0"
 
       - name: Configure Android SDK path for Gradle
         run: ./scripts.ensure-android-sdk.sh
@@ -123,13 +123,13 @@ jobs:
           sed -i 's/\\r$//' gradlew || true
           chmod +x gradlew
 
-      - name: Forced Cleanup and Build (debug + release)
+      - name: Forced Cleanup and Build (release, full diagnostics)
         run: |
           cd android
           # Removing .gradle ensures a fresh workspace assignment to avoid IdentityCache errors
           rm -rf .gradle/ build/ app/build/
           ./gradlew --version
-          ./gradlew assembleDebug assembleRelease \
+          ./gradlew clean assembleRelease \
             --no-daemon \
             --no-build-cache \
             --refresh-dependencies \
