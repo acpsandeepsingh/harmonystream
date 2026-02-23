@@ -8,6 +8,8 @@ import android.content.res.AssetManager;
 import android.content.res.Configuration;
 import android.content.BroadcastReceiver;
 import android.content.Intent;
+import android.content.ComponentName;
+import android.content.ServiceConnection;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
@@ -18,7 +20,10 @@ import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 import android.util.Rational;
+import android.view.GestureDetector;
+import android.view.MotionEvent;
 import android.view.View;
+import android.view.WindowManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.ConsoleMessage;
 import android.webkit.MimeTypeMap;
@@ -28,11 +33,17 @@ import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.widget.ProgressBar;
+import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
+import androidx.lifecycle.ViewModelProvider;
 import androidx.webkit.WebViewAssetLoader;
 import androidx.webkit.WebResourceErrorCompat;
 import androidx.webkit.WebViewClientCompat;
@@ -75,12 +86,35 @@ public class WebAppActivity extends AppCompatActivity {
 
     private WebView webView;
     private ProgressBar loadingIndicator;
+    private TextView seekOverlayIndicator;
+    private PlaybackViewModel playbackViewModel;
+    private WindowInsetsControllerCompat insetsController;
+    private GestureDetector gestureDetector;
+    private PlaybackService playbackService;
+    private boolean serviceBound;
     private boolean loadingFallbackShell;
     private boolean mainFrameLoading;
     private String mainFrameStartedUrl;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final Runnable mainFrameTimeoutRunnable = this::handleMainFrameTimeout;
     private boolean playbackActive;
+
+    private final ServiceConnection playbackServiceConnection = new ServiceConnection() {
+        @Override
+        public void onServiceConnected(ComponentName name, android.os.IBinder service) {
+            if (service instanceof PlaybackService.LocalBinder) {
+                playbackService = ((PlaybackService.LocalBinder) service).getService();
+                serviceBound = true;
+                playbackViewModel.setSnapshot(playbackService.getCurrentSnapshot());
+            }
+        }
+
+        @Override
+        public void onServiceDisconnected(ComponentName name) {
+            serviceBound = false;
+            playbackService = null;
+        }
+    };
 
     private final BroadcastReceiver serviceStateReceiver = new BroadcastReceiver() {
         @Override
@@ -101,6 +135,7 @@ public class WebAppActivity extends AppCompatActivity {
             } catch (JSONException ignored) {
             }
             dispatchToWeb("window.dispatchEvent(new CustomEvent('nativePlaybackState', { detail: " + payload + " }));");
+            playbackViewModel.updateFromBroadcast(intent);
         }
     };
 
@@ -122,7 +157,11 @@ public class WebAppActivity extends AppCompatActivity {
 
         webView = findViewById(R.id.web_app_view);
         loadingIndicator = findViewById(R.id.web_loading_indicator);
+        seekOverlayIndicator = findViewById(R.id.seek_overlay_indicator);
+        playbackViewModel = new ViewModelProvider(this).get(PlaybackViewModel.class);
 
+        configureImmersiveFullscreen();
+        configureVideoGestures();
         requestNotificationPermissionIfNeeded();
 
         WebSettings settings = webView.getSettings();
@@ -200,6 +239,16 @@ public class WebAppActivity extends AppCompatActivity {
 
         dispatchPendingMediaAction(getIntent().getStringExtra(PlaybackService.EXTRA_PENDING_MEDIA_ACTION));
         playbackActive = PlaybackService.readSnapshot(this).playing;
+        playbackViewModel.setSnapshot(PlaybackService.readSnapshot(this));
+
+        playbackViewModel.getState().observe(this, state -> {
+            if (state != null) {
+                playbackActive = state.playing;
+            }
+        });
+
+        Intent bindIntent = new Intent(this, PlaybackService.class);
+        bindService(bindIntent, playbackServiceConnection, Context.BIND_AUTO_CREATE);
     }
 
     @Override
@@ -258,8 +307,17 @@ public class WebAppActivity extends AppCompatActivity {
             webView.onResume();
             dispatchToWeb("window.dispatchEvent(new CustomEvent('nativeHostResumed'));");
         }
+        hideSystemBars();
     }
 
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus) {
+            hideSystemBars();
+        }
+    }
 
     private void dispatchPendingMediaAction(String action) {
         if (action == null || action.isEmpty()) {
@@ -701,6 +759,7 @@ public class WebAppActivity extends AppCompatActivity {
                 || PlaybackService.ACTION_NEXT.equals(action)
                 || PlaybackService.ACTION_PREVIOUS.equals(action)
                 || PlaybackService.ACTION_SEEK.equals(action)
+                || PlaybackService.ACTION_SEEK_RELATIVE.equals(action)
                 || (PlaybackService.ACTION_UPDATE_STATE.equals(action)
                 && intent.getBooleanExtra("should_foreground", false));
 
@@ -718,6 +777,68 @@ public class WebAppActivity extends AppCompatActivity {
                 throw illegalStateException;
             }
         }
+    }
+
+
+    private void configureImmersiveFullscreen() {
+        WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        insetsController = ViewCompat.getWindowInsetsController(getWindow().getDecorView());
+        hideSystemBars();
+    }
+
+    private void hideSystemBars() {
+        if (insetsController != null) {
+            insetsController.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+            insetsController.hide(WindowInsetsCompat.Type.systemBars());
+        }
+        int flags = View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                | View.SYSTEM_UI_FLAG_FULLSCREEN
+                | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY;
+        getWindow().getDecorView().setSystemUiVisibility(flags);
+    }
+
+    private void configureVideoGestures() {
+        gestureDetector = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
+            @Override
+            public boolean onDoubleTap(MotionEvent e) {
+                float x = e.getX();
+                int width = webView.getWidth();
+                long delta = x > (width / 2f) ? 20_000L : -20_000L;
+                Intent seekIntent = new Intent(WebAppActivity.this, PlaybackService.class);
+                seekIntent.setAction(PlaybackService.ACTION_SEEK_RELATIVE);
+                seekIntent.putExtra("delta_ms", delta);
+                startPlaybackService(seekIntent);
+                showSeekOverlay(delta > 0 ? "+20s" : "-20s");
+                return true;
+            }
+
+            @Override
+            public boolean onDown(MotionEvent e) {
+                return true;
+            }
+        });
+
+        webView.setOnTouchListener((v, event) -> {
+            if (gestureDetector != null && gestureDetector.onTouchEvent(event)) {
+                return true;
+            }
+            return false;
+        });
+    }
+
+    private void showSeekOverlay(String label) {
+        if (seekOverlayIndicator == null) {
+            return;
+        }
+        seekOverlayIndicator.setText(label);
+        seekOverlayIndicator.setAlpha(1f);
+        seekOverlayIndicator.setVisibility(View.VISIBLE);
+        seekOverlayIndicator.animate().cancel();
+        seekOverlayIndicator.animate().alpha(0f).setDuration(350).withEndAction(() -> seekOverlayIndicator.setVisibility(View.GONE)).start();
     }
 
     @Override
@@ -747,6 +868,10 @@ public class WebAppActivity extends AppCompatActivity {
         } catch (IllegalArgumentException ignored) {
         }
         PlaybackService.attachWebView(null);
+        if (serviceBound) {
+            unbindService(playbackServiceConnection);
+            serviceBound = false;
+        }
         if (webView != null) {
             webView.destroy();
         }
