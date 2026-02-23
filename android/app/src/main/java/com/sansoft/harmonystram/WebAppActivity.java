@@ -99,6 +99,7 @@ public class WebAppActivity extends AppCompatActivity {
     private final Runnable mainFrameTimeoutRunnable = this::handleMainFrameTimeout;
     private boolean playbackActive;
     private boolean videoModeEnabled;
+    private boolean doubleTapHandled;
 
     private final ServiceConnection playbackServiceConnection = new ServiceConnection() {
         @Override
