@@ -21,7 +21,7 @@ public class DownloaderImpl extends Downloader {
     }
 
     /**
-     * Required for standard GET and other requests.
+     * Required for standard GET requests.
      */
     @Override
     public Response execute(Request request) throws IOException, ReCaptchaException {
@@ -30,6 +30,7 @@ public class DownloaderImpl extends Downloader {
 
     /**
      * Required for POST requests in NewPipeExtractor v0.25+.
+     * Note: This method is abstract in the parent class and MUST be overridden.
      */
     @Override
     public Response post(Request request) throws IOException, ReCaptchaException {
@@ -42,7 +43,7 @@ public class DownloaderImpl extends Downloader {
         connection.setConnectTimeout(15000);
         connection.setReadTimeout(15000);
 
-        // Set Headers
+        // Map request headers
         Map<String, List<String>> headers = request.headers();
         if (headers != null) {
             for (Map.Entry<String, List<String>> entry : headers.entrySet()) {
@@ -53,7 +54,7 @@ public class DownloaderImpl extends Downloader {
             }
         }
 
-        // Handle Body for POST/PUT
+        // Handle POST/PUT data
         byte[] dataToSend = request.dataToSend();
         if (dataToSend != null && dataToSend.length > 0) {
             connection.setDoOutput(true);
@@ -65,8 +66,10 @@ public class DownloaderImpl extends Downloader {
         connection.connect();
         int code = connection.getResponseCode();
         
-        // Handle stream and conversion
+        // Read response stream
         InputStream stream = (code >= 200 && code < 400) ? connection.getInputStream() : connection.getErrorStream();
+        
+        // FIX: Library v0.25+ requires String body
         String body = readAllAsString(stream);
         
         return new Response(code, connection.getResponseMessage(), connection.getHeaderFields(), body, request.url());
