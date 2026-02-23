@@ -127,25 +127,26 @@ jobs:
         id: android_build
         run: |
           cd android
-          ./gradlew clean assembleRelease --stacktrace --info --warning-mode all | tee full-build-log.txt
+          ./gradlew :app:assembleRelease --stacktrace --info --warning-mode all | tee full-build-log.txt
         continue-on-error: false
 
       - name: Debug Build Output
         run: |
           echo "Gradle task executed: assembleRelease"
           echo "Listing Android build outputs"
-          ls -R android/app/build/outputs/
+          ls -R android/app/build/outputs/apk || true
 
       - name: Detect Built Android Artifact Paths
         id: detect_android_artifacts
         shell: bash
         run: |
           set -euo pipefail
+          cd android
 
-          mapfile -t artifacts < <(find android/app/build/outputs -type f \( -name '*.apk' -o -name '*.aab' \) | sort)
+          mapfile -t artifacts < <(find app/build/outputs/apk -type f -name '*.apk' | sort)
 
           if [ ${#artifacts[@]} -eq 0 ]; then
-            echo "No APK or AAB artifacts were found under android/app/build/outputs"
+            echo "No APK artifacts were found under app/build/outputs/apk"
             exit 1
           fi
 
@@ -154,7 +155,9 @@ jobs:
 
           {
             echo 'artifact_paths<<EOF'
-            printf '%s\n' "${artifacts[@]}"
+            for artifact in "${artifacts[@]}"; do
+              printf 'android/%s\n' "$artifact"
+            done
             echo 'EOF'
           } >> "$GITHUB_OUTPUT"
 
