@@ -20,11 +20,17 @@ public class DownloaderImpl extends Downloader {
         return new DownloaderImpl();
     }
 
+    /**
+     * Standard GET/generic execution.
+     */
     @Override
     public Response execute(Request request) throws IOException, ReCaptchaException {
         return makeRequest(request);
     }
 
+    /**
+     * Mandatory override for POST requests in 0.25.2+.
+     */
     @Override
     public Response post(Request request) throws IOException, ReCaptchaException {
         return makeRequest(request);
@@ -36,7 +42,7 @@ public class DownloaderImpl extends Downloader {
         connection.setConnectTimeout(15000);
         connection.setReadTimeout(15000);
 
-        // Set Headers
+        // 1. Set Request Headers
         Map<String, List<String>> headers = request.headers();
         if (headers != null) {
             for (Map.Entry<String, List<String>> entry : headers.entrySet()) {
@@ -47,7 +53,7 @@ public class DownloaderImpl extends Downloader {
             }
         }
 
-        // Handle POST/PUT data
+        // 2. Handle POST Data
         byte[] dataToSend = request.dataToSend();
         if (dataToSend != null && dataToSend.length > 0) {
             connection.setDoOutput(true);
@@ -57,28 +63,29 @@ public class DownloaderImpl extends Downloader {
         }
 
         connection.connect();
+        
+        // 3. Collect Response Metadata
         int code = connection.getResponseCode();
         String message = connection.getResponseMessage();
         Map<String, List<String>> responseHeaders = connection.getHeaderFields();
         String finalUrl = connection.getURL().toString();
         
-        // Handle stream and conversion to String
+        // 4. Read Response Body as String (Strict Requirement)
         InputStream stream = (code >= 200 && code < 400) ? connection.getInputStream() : connection.getErrorStream();
-        String body = readAllAsString(stream);
-        
-        // Exact constructor: (int responseCode, String responseMessage, Map<String, List<String>> responseHeaders, String responseBody, String latestUrl)
-        return new Response(code, message, responseHeaders, body, finalUrl);
-    }
-
-    private static String readAllAsString(InputStream stream) throws IOException {
-        if (stream == null) return "";
-        try (ByteArrayOutputStream result = new ByteArrayOutputStream()) {
-            byte[] buffer = new byte[8192];
-            int length;
-            while ((length = stream.read(buffer)) != -1) {
-                result.write(buffer, 0, length);
+        String body = "";
+        if (stream != null) {
+            try (ByteArrayOutputStream result = new ByteArrayOutputStream()) {
+                byte[] buffer = new byte[8192];
+                int length;
+                while ((length = stream.read(buffer)) != -1) {
+                    result.write(buffer, 0, length);
+                }
+                body = result.toString("UTF-8");
             }
-            return result.toString("UTF-8");
         }
+        
+        // 5. Build Response using the 5-argument constructor:
+        // (int responseCode, String responseMessage, Map<String, List<String>> responseHeaders, String responseBody, String latestUrl)
+        return new Response(code, message, responseHeaders, body, finalUrl);
     }
 }
