@@ -20,14 +20,29 @@ public class DownloaderImpl extends Downloader {
         return new DownloaderImpl();
     }
 
+    /**
+     * Required for standard GET and other requests.
+     */
     @Override
     public Response execute(Request request) throws IOException, ReCaptchaException {
+        return makeRequest(request);
+    }
+
+    /**
+     * Required for POST requests in NewPipeExtractor v0.25+.
+     */
+    @Override
+    public Response post(Request request) throws IOException, ReCaptchaException {
+        return makeRequest(request);
+    }
+
+    private Response makeRequest(Request request) throws IOException {
         HttpURLConnection connection = (HttpURLConnection) new URL(request.url()).openConnection();
         connection.setRequestMethod(request.httpMethod());
         connection.setConnectTimeout(15000);
         connection.setReadTimeout(15000);
 
-        // Set request headers
+        // Set Headers
         Map<String, List<String>> headers = request.headers();
         if (headers != null) {
             for (Map.Entry<String, List<String>> entry : headers.entrySet()) {
@@ -38,7 +53,7 @@ public class DownloaderImpl extends Downloader {
             }
         }
 
-        // Handle POST/PUT data if provided
+        // Handle Body for POST/PUT
         byte[] dataToSend = request.dataToSend();
         if (dataToSend != null && dataToSend.length > 0) {
             connection.setDoOutput(true);
@@ -50,22 +65,15 @@ public class DownloaderImpl extends Downloader {
         connection.connect();
         int code = connection.getResponseCode();
         
-        // Use error stream if the request was not successful
+        // Handle stream and conversion
         InputStream stream = (code >= 200 && code < 400) ? connection.getInputStream() : connection.getErrorStream();
-        
-        // 🔥 FIX: Convert stream to String to satisfy the new Response constructor
         String body = readAllAsString(stream);
         
         return new Response(code, connection.getResponseMessage(), connection.getHeaderFields(), body, request.url());
     }
 
-    /**
-     * Reads the entire InputStream and converts it to a UTF-8 String.
-     * NewPipeExtractor v0.25+ requires a String body in the Response object.
-     */
     private static String readAllAsString(InputStream stream) throws IOException {
         if (stream == null) return "";
-        
         try (ByteArrayOutputStream result = new ByteArrayOutputStream()) {
             byte[] buffer = new byte[8192];
             int length;
