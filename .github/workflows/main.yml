@@ -54,11 +54,12 @@ jobs:
         uses: actions/deploy-pages@v4
 
   apk:
-    needs: website
+    needs: website # Ensures website finishes before starting APK build
     runs-on: ubuntu-latest
     env:
       YOUTUBE_API_KEY: ${{ secrets.NEXT_PUBLIC_YOUTUBE_API_KEY }}
-      # Prevent silent OOM crashes on the runner
+      # LIMIT MEMORY TO PREVENT SILENT CRASH (Exit Code 1)
+      # 3GB for Gradle + 1.5GB for Kotlin = 4.5GB (fits in 7GB runner)
       GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx3072m -Dkotlin.daemon.jvm.options=-Xmx1536m -XX:MaxMetaspaceSize=512m -Dorg.gradle.daemon=false"
 
     steps:
@@ -68,13 +69,13 @@ jobs:
       - name: Download website build
         uses: actions/download-artifact@v4
         with:
-          name: github-pages
+          name: github-pages # Matches default name from upload-pages-artifact
           path: ./out-raw
 
       - name: Extract website files
         run: |
           mkdir -p out
-          # Handle both tarball (from upload-pages) and raw folder cases
+          # upload-pages-artifact stores content as a tarball inside the artifact
           tar -xvf out-raw/artifact.tar -C out/ || cp -R out-raw/* out/ || true
 
       - name: Set up Java 17
@@ -86,7 +87,11 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
         with:
-          gradle-version: wrapper
+          gradle-version: 8.2
+          cache-cleanup: always
+          build-scan-publish: true
+          build-scan-terms-of-service-url: "https://gradle.com/terms-of-service"
+          build-scan-terms-of-service-agree: "yes"
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
@@ -94,29 +99,36 @@ jobs:
       - name: Accept Android SDK licenses
         run: yes | sdkmanager --licenses
 
-      - name: Install required Android SDK components
-        run: |
-          sdkmanager --install "platform-tools" "platforms;android-34" "build-tools;34.0.0"
-
       - name: Prepare Android project assets
         run: |
           set -e
-          # Clean old assets and copy new web build into the Android project
+          mkdir -p android/app/src/main/assets/public
           rm -rf android/app/src/main/assets/*
           mkdir -p android/app/src/main/assets/public
           cp -R out/. android/app/src/main/assets/public/
 
-      - name: Build Android APKs
+      - name: Ensure Gradle wrapper
         run: |
           cd android
+          sed -i 's/\\r$//' gradlew || true
           chmod +x gradlew
-          # Standard assemble tasks for both Debug and Release
-          ./gradlew assembleDebug assembleRelease --stacktrace --info
 
-      - name: Upload Android Artifacts
+      - name: Forced Cleanup and Build (debug + release)
+        run: |
+          pkill -9 java || true
+          cd android
+          # Removing .gradle ensures a fresh workspace assignment to avoid IdentityCache errors
+          rm -rf .gradle/ build/ app/build/
+          ./gradlew assembleDebug assembleRelease --no-daemon --no-build-cache --refresh-dependencies --stacktrace
+
+      - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: harmonystream-android-apks
-          # Wildcard path ensures all generated APKs are caught regardless of exact name
-          path: android/app/build/outputs/apk/**/*.apk
-          if-no-files-found: error
+          name: HarmonyStream-Android-APK-Debug
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Upload release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: HarmonyStream-Android-APK-Release
+          path: android/app/build/outputs/apk/release/app-release.apk
