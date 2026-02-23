@@ -11,3 +11,8 @@
 # Preserve NewPipe extractor interfaces used at runtime.
 -keep class org.schabi.newpipe.** { *; }
 -dontwarn org.schabi.newpipe.**
+
+# Rhino includes desktop-only JavaBeans adapters (java.beans.*) that are not
+# available on Android. NewPipe does not execute those adapter paths on Android,
+# so suppressing these warnings avoids false-positive missing class failures.
+-dontwarn java.beans.**

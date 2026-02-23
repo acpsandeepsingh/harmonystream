@@ -194,6 +194,10 @@ dependencies {
     implementation 'androidx.webkit:webkit:1.10.0'
     implementation 'com.google.android.exoplayer:exoplayer:2.19.1'
     implementation 'com.github.TeamNewPipe:NewPipeExtractor:v0.25.2'
+
+    // NewPipeExtractor pulls jsoup; jsoup's Re2jRegex implementation references
+    // com.google.re2j classes which must be present in release shrinking.
+    implementation 'com.google.re2j:re2j:1.8'
 }
 
 
