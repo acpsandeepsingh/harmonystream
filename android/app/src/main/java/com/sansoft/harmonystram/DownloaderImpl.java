@@ -38,25 +38,31 @@ public class DownloaderImpl extends Downloader {
 
         connection.connect();
         int code = connection.getResponseCode();
+        
+        // Use error stream if the request was not successful
         InputStream stream = (code >= 200 && code < 400) ? connection.getInputStream() : connection.getErrorStream();
-        byte[] body = readAll(stream);
+        
+        // 🔥 FIX 1: Read the stream and convert it to a String
+        String body = readAllAsString(stream);
+        
+        // 🔥 FIX 2: The Response constructor now expects a String body
         return new Response(code, connection.getResponseMessage(), connection.getHeaderFields(), body, request.url());
     }
 
-    @Override
-    public String getCookies(String url) {
-        return "";
-    }
-
-    private static byte[] readAll(InputStream stream) throws IOException {
-        if (stream == null) return new byte[0];
-        try (InputStream in = stream; ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+    /**
+     * Reads the entire InputStream and converts it to a UTF-8 String.
+     * NewPipeExtractor v0.25+ requires a String body in the Response object.
+     */
+    private static String readAllAsString(InputStream stream) throws IOException {
+        if (stream == null) return "";
+        
+        try (ByteArrayOutputStream result = new ByteArrayOutputStream()) {
             byte[] buffer = new byte[8192];
-            int read;
-            while ((read = in.read(buffer)) != -1) {
-                out.write(buffer, 0, read);
+            int length;
+            while ((length = stream.read(buffer)) != -1) {
+                result.write(buffer, 0, length);
             }
-            return out.toByteArray();
+            return result.toString("UTF-8");
         }
     }
 }
