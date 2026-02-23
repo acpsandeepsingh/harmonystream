@@ -807,6 +807,7 @@ public class WebAppActivity extends AppCompatActivity {
         gestureDetector = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
             @Override
             public boolean onDoubleTap(MotionEvent e) {
+                doubleTapHandled = true;
                 float x = e.getX();
                 int width = webView.getWidth();
                 long delta = x > (width / 2f) ? 20_000L : -20_000L;
@@ -825,10 +826,13 @@ public class WebAppActivity extends AppCompatActivity {
         });
 
         webView.setOnTouchListener((v, event) -> {
-            if (gestureDetector != null && gestureDetector.onTouchEvent(event)) {
-                return true;
+            if (!videoModeEnabled || gestureDetector == null) {
+                return false;
             }
-            return false;
+
+            doubleTapHandled = false;
+            gestureDetector.onTouchEvent(event);
+            return doubleTapHandled;
         });
     }
 
