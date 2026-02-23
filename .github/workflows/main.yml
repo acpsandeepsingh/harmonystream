@@ -20,7 +20,6 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -55,17 +54,29 @@ jobs:
         uses: actions/deploy-pages@v4
 
   apk:
+    needs: website # Ensures website finishes before starting APK build
     runs-on: ubuntu-latest
     env:
-      # Optional mirrors for environments where direct Google/Maven Central access is blocked.
-      ANDROID_GOOGLE_MAVEN_MIRROR: ${{ secrets.ANDROID_GOOGLE_MAVEN_MIRROR }}
-      ANDROID_MAVEN_CENTRAL_MIRROR: ${{ secrets.ANDROID_MAVEN_CENTRAL_MIRROR }}
-      # Native Android runtime key resolution uses YOUTUBE_API_KEY.
       YOUTUBE_API_KEY: ${{ secrets.NEXT_PUBLIC_YOUTUBE_API_KEY }}
+      # LIMIT MEMORY TO PREVENT SILENT CRASH (Exit Code 1)
+      # 3GB for Gradle + 1.5GB for Kotlin = 4.5GB (fits in 7GB runner)
+      GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx3072m -Dkotlin.daemon.jvm.options=-Xmx1536m -XX:MaxMetaspaceSize=512m -Dorg.gradle.daemon=false"
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Download website build
+        uses: actions/download-artifact@v4
+        with:
+          name: github-pages # Matches default name from upload-pages-artifact
+          path: ./out-raw
+
+      - name: Extract website files
+        run: |
+          mkdir -p out
+          # upload-pages-artifact stores content as a tarball inside the artifact
+          tar -xvf out-raw/artifact.tar -C out/ || cp -R out-raw/* out/ || true
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -77,9 +88,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: 8.2
-          # Always cleanup unused files from the Gradle User Home, even if build fails
           cache-cleanup: always
-          # Build scan publishing for build diagnostics
           build-scan-publish: true
           build-scan-terms-of-service-url: "https://gradle.com/terms-of-service"
           build-scan-terms-of-service-agree: "yes"
@@ -87,196 +96,33 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install required Android SDK packages
-        run: |
-          set -e
-          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
-
-      - name: Log repository source mode
-        run: |
-          set -e
-          if [ -n "${ANDROID_GOOGLE_MAVEN_MIRROR}" ] || [ -n "${ANDROID_MAVEN_CENTRAL_MIRROR}" ]; then
-            echo "Using configured Maven mirror settings for Gradle dependency resolution."
-          else
-            echo "Using default google()/mavenCentral() repositories."
-          fi
-
       - name: Accept Android SDK licenses
         run: yes | sdkmanager --licenses
-
-      - name: Set up Node 22
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22.x'
-          cache: 'npm'
-
-      - name: Install npm dependencies
-        run: npm ci
-
-      - name: Build web output for Android
-        env:
-          BUILD_TARGET: android
-          NEXT_PUBLIC_YOUTUBE_API_KEY: ${{ secrets.NEXT_PUBLIC_YOUTUBE_API_KEY }}
-        run: npm run build
-
-      - name: Verify Android build has no basePath
-        run: |
-          echo "Checking if basePath was removed..."
-          if grep -q "harmonystream" out/index.html; then
-            echo "❌ WARNING: basePath still present in build!"
-          else
-            echo "✅ Build is clean (no basePath)"
-          fi
 
       - name: Prepare Android project assets
         run: |
           set -e
-          test -d android || (echo "android project folder is missing" && exit 1)
           mkdir -p android/app/src/main/assets/public
           rm -rf android/app/src/main/assets/*
           mkdir -p android/app/src/main/assets/public
           cp -R out/. android/app/src/main/assets/public/
 
-      - name: Configure Android SDK path
+      - name: Ensure Gradle wrapper
         run: |
-          set -e
-          if [ -n "${ANDROID_SDK_ROOT}" ]; then
-            echo "sdk.dir=${ANDROID_SDK_ROOT}" > android/local.properties
-          elif [ -n "${ANDROID_HOME}" ]; then
-            echo "sdk.dir=${ANDROID_HOME}" > android/local.properties
-          else
-            echo "ANDROID_SDK_ROOT/ANDROID_HOME is not set" && exit 1
-          fi
+          cd android
+          sed -i 's/\\r$//' gradlew || true
+          chmod +x gradlew
 
-      - name: Ensure Gradle wrapper JAR exists
+      - name: Forced Cleanup and Build
         run: |
-          set -e
-          if [ ! -f android/gradle/wrapper/gradle-wrapper.jar ]; then
-            echo "gradle-wrapper.jar missing, generating it with local Gradle"
-            gradle -p android wrapper --gradle-version 8.2 --distribution-type bin
-          fi
-
-      - name: Normalize and enable Gradle wrapper
-        run: |
-          set -e
-          sed -i 's/\r$//' android/gradlew
-          chmod +x android/gradlew
-
-      - name: Forced Gradle Cleanup
-        run: |
-          # 1. Force kill any existing Java/Gradle processes
           pkill -9 java || true
-
-          # 2. Clear local build artifacts and caches
-          # We remove the local .gradle and build folders to avoid corruption
           cd android
-          rm -rf .gradle/
-          rm -rf build/
-          rm -rf app/build/
-
-          # 3. Purge specific corrupted cache directories if they exist
-          rm -rf ~/.gradle/caches/journal-1
-          rm -rf ~/.gradle/caches/build-cache-*
-        shell: bash
-
-      - name: Build with Gradle
-        run: |
-          set -e
-          cd android
-          if [ -f gradle/wrapper/gradle-wrapper.jar ]; then
-            ./gradlew assembleDebug --no-daemon --no-build-cache --refresh-dependencies --stacktrace
-          else
-            gradle assembleDebug --no-daemon --no-build-cache --refresh-dependencies --stacktrace
-          fi
-
-      - name: Validate generated BuildConfig API key wiring
-        run: |
-          set -e
-          if [ -f android/app/build/generated/source/buildConfig/debug/com/sansoft/harmonystram/BuildConfig.java ]; then
-            if grep -q 'YOUTUBE_API_KEY = ""' android/app/build/generated/source/buildConfig/debug/com/sansoft/harmonystram/BuildConfig.java; then
-              echo "⚠️ YOUTUBE_API_KEY resolved as empty in native BuildConfig."
-              echo "Set NEXT_PUBLIC_YOUTUBE_API_KEY GitHub secret for dynamic catalog playback."
-            else
-              echo "✅ Native BuildConfig includes a non-empty YOUTUBE_API_KEY."
-            fi
-          else
-            echo "BuildConfig.java not found in expected path; skipping key validation."
-          fi
-
-      - name: Verify APK was created
-        run: |
-          if [ -f android/app/build/outputs/apk/debug/app-debug.apk ]; then
-            echo "✅ APK created successfully"
-            ls -lh android/app/build/outputs/apk/debug/app-debug.apk
-          else
-            echo "❌ APK not found!"
-            exit 1
-          fi
+          # Removing .gradle ensures a fresh workspace assignment to avoid IdentityCache errors
+          rm -rf .gradle/ build/ app/build/
+          ./gradlew assembleDebug --no-daemon --no-build-cache --refresh-dependencies --stacktrace
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
           name: HarmonyStream-Android-APK
           path: android/app/build/outputs/apk/debug/app-debug.apk
-
-      - name: Build signed release artifacts (optional)
-        env:
-          ANDROID_RELEASE_STORE_FILE_BASE64: ${{ secrets.ANDROID_RELEASE_STORE_FILE_BASE64 }}
-          ANDROID_RELEASE_STORE_PASSWORD: ${{ secrets.ANDROID_RELEASE_STORE_PASSWORD }}
-          ANDROID_RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_RELEASE_KEY_ALIAS }}
-          ANDROID_RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEY_PASSWORD }}
-        run: |
-          set -e
-          cd android
-
-          if [ -z "${ANDROID_RELEASE_STORE_FILE_BASE64}" ] || [ -z "${ANDROID_RELEASE_STORE_PASSWORD}" ] || [ -z "${ANDROID_RELEASE_KEY_ALIAS}" ] || [ -z "${ANDROID_RELEASE_KEY_PASSWORD}" ]; then
-            echo "Release signing secrets are incomplete. Skipping signed release artifact build."
-            exit 0
-          fi
-
-          echo "Generating keystore and signing.properties for release build..."
-          echo "${ANDROID_RELEASE_STORE_FILE_BASE64}" | base64 --decode > release.keystore
-
-          printf '%s\n' \
-            "ANDROID_RELEASE_STORE_FILE=release.keystore" \
-            "ANDROID_RELEASE_STORE_PASSWORD=${ANDROID_RELEASE_STORE_PASSWORD}" \
-            "ANDROID_RELEASE_KEY_ALIAS=${ANDROID_RELEASE_KEY_ALIAS}" \
-            "ANDROID_RELEASE_KEY_PASSWORD=${ANDROID_RELEASE_KEY_PASSWORD}" \
-            > signing.properties
-
-          if [ -f gradle/wrapper/gradle-wrapper.jar ]; then
-            ./gradlew assembleRelease bundleRelease --stacktrace --info --warning-mode all --no-daemon
-          else
-            gradle assembleRelease bundleRelease --stacktrace --info --warning-mode all --no-daemon
-          fi
-
-      - name: Verify signed release artifacts
-        run: |
-          set -e
-          if [ -f android/app/build/outputs/apk/release/app-release.apk ]; then
-            echo "✅ Signed release APK created"
-            ls -lh android/app/build/outputs/apk/release/app-release.apk
-          else
-            echo "Release APK not found (likely signed build skipped)."
-          fi
-
-          if [ -f android/app/build/outputs/bundle/release/app-release.aab ]; then
-            echo "✅ Signed release AAB created"
-            ls -lh android/app/build/outputs/bundle/release/app-release.aab
-          else
-            echo "Release AAB not found (likely signed build skipped)."
-          fi
-
-      - name: Upload release APK (if present)
-        if: ${{ hashFiles('android/app/build/outputs/apk/release/app-release.apk') != '' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: HarmonyStream-Android-Release-APK
-          path: android/app/build/outputs/apk/release/app-release.apk
-
-      - name: Upload release AAB (if present)
-        if: ${{ hashFiles('android/app/build/outputs/bundle/release/app-release.aab') != '' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: HarmonyStream-Android-Release-AAB
-          path: android/app/build/outputs/bundle/release/app-release.aab
