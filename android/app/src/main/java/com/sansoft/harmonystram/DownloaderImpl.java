@@ -21,7 +21,7 @@ public class DownloaderImpl extends Downloader {
     }
 
     /**
-     * Standard GET/generic execution.
+     * Handles standard GET requests.
      */
     @Override
     public Response execute(Request request) throws IOException, ReCaptchaException {
@@ -29,7 +29,7 @@ public class DownloaderImpl extends Downloader {
     }
 
     /**
-     * Mandatory override for POST requests in 0.25.2+.
+     * Handles POST requests. In 0.25.2+, this is an ABSTRACT method and must be implemented.
      */
     @Override
     public Response post(Request request) throws IOException, ReCaptchaException {
@@ -53,7 +53,7 @@ public class DownloaderImpl extends Downloader {
             }
         }
 
-        // 2. Handle POST Data
+        // 2. Handle POST Body
         byte[] dataToSend = request.dataToSend();
         if (dataToSend != null && dataToSend.length > 0) {
             connection.setDoOutput(true);
@@ -64,28 +64,29 @@ public class DownloaderImpl extends Downloader {
 
         connection.connect();
         
-        // 3. Collect Response Metadata
+        // 3. Extract Metadata
         int code = connection.getResponseCode();
         String message = connection.getResponseMessage();
         Map<String, List<String>> responseHeaders = connection.getHeaderFields();
         String finalUrl = connection.getURL().toString();
         
-        // 4. Read Response Body as String (Strict Requirement)
+        // 4. Convert Body to String (Library v0.25.2 strict requirement)
         InputStream stream = (code >= 200 && code < 400) ? connection.getInputStream() : connection.getErrorStream();
-        String body = "";
-        if (stream != null) {
-            try (ByteArrayOutputStream result = new ByteArrayOutputStream()) {
-                byte[] buffer = new byte[8192];
-                int length;
-                while ((length = stream.read(buffer)) != -1) {
-                    result.write(buffer, 0, length);
-                }
-                body = result.toString("UTF-8");
-            }
-        }
+        String body = readAllAsString(stream);
         
-        // 5. Build Response using the 5-argument constructor:
-        // (int responseCode, String responseMessage, Map<String, List<String>> responseHeaders, String responseBody, String latestUrl)
+        // 5. Final 5-argument constructor
         return new Response(code, message, responseHeaders, body, finalUrl);
+    }
+
+    private static String readAllAsString(InputStream stream) throws IOException {
+        if (stream == null) return "";
+        try (ByteArrayOutputStream result = new ByteArrayOutputStream()) {
+            byte[] buffer = new byte[8192];
+            int length;
+            while ((length = stream.read(buffer)) != -1) {
+                result.write(buffer, 0, length);
+            }
+            return result.toString("UTF-8");
+        }
     }
 }
