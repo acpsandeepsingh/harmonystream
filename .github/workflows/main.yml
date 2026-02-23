@@ -123,16 +123,21 @@ jobs:
           sed -i 's/\\r$//' gradlew || true
           chmod +x gradlew
 
+      - name: List Gradle tasks (CI debug)
+        run: |
+          cd android
+          ./gradlew :app:tasks --all
+
       - name: Build Android Release
         id: android_build
         run: |
           cd android
-          ./gradlew :app:assembleRelease --stacktrace --info --warning-mode all | tee full-build-log.txt
+          ./gradlew :app:ensureReleaseApkForCi --stacktrace --info --warning-mode all | tee full-build-log.txt
         continue-on-error: false
 
       - name: Debug Build Output
         run: |
-          echo "Gradle task executed: assembleRelease"
+          echo "Gradle task executed: ensureReleaseApkForCi"
           echo "Listing Android build outputs"
           ls -R android/app/build/outputs/apk || true
 
