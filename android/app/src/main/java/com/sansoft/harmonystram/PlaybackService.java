@@ -9,6 +9,7 @@ import android.app.Service;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Build;
+import android.os.Binder;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
@@ -22,10 +23,17 @@ import androidx.core.app.NotificationManagerCompat;
 import androidx.core.content.ContextCompat;
 import androidx.media.app.NotificationCompat.MediaStyle;
 
+import com.google.android.exoplayer2.C;
 import com.google.android.exoplayer2.ExoPlayer;
 import com.google.android.exoplayer2.MediaItem;
+import com.google.android.exoplayer2.audio.AudioAttributes;
 import com.google.android.exoplayer2.PlaybackException;
 import com.google.android.exoplayer2.Player;
+import com.google.android.exoplayer2.ext.mediasession.MediaSessionConnector;
+
+import android.support.v4.media.MediaMetadataCompat;
+import android.support.v4.media.session.MediaSessionCompat;
+import android.support.v4.media.session.PlaybackStateCompat;
 
 import org.schabi.newpipe.extractor.NewPipe;
 import org.schabi.newpipe.extractor.ServiceList;
@@ -58,6 +66,7 @@ public class PlaybackService extends Service {
     public static final String ACTION_STATE_CHANGED = "com.sansoft.harmonystram.STATE_CHANGED";
     public static final String ACTION_CLEAR_PENDING_MEDIA_ACTION = "com.sansoft.harmonystram.CLEAR_PENDING_MEDIA_ACTION";
     public static final String ACTION_SET_MODE = "com.sansoft.harmonystram.SET_MODE";
+    public static final String ACTION_SEEK_RELATIVE = "com.sansoft.harmonystram.SEEK_RELATIVE";
     public static final String EXTRA_PENDING_MEDIA_ACTION = "pending_media_action";
 
     private static final String PREFS_NAME = "playback_service_state";
@@ -101,6 +110,7 @@ public class PlaybackService extends Service {
     }
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private final IBinder localBinder = new LocalBinder();
     private final ExecutorService resolverExecutor = Executors.newSingleThreadExecutor();
     private final Runnable progressSyncRunnable = new Runnable() {
         @Override
@@ -114,7 +124,9 @@ public class PlaybackService extends Service {
                 broadcastState();
                 persistState();
             }
-            mainHandler.postDelayed(this, 500L);
+            if (player != null && player.isPlaying()) {
+                mainHandler.postDelayed(this, 500L);
+            }
         }
     };
 
@@ -127,9 +139,19 @@ public class PlaybackService extends Service {
     private String audioStreamUrl;
     private String videoStreamUrl;
     private boolean videoMode;
+    private boolean progressLoopRunning;
     private volatile long pendingPlayRequestedAtMs;
+    private MediaSessionCompat mediaSession;
+    private MediaSessionConnector mediaSessionConnector;
+    private PlaybackStateCompat.Builder playbackStateBuilder;
     @Nullable
     private PowerManager.WakeLock wakeLock;
+
+    public class LocalBinder extends Binder {
+        PlaybackService getService() {
+            return PlaybackService.this;
+        }
+    }
 
     @Override
     public void onCreate() {
@@ -138,8 +160,48 @@ public class PlaybackService extends Service {
         restoreState();
         initWakeLock();
         initExtractor();
+        initMediaSession();
         initPlayer();
-        mainHandler.post(progressSyncRunnable);
+    }
+
+    private void initMediaSession() {
+        mediaSession = new MediaSessionCompat(this, TAG);
+        mediaSession.setFlags(MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS | MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS);
+        mediaSession.setCallback(new MediaSessionCompat.Callback() {
+            @Override
+            public void onPlay() {
+                if (player != null) player.play();
+            }
+
+            @Override
+            public void onPause() {
+                if (player != null) player.pause();
+            }
+
+            @Override
+            public void onSeekTo(long pos) {
+                if (player != null) player.seekTo(Math.max(0L, pos));
+            }
+
+            @Override
+            public void onSkipToNext() {
+                dispatchActionToUi(ACTION_NEXT);
+            }
+
+            @Override
+            public void onSkipToPrevious() {
+                dispatchActionToUi(ACTION_PREVIOUS);
+            }
+        });
+        mediaSession.setActive(true);
+
+        playbackStateBuilder = new PlaybackStateCompat.Builder()
+                .setActions(PlaybackStateCompat.ACTION_PLAY
+                        | PlaybackStateCompat.ACTION_PAUSE
+                        | PlaybackStateCompat.ACTION_PLAY_PAUSE
+                        | PlaybackStateCompat.ACTION_SEEK_TO
+                        | PlaybackStateCompat.ACTION_SKIP_TO_NEXT
+                        | PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS);
     }
 
     private void initExtractor() {
@@ -153,11 +215,34 @@ public class PlaybackService extends Service {
     }
 
     private void initPlayer() {
+        AudioAttributes audioAttributes = new AudioAttributes.Builder()
+                .setUsage(C.USAGE_MEDIA)
+                .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+                .build();
         player = new ExoPlayer.Builder(this).build();
+        player.setAudioAttributes(audioAttributes, true);
+
+        mediaSessionConnector = new MediaSessionConnector(mediaSession);
+        mediaSessionConnector.setPlayer(player);
+        mediaSessionConnector.setEnabledPlaybackActions(
+                PlaybackStateCompat.ACTION_PLAY
+                        | PlaybackStateCompat.ACTION_PAUSE
+                        | PlaybackStateCompat.ACTION_PLAY_PAUSE
+                        | PlaybackStateCompat.ACTION_SKIP_TO_NEXT
+                        | PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS
+                        | PlaybackStateCompat.ACTION_SEEK_TO
+        );
+
         player.addListener(new Player.Listener() {
             @Override
             public void onIsPlayingChanged(boolean isPlaying) {
                 syncWakeLock(isPlaying);
+                if (isPlaying) {
+                    startProgressUpdates();
+                } else {
+                    stopProgressUpdates();
+                }
+                updatePlaybackState();
                 updateNotification();
                 broadcastState();
             }
@@ -170,7 +255,14 @@ public class PlaybackService extends Service {
                 if (state == Player.STATE_ENDED) {
                     dispatchActionToUi(ACTION_NEXT);
                 }
+                updatePlaybackState();
                 updateNotification();
+                broadcastState();
+            }
+
+            @Override
+            public void onPositionDiscontinuity(Player.PositionInfo oldPosition, Player.PositionInfo newPosition, int reason) {
+                updatePlaybackState();
                 broadcastState();
             }
 
@@ -206,6 +298,15 @@ public class PlaybackService extends Service {
             case ACTION_SEEK:
                 if (player != null) player.seekTo(Math.max(0L, intent.getLongExtra("position_ms", 0L)));
                 break;
+            case ACTION_SEEK_RELATIVE:
+                if (player != null) {
+                    long deltaMs = intent.getLongExtra("delta_ms", 0L);
+                    long duration = Math.max(0L, player.getDuration());
+                    long target = Math.max(0L, player.getCurrentPosition() + deltaMs);
+                    if (duration > 0) target = Math.min(duration, target);
+                    player.seekTo(target);
+                }
+                break;
             case ACTION_SET_MODE:
                 boolean enableVideo = intent.getBooleanExtra("video_mode", false);
                 switchMode(enableVideo);
@@ -226,6 +327,7 @@ public class PlaybackService extends Service {
         }
 
         updateNotification();
+        updatePlaybackState();
         persistState();
         return START_STICKY;
     }
@@ -369,11 +471,15 @@ public class PlaybackService extends Service {
                 .setContentText(currentArtist)
                 .setOnlyAlertOnce(true)
                 .setOngoing(playing)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
                 .setContentIntent(createContentIntent())
                 .addAction(new NotificationCompat.Action(android.R.drawable.ic_media_previous, "Previous", createServiceActionIntent(ACTION_PREVIOUS)))
                 .addAction(playPauseAction)
                 .addAction(new NotificationCompat.Action(android.R.drawable.ic_media_next, "Next", createServiceActionIntent(ACTION_NEXT)))
-                .setStyle(new MediaStyle().setShowActionsInCompactView(0, 1, 2))
+                .setStyle(new MediaStyle().setMediaSession(mediaSession.getSessionToken()).setShowActionsInCompactView(0, 1, 2))
+                .addAction(new NotificationCompat.Action(android.R.drawable.ic_media_rew, "Back 20s", createSeekRelativeIntent(-20_000L)))
+                .addAction(new NotificationCompat.Action(android.R.drawable.ic_media_ff, "Forward 20s", createSeekRelativeIntent(20_000L)))
                 .build();
 
         if (!hasNotificationPermission()) return;
@@ -392,6 +498,15 @@ public class PlaybackService extends Service {
         int flags = PendingIntent.FLAG_UPDATE_CURRENT;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) flags |= PendingIntent.FLAG_IMMUTABLE;
         return PendingIntent.getService(this, action.hashCode(), intent, flags);
+    }
+
+    private PendingIntent createSeekRelativeIntent(long deltaMs) {
+        Intent intent = new Intent(this, PlaybackService.class);
+        intent.setAction(ACTION_SEEK_RELATIVE);
+        intent.putExtra("delta_ms", deltaMs);
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) flags |= PendingIntent.FLAG_IMMUTABLE;
+        return PendingIntent.getService(this, ("seek_" + deltaMs).hashCode(), intent, flags);
     }
 
     private PendingIntent createContentIntent() {
@@ -429,6 +544,47 @@ public class PlaybackService extends Service {
                 .apply();
     }
 
+    private void updatePlaybackState() {
+        if (mediaSession == null || playbackStateBuilder == null) return;
+        long position = player == null ? currentPositionMs : Math.max(0L, player.getCurrentPosition());
+        int compatState = PlaybackStateCompat.STATE_NONE;
+        if (player != null) {
+            switch (player.getPlaybackState()) {
+                case Player.STATE_BUFFERING:
+                    compatState = PlaybackStateCompat.STATE_BUFFERING;
+                    break;
+                case Player.STATE_READY:
+                    compatState = player.isPlaying() ? PlaybackStateCompat.STATE_PLAYING : PlaybackStateCompat.STATE_PAUSED;
+                    break;
+                case Player.STATE_ENDED:
+                    compatState = PlaybackStateCompat.STATE_STOPPED;
+                    break;
+                default:
+                    compatState = PlaybackStateCompat.STATE_NONE;
+            }
+        }
+        playbackStateBuilder.setState(compatState, position, player != null && player.isPlaying() ? 1f : 0f, System.currentTimeMillis());
+        mediaSession.setPlaybackState(playbackStateBuilder.build());
+        MediaMetadataCompat metadata = new MediaMetadataCompat.Builder()
+                .putString(MediaMetadataCompat.METADATA_KEY_TITLE, currentTitle)
+                .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, currentArtist)
+                .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, Math.max(0L, player == null ? currentDurationMs : player.getDuration()))
+                .build();
+        mediaSession.setMetadata(metadata);
+    }
+
+    private void startProgressUpdates() {
+        if (progressLoopRunning) return;
+        progressLoopRunning = true;
+        mainHandler.post(progressSyncRunnable);
+    }
+
+    private void stopProgressUpdates() {
+        if (!progressLoopRunning) return;
+        progressLoopRunning = false;
+        mainHandler.removeCallbacks(progressSyncRunnable);
+    }
+
     private void restoreState() {
         SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
         currentTitle = prefs.getString(KEY_TITLE, "HarmonyStream");
@@ -458,6 +614,15 @@ public class PlaybackService extends Service {
     public void onDestroy() {
         mainHandler.removeCallbacksAndMessages(null);
         resolverExecutor.shutdownNow();
+        if (mediaSessionConnector != null) {
+            mediaSessionConnector.setPlayer(null);
+            mediaSessionConnector = null;
+        }
+        if (mediaSession != null) {
+            mediaSession.setActive(false);
+            mediaSession.release();
+            mediaSession = null;
+        }
         if (player != null) {
             player.release();
             player = null;
@@ -469,6 +634,25 @@ public class PlaybackService extends Service {
     @Nullable
     @Override
     public IBinder onBind(Intent intent) {
-        return null;
+        return localBinder;
+    }
+
+    @Override
+    public void onTaskRemoved(Intent rootIntent) {
+        if (player != null && player.isPlaying()) {
+            updateNotification();
+            return;
+        }
+        stopSelf();
+    }
+
+    public PlaybackSnapshot getCurrentSnapshot() {
+        return new PlaybackSnapshot(
+                currentTitle,
+                currentArtist,
+                player != null && player.isPlaying(),
+                player == null ? currentPositionMs : Math.max(0L, player.getCurrentPosition()),
+                player == null ? currentDurationMs : Math.max(0L, player.getDuration())
+        );
     }
 }
