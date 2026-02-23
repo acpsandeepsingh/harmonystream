@@ -87,9 +87,11 @@ public class WebAppActivity extends AppCompatActivity {
     private WebView webView;
     private ProgressBar loadingIndicator;
     private TextView seekOverlayIndicator;
+    private View videoGestureOverlay;
     private PlaybackViewModel playbackViewModel;
     private WindowInsetsControllerCompat insetsController;
     private GestureDetector gestureDetector;
+    private boolean videoModeActive;
     private PlaybackService playbackService;
     private boolean serviceBound;
     private boolean loadingFallbackShell;
@@ -106,6 +108,7 @@ public class WebAppActivity extends AppCompatActivity {
                 playbackService = ((PlaybackService.LocalBinder) service).getService();
                 serviceBound = true;
                 playbackViewModel.setSnapshot(playbackService.getCurrentSnapshot());
+                updateVideoGestureAvailability();
             }
         }
 
@@ -113,6 +116,7 @@ public class WebAppActivity extends AppCompatActivity {
         public void onServiceDisconnected(ComponentName name) {
             serviceBound = false;
             playbackService = null;
+            updateVideoGestureAvailability();
         }
     };
 
@@ -136,6 +140,7 @@ public class WebAppActivity extends AppCompatActivity {
             }
             dispatchToWeb("window.dispatchEvent(new CustomEvent('nativePlaybackState', { detail: " + payload + " }));");
             playbackViewModel.updateFromBroadcast(intent);
+            updateVideoGestureAvailability();
         }
     };
 
@@ -158,10 +163,12 @@ public class WebAppActivity extends AppCompatActivity {
         webView = findViewById(R.id.web_app_view);
         loadingIndicator = findViewById(R.id.web_loading_indicator);
         seekOverlayIndicator = findViewById(R.id.seek_overlay_indicator);
+        videoGestureOverlay = findViewById(R.id.video_gesture_overlay);
         playbackViewModel = new ViewModelProvider(this).get(PlaybackViewModel.class);
 
         configureImmersiveFullscreen();
         configureVideoGestures();
+        updateVideoGestureAvailability();
         requestNotificationPermissionIfNeeded();
 
         WebSettings settings = webView.getSettings();
@@ -244,6 +251,7 @@ public class WebAppActivity extends AppCompatActivity {
         playbackViewModel.getState().observe(this, state -> {
             if (state != null) {
                 playbackActive = state.playing;
+                updateVideoGestureAvailability();
             }
         });
 
@@ -688,6 +696,9 @@ public class WebAppActivity extends AppCompatActivity {
 
         @JavascriptInterface
         public void setVideoMode(boolean enabled) {
+            videoModeActive = enabled;
+            updateVideoGestureAvailability();
+
             Intent modeIntent = new Intent(WebAppActivity.this, PlaybackService.class);
             modeIntent.setAction(PlaybackService.ACTION_SET_MODE);
             modeIntent.putExtra("video_mode", enabled);
@@ -805,6 +816,10 @@ public class WebAppActivity extends AppCompatActivity {
         gestureDetector = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
             @Override
             public boolean onDoubleTap(MotionEvent e) {
+                if (!isVideoGestureEnabled()) {
+                    return false;
+                }
+
                 float x = e.getX();
                 int width = webView.getWidth();
                 long delta = x > (width / 2f) ? 20_000L : -20_000L;
@@ -818,16 +833,42 @@ public class WebAppActivity extends AppCompatActivity {
 
             @Override
             public boolean onDown(MotionEvent e) {
-                return true;
+                return isVideoGestureEnabled();
             }
         });
 
-        webView.setOnTouchListener((v, event) -> {
-            if (gestureDetector != null && gestureDetector.onTouchEvent(event)) {
-                return true;
+        if (videoGestureOverlay == null) {
+            return;
+        }
+
+        videoGestureOverlay.setClickable(false);
+        videoGestureOverlay.setFocusable(false);
+        videoGestureOverlay.setOnTouchListener((v, event) -> {
+            if (!isVideoGestureEnabled() || gestureDetector == null) {
+                return false;
             }
-            return false;
+            return gestureDetector.onTouchEvent(event);
         });
+    }
+
+    private boolean isVideoGestureEnabled() {
+        if (!videoModeActive || playbackService == null || playbackService.getPlayer() == null || !playbackService.isVideoMode()) {
+            return false;
+        }
+        return playbackService.getPlayer().getPlaybackState() == androidx.media3.common.Player.STATE_READY;
+    }
+
+    private void updateVideoGestureAvailability() {
+        if (videoGestureOverlay == null) {
+            return;
+        }
+
+        boolean enabled = isVideoGestureEnabled();
+        videoGestureOverlay.setVisibility(enabled ? View.VISIBLE : View.GONE);
+        if (!enabled && seekOverlayIndicator != null) {
+            seekOverlayIndicator.animate().cancel();
+            seekOverlayIndicator.setVisibility(View.GONE);
+        }
     }
 
     private void showSeekOverlay(String label) {
@@ -866,6 +907,10 @@ public class WebAppActivity extends AppCompatActivity {
         try {
             unregisterReceiver(mediaActionReceiver);
         } catch (IllegalArgumentException ignored) {
+        }
+        if (videoGestureOverlay != null) {
+            videoGestureOverlay.setOnTouchListener(null);
+            videoGestureOverlay.setVisibility(View.GONE);
         }
         PlaybackService.attachWebView(null);
         if (serviceBound) {
