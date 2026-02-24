@@ -480,13 +480,11 @@ export function MusicPlayer() {
         if (canControlPlayer && typeof player.playVideo === 'function') {
           player.playVideo();
         }
-        setGlobalIsPlaying(true);
         break;
       case 'com.sansoft.harmonystram.PAUSE':
         if (canControlPlayer && typeof player.pauseVideo === 'function') {
           player.pauseVideo();
         }
-        setGlobalIsPlaying(false);
         break;
       case 'com.sansoft.harmonystram.PLAY_PAUSE':
         if (canControlPlayer && typeof player.getPlayerState === 'function') {
@@ -497,21 +495,15 @@ export function MusicPlayer() {
           } else if (!shouldPlay && typeof player.pauseVideo === 'function') {
             player.pauseVideo();
           }
-          setGlobalIsPlaying(shouldPlay);
-        } else {
-          setGlobalIsPlaying(!isGlobalPlayingRef.current);
         }
         break;
       case 'com.sansoft.harmonystram.NEXT':
-        setGlobalIsPlaying(true);
-        break;
       case 'com.sansoft.harmonystram.PREVIOUS':
-        setGlobalIsPlaying(true);
         break;
       default:
         break;
     }
-  }, [setGlobalIsPlaying, shouldControlIframePlayback]);
+  }, [shouldControlIframePlayback]);
 
   useEffect(() => {
     isGlobalPlayingRef.current = isGlobalPlaying;
@@ -705,10 +697,8 @@ export function MusicPlayer() {
     if (isAndroidAppRuntime) {
       if (isGlobalPlayingRef.current) {
         window.HarmonyNative?.pause?.();
-        setGlobalIsPlaying(false);
       } else {
         nativePlayRequestAtMsRef.current = Date.now();
-        setGlobalIsPlaying(true);
         window.HarmonyNative?.play?.();
       }
       return;
@@ -737,17 +727,13 @@ export function MusicPlayer() {
               player.pauseVideo();
             }
         } else {
-            if (isAndroidAppRuntime) {
-              nativePlayRequestAtMsRef.current = Date.now();
-              setGlobalIsPlaying(true);
-            }
             window.HarmonyNative?.play?.();
             if (!isAndroidAppRuntime) {
               player.playVideo();
             }
         }
     }
-  }, [currentTrack, duration, initialLoadIsVideoShare, isAndroidAppRuntime, playerMode, setGlobalIsPlaying, setInitialLoadIsVideoShare, shouldControlIframePlayback]);
+  }, [currentTrack, duration, initialLoadIsVideoShare, isAndroidAppRuntime, playerMode, setInitialLoadIsVideoShare]);
 
   const handleSeekChange = useCallback((value: number[]) => {
     isSeekingRef.current = true;
@@ -796,20 +782,18 @@ export function MusicPlayer() {
   const handlePlayPrev = useCallback(() => {
     if (isAndroidAppRuntime) {
       window.HarmonyNative?.previous?.();
-      setGlobalIsPlaying(true);
       return;
     }
     globalPlayPrev();
-  }, [globalPlayPrev, isAndroidAppRuntime, setGlobalIsPlaying]);
+  }, [globalPlayPrev, isAndroidAppRuntime]);
 
   const handlePlayNext = useCallback(() => {
     if (isAndroidAppRuntime) {
       window.HarmonyNative?.next?.();
-      setGlobalIsPlaying(true);
       return;
     }
     globalPlayNext();
-  }, [globalPlayNext, isAndroidAppRuntime, setGlobalIsPlaying]);
+  }, [globalPlayNext, isAndroidAppRuntime]);
 
   const handleTogglePlayerMode = useCallback(async () => {
     if (isPip) {

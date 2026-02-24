@@ -131,17 +131,26 @@ public class WebAppActivity extends AppCompatActivity {
                 payload.put("artist", intent.getStringExtra("artist"));
                 playbackActive = intent.getBooleanExtra("playing", false);
                 payload.put("playing", playbackActive);
-                payload.put("position_ms", intent.getLongExtra("position_ms", 0));
-                payload.put("duration_ms", intent.getLongExtra("duration_ms", 0));
+                payload.put("isPlaying", playbackActive);
+                long positionMs = intent.getLongExtra("position_ms", 0);
+                long durationMs = intent.getLongExtra("duration_ms", 0);
+                payload.put("position_ms", positionMs);
+                payload.put("currentPosition", positionMs);
+                payload.put("duration_ms", durationMs);
+                payload.put("duration", durationMs);
                 payload.put("pending_play", intent.getBooleanExtra("pending_play", false));
-                payload.put("queue_index", intent.getIntExtra("queue_index", -1));
-                payload.put("video_mode", intent.getBooleanExtra("video_mode", false));
+                int queueIndex = intent.getIntExtra("queue_index", -1);
+                payload.put("queue_index", queueIndex);
+                payload.put("currentIndex", queueIndex);
+                payload.put("queue_length", intent.getIntExtra("queue_length", 0));
+                boolean videoMode = intent.getBooleanExtra("video_mode", false);
+                payload.put("video_mode", videoMode);
+                payload.put("videoMode", videoMode);
+                payload.put("thumbnailUrl", intent.getStringExtra("thumbnailUrl"));
                 payload.put("event_ts", intent.getLongExtra("event_ts", System.currentTimeMillis()));
             } catch (JSONException ignored) {
             }
-            if (!AUDIO_VALIDATION_MODE) {
-                dispatchToWeb("window.dispatchEvent(new CustomEvent('nativePlaybackState', { detail: " + payload + " }));");
-            }
+            dispatchToWeb("window.dispatchEvent(new CustomEvent('nativePlaybackState', { detail: " + payload + " }));");
             playbackViewModel.updateFromBroadcast(intent);
         }
     };
@@ -340,10 +349,8 @@ public class WebAppActivity extends AppCompatActivity {
             payload.put("action", action);
         } catch (JSONException ignored) {
         }
-        if (!AUDIO_VALIDATION_MODE) {
-            dispatchToWeb("window.dispatchEvent(new CustomEvent('nativePlaybackCommand', { detail: " + payload + " }));");
-            dispatchToWeb("window.__harmonyNativeApplyCommand && window.__harmonyNativeApplyCommand(" + JSONObject.quote(action) + ");");
-        }
+        dispatchToWeb("window.dispatchEvent(new CustomEvent('nativePlaybackCommand', { detail: " + payload + " }));");
+        dispatchToWeb("window.__harmonyNativeApplyCommand && window.__harmonyNativeApplyCommand(" + JSONObject.quote(action) + ");");
         clearPendingMediaAction();
     }
 
