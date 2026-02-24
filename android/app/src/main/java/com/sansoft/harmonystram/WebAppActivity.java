@@ -83,7 +83,6 @@ public class WebAppActivity extends AppCompatActivity {
     private static final String WEB_CONSOLE_TAG = "WebConsole";
     private static final long MAIN_FRAME_TIMEOUT_MS = 15000L;
     private static final int REQUEST_CODE_POST_NOTIFICATIONS = 4242;
-    private static final boolean AUDIO_VALIDATION_MODE = true;
 
     private WebView webView;
     private ProgressBar loadingIndicator;
@@ -177,17 +176,15 @@ public class WebAppActivity extends AppCompatActivity {
         playbackViewModel = new ViewModelProvider(this).get(PlaybackViewModel.class);
 
         configureImmersiveFullscreen();
-        if (!AUDIO_VALIDATION_MODE) {
-            configureVideoGestures();
-        } else if (seekOverlayIndicator != null) {
-            seekOverlayIndicator.setVisibility(View.GONE);
-        }
+        configureVideoGestures();
         requestNotificationPermissionIfNeeded();
 
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
         settings.setMediaPlaybackRequiresUserGesture(false);
+        settings.setAllowFileAccess(true);
+        settings.setAllowContentAccess(true);
         settings.setJavaScriptCanOpenWindowsAutomatically(true);
         settings.setLoadWithOverviewMode(true);
         settings.setUseWideViewPort(true);
@@ -711,10 +708,6 @@ public class WebAppActivity extends AppCompatActivity {
 
         @JavascriptInterface
         public void setVideoMode(boolean enabled) {
-            if (AUDIO_VALIDATION_MODE) {
-                videoModeEnabled = false;
-                return;
-            }
             videoModeEnabled = enabled;
             Intent modeIntent = new Intent(WebAppActivity.this, PlaybackService.class);
             modeIntent.setAction(PlaybackService.ACTION_SET_MODE);
