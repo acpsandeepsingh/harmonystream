@@ -8,6 +8,11 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.Paint;
 import android.os.Build;
 import android.os.Binder;
 import android.os.Handler;
@@ -48,6 +53,9 @@ import org.json.JSONException;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.io.InputStream;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -83,6 +91,8 @@ public class PlaybackService extends Service {
     private static final String KEY_DURATION_MS = "duration_ms";
     private static final String KEY_QUEUE_JSON = "queue_json";
     private static final String KEY_QUEUE_INDEX = "queue_index";
+    private static final String KEY_THUMBNAIL_URL = "thumbnail_url";
+    private static final int MAX_ARTWORK_PX = 512;
 
     private static volatile WebView linkedWebView;
 
@@ -120,6 +130,7 @@ public class PlaybackService extends Service {
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final IBinder localBinder = new LocalBinder();
     private final ExecutorService resolverExecutor = Executors.newSingleThreadExecutor();
+    private final ExecutorService artworkExecutor = Executors.newSingleThreadExecutor();
     private final Runnable progressSyncRunnable = new Runnable() {
         @Override
         public void run() {
@@ -144,6 +155,7 @@ public class PlaybackService extends Service {
     private long currentPositionMs = 0L;
     private long currentDurationMs = 0L;
     private String currentVideoId;
+    private String currentThumbnailUrl = "";
     private String audioStreamUrl;
     private String videoStreamUrl;
     private boolean videoMode;
@@ -156,6 +168,11 @@ public class PlaybackService extends Service {
     private PlaybackStateCompat.Builder playbackStateBuilder;
     @Nullable
     private PowerManager.WakeLock wakeLock;
+    @Nullable
+    private Bitmap currentArtworkBitmap;
+    @Nullable
+    private Bitmap placeholderBitmap;
+    private int artworkRequestVersion = 0;
 
     public class LocalBinder extends Binder {
         PlaybackService getService() {
@@ -168,12 +185,14 @@ public class PlaybackService extends Service {
         final String title;
         final String artist;
         final String videoId;
+        final String thumbnailUrl;
 
-        QueueItem(String id, String title, String artist, String videoId) {
+        QueueItem(String id, String title, String artist, String videoId, String thumbnailUrl) {
             this.id = id;
             this.title = title;
             this.artist = artist;
             this.videoId = videoId;
+            this.thumbnailUrl = thumbnailUrl;
         }
     }
 
@@ -182,6 +201,7 @@ public class PlaybackService extends Service {
         super.onCreate();
         createNotificationChannel();
         restoreState();
+        refreshArtworkAsync(currentThumbnailUrl);
         initWakeLock();
         initExtractor();
         initMediaSession();
@@ -394,6 +414,7 @@ public class PlaybackService extends Service {
         if (artist != null) {
             currentArtist = artist;
         }
+        currentThumbnailUrl = sanitizeThumbnailUrl(intent.getStringExtra("thumbnail_url"), videoId);
         syncQueueIndexForVideo(videoId);
         pendingPlayRequestedAtMs = System.currentTimeMillis();
         ensureForegroundWithCurrentState();
@@ -405,10 +426,15 @@ public class PlaybackService extends Service {
         if (intent == null) return;
         String title = intent.getStringExtra("title");
         String artist = intent.getStringExtra("artist");
+        String thumbnailUrl = intent.getStringExtra("thumbnail_url");
         if (title != null && !title.trim().isEmpty()) {
             currentTitle = title;
         }
         currentArtist = artist == null ? "" : artist;
+        if (thumbnailUrl != null) {
+            currentThumbnailUrl = sanitizeThumbnailUrl(thumbnailUrl, currentVideoId);
+            refreshArtworkAsync(currentThumbnailUrl);
+        }
         currentPositionMs = Math.max(0L, intent.getLongExtra("position_ms", currentPositionMs));
         currentDurationMs = Math.max(0L, intent.getLongExtra("duration_ms", currentDurationMs));
         boolean shouldPlay = intent.getBooleanExtra("playing", player != null && player.isPlaying());
@@ -443,6 +469,14 @@ public class PlaybackService extends Service {
                 }
                 StreamingService yt = ServiceList.YouTube;
                 StreamInfo info = resolveStreamInfo(yt, videoId);
+                String extractorThumbnailUrl = null;
+                try {
+                    extractorThumbnailUrl = info.getThumbnailUrl();
+                } catch (Throwable ignored) {
+                }
+                if ((currentThumbnailUrl == null || currentThumbnailUrl.trim().isEmpty()) && extractorThumbnailUrl != null) {
+                    currentThumbnailUrl = sanitizeThumbnailUrl(extractorThumbnailUrl, videoId);
+                }
                 if (AUDIO_VALIDATION_MODE) {
                     showDebugToast("STAGE 2: Streams fetched");
                 }
@@ -506,6 +540,7 @@ public class PlaybackService extends Service {
                     }
                     player.play();
                     pendingPlayRequestedAtMs = 0L;
+                    refreshArtworkAsync(currentThumbnailUrl);
                     updateNotification();
                     broadcastState();
                 });
@@ -565,7 +600,8 @@ public class PlaybackService extends Service {
                         item.optString("id", ""),
                         item.optString("title", "HarmonyStream"),
                         item.optString("artist", ""),
-                        videoId
+                        videoId,
+                        sanitizeThumbnailUrl(item.optString("thumbnailUrl", ""), videoId)
                 ));
             }
             syncQueueIndexForVideo(currentVideoId);
@@ -592,6 +628,8 @@ public class PlaybackService extends Service {
         currentVideoId = item.videoId;
         currentTitle = item.title;
         currentArtist = item.artist;
+        currentThumbnailUrl = sanitizeThumbnailUrl(item.thumbnailUrl, item.videoId);
+        refreshArtworkAsync(currentThumbnailUrl);
         pendingPlayRequestedAtMs = System.currentTimeMillis();
         ensureForegroundWithCurrentState();
         resolveAndPlay(item.videoId, 0L);
@@ -687,6 +725,9 @@ public class PlaybackService extends Service {
         stateIntent.putExtra("position_ms", player == null ? currentPositionMs : Math.max(0, player.getCurrentPosition()));
         stateIntent.putExtra("duration_ms", player == null ? currentDurationMs : Math.max(0, player.getDuration()));
         stateIntent.putExtra("pending_play", pendingPlayRequestedAtMs > 0L);
+        stateIntent.putExtra("queue_index", currentQueueIndex);
+        stateIntent.putExtra("video_mode", videoMode);
+        stateIntent.putExtra("thumbnail_url", currentThumbnailUrl);
         stateIntent.putExtra("event_ts", System.currentTimeMillis());
         sendBroadcast(stateIntent);
         PlaybackWidgetProvider.requestRefresh(this);
@@ -706,6 +747,7 @@ public class PlaybackService extends Service {
                 .setContentText(currentArtist)
                 .setOnlyAlertOnce(true)
                 .setOngoing(playing)
+                .setLargeIcon(currentArtworkBitmap != null ? currentArtworkBitmap : getOrCreatePlaceholderBitmap())
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                 .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
                 .setContentIntent(createContentIntent())
@@ -735,6 +777,7 @@ public class PlaybackService extends Service {
                 .setContentText(currentArtist)
                 .setOnlyAlertOnce(true)
                 .setOngoing(true)
+                .setLargeIcon(currentArtworkBitmap != null ? currentArtworkBitmap : getOrCreatePlaceholderBitmap())
                 .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
                 .setContentIntent(createContentIntent())
                 .build();
@@ -790,6 +833,7 @@ public class PlaybackService extends Service {
                 .putBoolean(KEY_PLAYING, playing)
                 .putLong(KEY_POSITION_MS, position)
                 .putLong(KEY_DURATION_MS, duration)
+                .putString(KEY_THUMBNAIL_URL, currentThumbnailUrl)
                 .putString(KEY_QUEUE_JSON, serializeQueue())
                 .putInt(KEY_QUEUE_INDEX, currentQueueIndex)
                 .apply();
@@ -804,6 +848,7 @@ public class PlaybackService extends Service {
                 json.put("title", item.title);
                 json.put("artist", item.artist);
                 json.put("videoId", item.videoId);
+                json.put("thumbnailUrl", item.thumbnailUrl);
                 array.put(json);
             } catch (JSONException ignored) {
             }
@@ -836,6 +881,7 @@ public class PlaybackService extends Service {
                 .putString(MediaMetadataCompat.METADATA_KEY_TITLE, currentTitle)
                 .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, currentArtist)
                 .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, Math.max(0L, player == null ? currentDurationMs : player.getDuration()))
+                .putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, currentArtworkBitmap != null ? currentArtworkBitmap : getOrCreatePlaceholderBitmap())
                 .build();
         mediaSession.setMetadata(metadata);
     }
@@ -858,6 +904,7 @@ public class PlaybackService extends Service {
         currentArtist = prefs.getString(KEY_ARTIST, "");
         currentPositionMs = Math.max(0, prefs.getLong(KEY_POSITION_MS, 0));
         currentDurationMs = Math.max(0, prefs.getLong(KEY_DURATION_MS, 0));
+        currentThumbnailUrl = prefs.getString(KEY_THUMBNAIL_URL, "");
         currentQueueIndex = prefs.getInt(KEY_QUEUE_INDEX, -1);
         playbackQueue.clear();
         String queueJson = prefs.getString(KEY_QUEUE_JSON, "[]");
@@ -872,7 +919,8 @@ public class PlaybackService extends Service {
                         item.optString("id", ""),
                         item.optString("title", "HarmonyStream"),
                         item.optString("artist", ""),
-                        videoId
+                        videoId,
+                        sanitizeThumbnailUrl(item.optString("thumbnailUrl", ""), videoId)
                 ));
             }
         } catch (JSONException ignored) {
@@ -902,6 +950,7 @@ public class PlaybackService extends Service {
     public void onDestroy() {
         mainHandler.removeCallbacksAndMessages(null);
         resolverExecutor.shutdownNow();
+        artworkExecutor.shutdownNow();
         if (mediaSessionConnector != null) {
             mediaSessionConnector.setPlayer(null);
             mediaSessionConnector = null;
@@ -915,8 +964,127 @@ public class PlaybackService extends Service {
             player.release();
             player = null;
         }
+        recycleBitmapSafely(currentArtworkBitmap, true);
+        currentArtworkBitmap = null;
+        recycleBitmapSafely(placeholderBitmap, true);
+        placeholderBitmap = null;
         syncWakeLock(false);
         super.onDestroy();
+    }
+
+    private void refreshArtworkAsync(@Nullable String rawThumbnailUrl) {
+        final String thumbnailUrl = sanitizeThumbnailUrl(rawThumbnailUrl, currentVideoId);
+        currentThumbnailUrl = thumbnailUrl;
+        final int requestVersion = ++artworkRequestVersion;
+        artworkExecutor.execute(() -> {
+            Bitmap loadedBitmap = loadBitmapFromUrl(thumbnailUrl);
+            if (loadedBitmap == null) {
+                loadedBitmap = getOrCreatePlaceholderBitmap();
+            }
+            Bitmap finalBitmap = loadedBitmap;
+            mainHandler.post(() -> {
+                if (requestVersion != artworkRequestVersion) {
+                    if (finalBitmap != placeholderBitmap) {
+                        recycleBitmapSafely(finalBitmap, true);
+                    }
+                    return;
+                }
+                Bitmap previous = currentArtworkBitmap;
+                currentArtworkBitmap = finalBitmap;
+                if (previous != null && previous != finalBitmap && previous != placeholderBitmap) {
+                    recycleBitmapSafely(previous, true);
+                }
+                updatePlaybackState();
+                updateNotification();
+            });
+        });
+    }
+
+    @Nullable
+    private Bitmap loadBitmapFromUrl(@Nullable String thumbnailUrl) {
+        if (thumbnailUrl == null || thumbnailUrl.trim().isEmpty()) return null;
+        HttpURLConnection connection = null;
+        InputStream stream = null;
+        try {
+            URL url = new URL(thumbnailUrl);
+            connection = (HttpURLConnection) url.openConnection();
+            connection.setConnectTimeout(8_000);
+            connection.setReadTimeout(8_000);
+            connection.setInstanceFollowRedirects(true);
+            connection.setDoInput(true);
+            connection.connect();
+            int code = connection.getResponseCode();
+            if (code < 200 || code >= 300) {
+                return null;
+            }
+            stream = connection.getInputStream();
+            Bitmap decoded = BitmapFactory.decodeStream(stream);
+            return scaleBitmap(decoded);
+        } catch (Throwable throwable) {
+            Log.w(TAG, "Artwork load failed for url=" + thumbnailUrl, throwable);
+            return null;
+        } finally {
+            try {
+                if (stream != null) stream.close();
+            } catch (Exception ignored) {
+            }
+            if (connection != null) connection.disconnect();
+        }
+    }
+
+    private Bitmap getOrCreatePlaceholderBitmap() {
+        if (placeholderBitmap != null && !placeholderBitmap.isRecycled()) return placeholderBitmap;
+        Bitmap iconBitmap = BitmapFactory.decodeResource(getResources(), R.mipmap.ic_launcher);
+        if (iconBitmap != null) {
+            placeholderBitmap = scaleBitmap(iconBitmap);
+            return placeholderBitmap;
+        }
+        Bitmap fallback = Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(fallback);
+        canvas.drawColor(Color.DKGRAY);
+        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        paint.setColor(Color.WHITE);
+        paint.setTextSize(64f);
+        canvas.drawText("HS", 72f, 148f, paint);
+        placeholderBitmap = fallback;
+        return placeholderBitmap;
+    }
+
+    @Nullable
+    private Bitmap scaleBitmap(@Nullable Bitmap bitmap) {
+        if (bitmap == null) return null;
+        int width = bitmap.getWidth();
+        int height = bitmap.getHeight();
+        if (width <= 0 || height <= 0) return bitmap;
+        int maxDimension = Math.max(width, height);
+        if (maxDimension <= MAX_ARTWORK_PX) return bitmap;
+        float ratio = ((float) MAX_ARTWORK_PX) / maxDimension;
+        int newWidth = Math.max(1, Math.round(width * ratio));
+        int newHeight = Math.max(1, Math.round(height * ratio));
+        Bitmap scaled = Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true);
+        if (scaled != bitmap) {
+            recycleBitmapSafely(bitmap, true);
+        }
+        return scaled;
+    }
+
+    private void recycleBitmapSafely(@Nullable Bitmap bitmap, boolean allowRecycle) {
+        if (!allowRecycle || bitmap == null || bitmap == placeholderBitmap || bitmap.isRecycled()) return;
+        try {
+            bitmap.recycle();
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private String sanitizeThumbnailUrl(@Nullable String thumbnailUrl, @Nullable String videoId) {
+        if (thumbnailUrl != null) {
+            String trimmed = thumbnailUrl.trim();
+            if (!trimmed.isEmpty()) return trimmed;
+        }
+        if (videoId != null && !videoId.trim().isEmpty()) {
+            return "https://i.ytimg.com/vi/" + videoId.trim() + "/hqdefault.jpg";
+        }
+        return "";
     }
 
     @Nullable
