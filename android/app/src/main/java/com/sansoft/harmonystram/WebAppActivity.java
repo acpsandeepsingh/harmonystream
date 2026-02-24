@@ -662,11 +662,14 @@ public class WebAppActivity extends AppCompatActivity {
         public void play() { sendCommand(PlaybackService.ACTION_PLAY); }
 
         @JavascriptInterface
-        public void play(String id, String title) {
+        public void play(String id, String title, String artist, long durationMs, String thumbnailUrl) {
             Intent serviceIntent = new Intent(WebAppActivity.this, PlaybackService.class);
             serviceIntent.setAction(PlaybackService.ACTION_PLAY);
             serviceIntent.putExtra("video_id", id);
             serviceIntent.putExtra("title", title == null ? "HarmonyStream" : title);
+            serviceIntent.putExtra("artist", artist == null ? "" : artist);
+            serviceIntent.putExtra("duration_ms", Math.max(0L, durationMs));
+            serviceIntent.putExtra("thumbnail_url", thumbnailUrl == null ? "" : thumbnailUrl);
             serviceIntent.putExtra("source", "web");
             startPlaybackService(serviceIntent);
         }
@@ -727,7 +730,7 @@ public class WebAppActivity extends AppCompatActivity {
         }
 
         @JavascriptInterface
-        public void updateState(String title, String artist, boolean playing, long positionMs, long durationMs, String artworkBase64) {
+        public void updateState(String title, String artist, boolean playing, long positionMs, long durationMs, String thumbnailUrl) {
             Intent serviceIntent = new Intent(WebAppActivity.this, PlaybackService.class);
             serviceIntent.setAction(PlaybackService.ACTION_UPDATE_STATE);
             serviceIntent.putExtra("title", title == null ? "HarmonyStream" : title);
@@ -736,9 +739,7 @@ public class WebAppActivity extends AppCompatActivity {
             serviceIntent.putExtra("should_foreground", playing);
             serviceIntent.putExtra("position_ms", Math.max(0L, positionMs));
             serviceIntent.putExtra("duration_ms", Math.max(0L, durationMs));
-            if (artworkBase64 != null) {
-                serviceIntent.putExtra("artwork_base64", artworkBase64);
-            }
+            serviceIntent.putExtra("thumbnail_url", thumbnailUrl == null ? "" : thumbnailUrl);
             serviceIntent.putExtra("source", "web");
             startPlaybackService(serviceIntent);
         }

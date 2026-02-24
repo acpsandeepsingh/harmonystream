@@ -65,11 +65,11 @@ declare global {
       previous?: () => void;
       seek?: (positionMs: number) => void;
       setQueue?: (queueJson: string) => void;
-      updateState?: (title: string, artist: string, playing: boolean, positionMs: number, durationMs: number, artworkBase64: string) => void;
+      updateState?: (title: string, artist: string, playing: boolean, positionMs: number, durationMs: number, thumbnailUrl: string) => void;
       getState?: () => void;
     };
     AndroidNative?: {
-      play?: (id?: string, title?: string) => void;
+      play?: (id?: string, title?: string, artist?: string, durationMs?: number, thumbnailUrl?: string) => void;
       pause?: () => void;
       resume?: () => void;
       seekTo?: (positionMs: number) => void;
@@ -709,7 +709,7 @@ export function MusicPlayer() {
       } else {
         nativePlayRequestAtMsRef.current = Date.now();
         setGlobalIsPlaying(true);
-        window.AndroidNative?.play?.(currentTrack.videoId, currentTrack.title);
+        window.AndroidNative?.play?.(currentTrack.videoId, currentTrack.title, currentTrack.artist, Math.max(0, Math.floor(duration * 1000)), currentTrack.thumbnailUrl);
       }
       return;
     }
@@ -741,13 +741,13 @@ export function MusicPlayer() {
               nativePlayRequestAtMsRef.current = Date.now();
               setGlobalIsPlaying(true);
             }
-            window.AndroidNative?.play?.(currentTrack.videoId, currentTrack.title);
+            window.AndroidNative?.play?.(currentTrack.videoId, currentTrack.title, currentTrack.artist, Math.max(0, Math.floor(duration * 1000)), currentTrack.thumbnailUrl);
             if (!isAndroidAppRuntime) {
               player.playVideo();
             }
         }
     }
-  }, [currentTrack, initialLoadIsVideoShare, isAndroidAppRuntime, playerMode, setGlobalIsPlaying, setInitialLoadIsVideoShare, shouldControlIframePlayback]);
+  }, [currentTrack, duration, initialLoadIsVideoShare, isAndroidAppRuntime, playerMode, setGlobalIsPlaying, setInitialLoadIsVideoShare, shouldControlIframePlayback]);
 
   const handleSeekChange = useCallback((value: number[]) => {
     isSeekingRef.current = true;
@@ -1125,7 +1125,7 @@ export function MusicPlayer() {
       isGlobalPlaying,
       positionMs,
       durationMs,
-      ''
+      currentTrack.thumbnailUrl
     );
   }, [isAndroidAppRuntime, currentTrack, isGlobalPlaying, currentTime, duration]);
 
