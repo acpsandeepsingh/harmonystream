@@ -340,17 +340,20 @@ public class PlaybackService extends Service {
         switch (action) {
             case ACTION_PLAY:
                 handlePlay(intent);
+                broadcastState();
                 break;
             case ACTION_UPDATE_STATE:
                 handleUpdateState(intent);
                 break;
             case ACTION_PAUSE:
                 if (player != null) player.pause();
+                broadcastState();
                 break;
             case ACTION_PLAY_PAUSE:
                 if (player != null) {
                     if (player.isPlaying()) player.pause(); else player.play();
                 }
+                broadcastState();
                 break;
             case ACTION_SEEK:
                 if (player != null) player.seekTo(Math.max(0L, intent.getLongExtra("position_ms", 0L)));
@@ -370,10 +373,12 @@ public class PlaybackService extends Service {
                 break;
             case ACTION_NEXT:
                 handleSkip(+1);
+                broadcastState();
                 dispatchActionToUi(action);
                 break;
             case ACTION_PREVIOUS:
                 handleSkip(-1);
+                broadcastState();
                 dispatchActionToUi(action);
                 break;
             case ACTION_SET_QUEUE:
@@ -647,6 +652,7 @@ public class PlaybackService extends Service {
         pendingPlayRequestedAtMs = System.currentTimeMillis();
         ensureForegroundWithCurrentState();
         resolveAndPlay(item.videoId, 0L);
+        broadcastState();
         persistState();
     }
 
@@ -735,12 +741,21 @@ public class PlaybackService extends Service {
         stateIntent.setPackage(getPackageName());
         stateIntent.putExtra("title", currentTitle);
         stateIntent.putExtra("artist", currentArtist);
-        stateIntent.putExtra("playing", player != null && player.isPlaying());
-        stateIntent.putExtra("position_ms", player == null ? currentPositionMs : Math.max(0, player.getCurrentPosition()));
-        stateIntent.putExtra("duration_ms", player == null ? currentDurationMs : Math.max(0, player.getDuration()));
+        boolean isPlaying = player != null && player.isPlaying();
+        long currentPosition = player == null ? currentPositionMs : Math.max(0, player.getCurrentPosition());
+        long duration = player == null ? currentDurationMs : Math.max(0, player.getDuration());
+        stateIntent.putExtra("playing", isPlaying);
+        stateIntent.putExtra("isPlaying", isPlaying);
+        stateIntent.putExtra("position_ms", currentPosition);
+        stateIntent.putExtra("currentPosition", currentPosition);
+        stateIntent.putExtra("duration_ms", duration);
+        stateIntent.putExtra("duration", duration);
         stateIntent.putExtra("pending_play", pendingPlayRequestedAtMs > 0L);
         stateIntent.putExtra("queue_index", currentQueueIndex);
+        stateIntent.putExtra("currentIndex", currentQueueIndex);
+        stateIntent.putExtra("queue_length", playbackQueue.size());
         stateIntent.putExtra("video_mode", videoMode);
+        stateIntent.putExtra("videoMode", videoMode);
         stateIntent.putExtra("thumbnailUrl", currentThumbnailUrl);
         stateIntent.putExtra("event_ts", System.currentTimeMillis());
         sendBroadcast(stateIntent);
