@@ -195,7 +195,7 @@ public class WebAppActivity extends AppCompatActivity {
                 .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
                 .addPathHandler("/_next/", new MultiPathAssetsHandler(new String[]{"public/_next/", "_next/", "public/next/", "next/", "public/harmonystream/_next/", "harmonystream/_next/", "public/harmonystream/next/", "harmonystream/next/"}))
                 .addPathHandler("/harmonystream/_next/", new MultiPathAssetsHandler(new String[]{"public/_next/", "_next/", "public/next/", "next/", "public/harmonystream/_next/", "harmonystream/_next/", "public/harmonystream/next/", "harmonystream/next/"}))
-                .addPathHandler("/harmonystream/", new PublicAssetsPathHandler("harmonystream/"))
+                .addPathHandler("/harmonystream/", new PublicRoutesPathHandler("harmonystream/"))
                 .addPathHandler("/", new PublicRoutesPathHandler())
                 .build();
 
@@ -611,6 +611,16 @@ public class WebAppActivity extends AppCompatActivity {
     }
 
     private class PublicRoutesPathHandler implements WebViewAssetLoader.PathHandler {
+        private final String routePrefix;
+
+        PublicRoutesPathHandler() {
+            this("");
+        }
+
+        PublicRoutesPathHandler(String routePrefix) {
+            this.routePrefix = routePrefix == null ? "" : routePrefix;
+        }
+
         @Override
         public WebResourceResponse handle(String path) {
             String normalizedPath = path == null ? "" : path;
@@ -620,13 +630,13 @@ public class WebAppActivity extends AppCompatActivity {
 
             String assetPath;
             if (normalizedPath.isEmpty()) {
-                assetPath = "public/index.html";
+                assetPath = "public/" + routePrefix + "index.html";
             } else if (normalizedPath.endsWith("/")) {
-                assetPath = "public/" + normalizedPath + "index.html";
+                assetPath = "public/" + routePrefix + normalizedPath + "index.html";
             } else if (normalizedPath.contains(".")) {
-                assetPath = "public/" + normalizedPath;
+                assetPath = "public/" + routePrefix + normalizedPath;
             } else {
-                assetPath = "public/" + normalizedPath + "/index.html";
+                assetPath = "public/" + routePrefix + normalizedPath + "/index.html";
             }
 
             String extension = MimeTypeMap.getFileExtensionFromUrl(assetPath);
