@@ -66,6 +66,12 @@ public class PlaybackService extends Service {
 
     public static final String CHANNEL_ID = "harmonystream_playback";
     public static final int NOTIFICATION_ID = 1001;
+    private static final long ENABLED_PLAYBACK_ACTIONS = PlaybackStateCompat.ACTION_PLAY
+            | PlaybackStateCompat.ACTION_PAUSE
+            | PlaybackStateCompat.ACTION_PLAY_PAUSE
+            | PlaybackStateCompat.ACTION_SKIP_TO_NEXT
+            | PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS
+            | PlaybackStateCompat.ACTION_SEEK_TO;
 
     public static final String ACTION_UPDATE_STATE = "com.sansoft.harmonystram.UPDATE_STATE";
     public static final String ACTION_PREVIOUS = "com.sansoft.harmonystram.PREVIOUS";
@@ -243,12 +249,7 @@ public class PlaybackService extends Service {
         mediaSession.setActive(true);
 
         playbackStateBuilder = new PlaybackStateCompat.Builder()
-                .setActions(PlaybackStateCompat.ACTION_PLAY
-                        | PlaybackStateCompat.ACTION_PAUSE
-                        | PlaybackStateCompat.ACTION_PLAY_PAUSE
-                        | PlaybackStateCompat.ACTION_SEEK_TO
-                        | PlaybackStateCompat.ACTION_SKIP_TO_NEXT
-                        | PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS);
+                .setActions(ENABLED_PLAYBACK_ACTIONS);
     }
 
     private void initExtractor() {
@@ -271,14 +272,7 @@ public class PlaybackService extends Service {
 
         mediaSessionConnector = new MediaSessionConnector(mediaSession);
         mediaSessionConnector.setPlayer(player);
-        mediaSessionConnector.setEnabledPlaybackActions(
-                PlaybackStateCompat.ACTION_PLAY
-                        | PlaybackStateCompat.ACTION_PAUSE
-                        | PlaybackStateCompat.ACTION_PLAY_PAUSE
-                        | PlaybackStateCompat.ACTION_SKIP_TO_NEXT
-                        | PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS
-                        | PlaybackStateCompat.ACTION_SEEK_TO
-        );
+        mediaSessionConnector.setEnabledPlaybackActions(ENABLED_PLAYBACK_ACTIONS);
 
         player.addListener(new Player.Listener() {
             @Override
@@ -775,16 +769,12 @@ public class PlaybackService extends Service {
                 .addAction(playPauseAction)
                 .addAction(new NotificationCompat.Action(android.R.drawable.ic_media_next, "Next", createServiceActionIntent(ACTION_NEXT)))
                 .setStyle(new MediaStyle().setMediaSession(mediaSession.getSessionToken()).setShowActionsInCompactView(0, 1, 2))
-                .addAction(new NotificationCompat.Action(android.R.drawable.ic_media_rew, "Back 20s", createSeekRelativeIntent(-20_000L)))
-                .addAction(new NotificationCompat.Action(android.R.drawable.ic_media_ff, "Forward 20s", createSeekRelativeIntent(20_000L)))
                 .build();
 
         if (!hasNotificationPermission()) return;
 
-        if (playing) {
-            startForeground(NOTIFICATION_ID, notification);
-        } else {
-            stopForeground(false);
+        startForeground(NOTIFICATION_ID, notification);
+        if (!playing) {
             NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, notification);
         }
     }
@@ -896,6 +886,7 @@ public class PlaybackService extends Service {
             }
         }
         playbackStateBuilder.setState(compatState, position, player != null && player.isPlaying() ? 1f : 0f, System.currentTimeMillis());
+        playbackStateBuilder.setActions(ENABLED_PLAYBACK_ACTIONS);
         mediaSession.setPlaybackState(playbackStateBuilder.build());
         MediaMetadataCompat metadata = new MediaMetadataCompat.Builder()
                 .putString(MediaMetadataCompat.METADATA_KEY_TITLE, currentTitle)
