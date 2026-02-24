@@ -83,6 +83,7 @@ public class WebAppActivity extends AppCompatActivity {
     private static final String WEB_CONSOLE_TAG = "WebConsole";
     private static final long MAIN_FRAME_TIMEOUT_MS = 15000L;
     private static final int REQUEST_CODE_POST_NOTIFICATIONS = 4242;
+    private static final boolean AUDIO_VALIDATION_MODE = true;
 
     private WebView webView;
     private ProgressBar loadingIndicator;
@@ -136,7 +137,9 @@ public class WebAppActivity extends AppCompatActivity {
                 payload.put("event_ts", intent.getLongExtra("event_ts", System.currentTimeMillis()));
             } catch (JSONException ignored) {
             }
-            dispatchToWeb("window.dispatchEvent(new CustomEvent('nativePlaybackState', { detail: " + payload + " }));");
+            if (!AUDIO_VALIDATION_MODE) {
+                dispatchToWeb("window.dispatchEvent(new CustomEvent('nativePlaybackState', { detail: " + payload + " }));");
+            }
             playbackViewModel.updateFromBroadcast(intent);
         }
     };
@@ -163,7 +166,11 @@ public class WebAppActivity extends AppCompatActivity {
         playbackViewModel = new ViewModelProvider(this).get(PlaybackViewModel.class);
 
         configureImmersiveFullscreen();
-        configureVideoGestures();
+        if (!AUDIO_VALIDATION_MODE) {
+            configureVideoGestures();
+        } else if (seekOverlayIndicator != null) {
+            seekOverlayIndicator.setVisibility(View.GONE);
+        }
         requestNotificationPermissionIfNeeded();
 
         WebSettings settings = webView.getSettings();
@@ -331,8 +338,10 @@ public class WebAppActivity extends AppCompatActivity {
             payload.put("action", action);
         } catch (JSONException ignored) {
         }
-        dispatchToWeb("window.dispatchEvent(new CustomEvent('nativePlaybackCommand', { detail: " + payload + " }));");
-        dispatchToWeb("window.__harmonyNativeApplyCommand && window.__harmonyNativeApplyCommand(" + JSONObject.quote(action) + ");");
+        if (!AUDIO_VALIDATION_MODE) {
+            dispatchToWeb("window.dispatchEvent(new CustomEvent('nativePlaybackCommand', { detail: " + payload + " }));");
+            dispatchToWeb("window.__harmonyNativeApplyCommand && window.__harmonyNativeApplyCommand(" + JSONObject.quote(action) + ");");
+        }
         clearPendingMediaAction();
     }
 
@@ -690,6 +699,10 @@ public class WebAppActivity extends AppCompatActivity {
 
         @JavascriptInterface
         public void setVideoMode(boolean enabled) {
+            if (AUDIO_VALIDATION_MODE) {
+                videoModeEnabled = false;
+                return;
+            }
             videoModeEnabled = enabled;
             Intent modeIntent = new Intent(WebAppActivity.this, PlaybackService.class);
             modeIntent.setAction(PlaybackService.ACTION_SET_MODE);

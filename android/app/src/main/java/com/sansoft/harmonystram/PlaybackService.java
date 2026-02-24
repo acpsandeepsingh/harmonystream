@@ -16,6 +16,7 @@ import android.os.Looper;
 import android.os.PowerManager;
 import android.util.Log;
 import android.webkit.WebView;
+import android.widget.Toast;
 
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
@@ -53,6 +54,7 @@ import java.util.concurrent.Executors;
 public class PlaybackService extends Service {
 
     private static final String TAG = "PlaybackService";
+    private static final boolean AUDIO_VALIDATION_MODE = true;
 
     public static final String CHANNEL_ID = "harmonystream_playback";
     public static final int NOTIFICATION_ID = 1001;
@@ -260,6 +262,9 @@ public class PlaybackService extends Service {
         player.addListener(new Player.Listener() {
             @Override
             public void onIsPlayingChanged(boolean isPlaying) {
+                if (AUDIO_VALIDATION_MODE && isPlaying) {
+                    showDebugToast("STAGE 8: Playing");
+                }
                 syncWakeLock(isPlaying);
                 if (isPlaying) {
                     startProgressUpdates();
@@ -273,8 +278,17 @@ public class PlaybackService extends Service {
 
             @Override
             public void onPlaybackStateChanged(int state) {
+                if (AUDIO_VALIDATION_MODE && state == Player.STATE_BUFFERING) {
+                    showDebugToast("STAGE 6: Buffering");
+                }
+                if (AUDIO_VALIDATION_MODE && state == Player.STATE_READY) {
+                    showDebugToast("STAGE 7: Ready");
+                }
                 if (state == Player.STATE_READY || state == Player.STATE_BUFFERING) {
                     currentDurationMs = Math.max(0, player.getDuration());
+                }
+                if (AUDIO_VALIDATION_MODE && state == Player.STATE_IDLE && pendingPlayRequestedAtMs == 0L) {
+                    showDebugToast("Playback stopped unexpectedly");
                 }
                 if (state == Player.STATE_ENDED) {
                     handleSkip(+1);
@@ -294,6 +308,9 @@ public class PlaybackService extends Service {
             @Override
             public void onPlayerError(PlaybackException error) {
                 Log.e(TAG, "Playback error", error);
+                if (AUDIO_VALIDATION_MODE) {
+                    showDebugToast("PLAYER ERROR: " + (error == null ? "unknown" : error.getMessage()));
+                }
             }
         });
     }
@@ -410,14 +427,56 @@ public class PlaybackService extends Service {
     private void resolveAndPlay(String videoId, long seekMs) {
         resolverExecutor.execute(() -> {
             try {
+                if (AUDIO_VALIDATION_MODE) {
+                    showDebugToast("STAGE 1: Extraction started");
+                    Log.d(TAG, "DEBUG STAGE 1 videoId=" + videoId);
+                }
                 StreamingService yt = ServiceList.YouTube;
                 StreamInfo info = resolveStreamInfo(yt, videoId);
+                if (AUDIO_VALIDATION_MODE) {
+                    showDebugToast("STAGE 2: Streams fetched");
+                }
                 List<AudioStream> audioStreams = info.getAudioStreams();
                 List<VideoStream> videoStreams = info.getVideoStreams();
+
+                if (AUDIO_VALIDATION_MODE) {
+                    int count = audioStreams == null ? 0 : audioStreams.size();
+                    if (count > 0) {
+                        showDebugToast("STAGE 3: Audio streams found: " + count);
+                    } else {
+                        showDebugToast("STAGE 3 FAILED: No audio streams");
+                    }
+                }
 
                 audioStreamUrl = pickItag140(audioStreams);
                 if (videoStreams != null && !videoStreams.isEmpty()) {
                     videoStreamUrl = videoStreams.get(0).getContent();
+                }
+
+                if (AUDIO_VALIDATION_MODE) {
+                    if (audioStreamUrl != null) {
+                        showDebugToast("STAGE 4: Audio URL selected");
+                    } else {
+                        showDebugToast("STAGE 4 FAILED: URL null");
+                    }
+
+                    AudioStream selectedAudio = null;
+                    if (audioStreams != null) {
+                        for (AudioStream stream : audioStreams) {
+                            if (stream != null && audioStreamUrl != null && audioStreamUrl.equals(stream.getContent())) {
+                                selectedAudio = stream;
+                                break;
+                            }
+                        }
+                    }
+                    String format = selectedAudio == null ? "unknown" : String.valueOf(selectedAudio.getFormat());
+                    int bitrate = selectedAudio == null ? -1 : selectedAudio.getAverageBitrate();
+                    int streamCount = audioStreams == null ? 0 : audioStreams.size();
+                    Log.d(TAG, "DEBUG extractor videoId=" + videoId
+                            + " streamCount=" + streamCount
+                            + " format=" + format
+                            + " bitrate=" + bitrate
+                            + " mediaUrl=" + audioStreamUrl);
                 }
 
                 String selected = videoMode && videoStreamUrl != null ? videoStreamUrl : audioStreamUrl;
@@ -427,6 +486,9 @@ public class PlaybackService extends Service {
 
                 mainHandler.post(() -> {
                     if (player == null) return;
+                    if (AUDIO_VALIDATION_MODE) {
+                        showDebugToast("STAGE 5: Native player received URL");
+                    }
                     player.setMediaItem(MediaItem.fromUri(selected));
                     player.prepare();
                     if (seekMs > 0) {
@@ -439,7 +501,10 @@ public class PlaybackService extends Service {
                 });
             } catch (Throwable throwable) {
                 pendingPlayRequestedAtMs = 0L;
-                Log.e(TAG, "Unable to resolve stream URL", throwable);
+                Log.e(TAG, "Unable to resolve stream URL for videoId=" + videoId, throwable);
+                if (AUDIO_VALIDATION_MODE) {
+                    showDebugToast("STAGE 2 FAILED: " + formatStage2Failure(throwable));
+                }
             }
         });
     }
@@ -547,7 +612,29 @@ public class PlaybackService extends Service {
         return null;
     }
 
+    private String formatStage2Failure(Throwable throwable) {
+        if (throwable == null) return "Extraction error";
+        String raw = throwable.getMessage();
+        if (raw == null || raw.trim().isEmpty()) {
+            raw = throwable.getClass().getSimpleName();
+        }
+        String message = raw.trim();
+        String lower = message.toLowerCase();
+        if (lower.startsWith("error")) {
+            message = message.substring(5).trim();
+        }
+        if (message.isEmpty()) {
+            message = "Extraction error";
+        }
+        return message;
+    }
+
     private void switchMode(boolean enableVideo) {
+        if (AUDIO_VALIDATION_MODE) {
+            videoMode = false;
+            Log.d(TAG, "DEBUG AUDIO_VALIDATION_MODE forcing audio-only playback; ignoring video mode switch");
+            return;
+        }
         if (videoMode == enableVideo) return;
         videoMode = enableVideo;
         long ts = player == null ? 0L : player.getCurrentPosition();
@@ -826,11 +913,19 @@ public class PlaybackService extends Service {
 
     @Override
     public void onTaskRemoved(Intent rootIntent) {
+        if (AUDIO_VALIDATION_MODE) {
+            showDebugToast("Lifecycle paused playback");
+        }
         if (player != null && player.isPlaying()) {
             updateNotification();
             return;
         }
         stopSelf();
+    }
+
+    private void showDebugToast(String message) {
+        if (!AUDIO_VALIDATION_MODE) return;
+        mainHandler.post(() -> Toast.makeText(getApplicationContext(), "DEBUG: " + message, Toast.LENGTH_SHORT).show());
     }
 
     public PlaybackSnapshot getCurrentSnapshot() {
