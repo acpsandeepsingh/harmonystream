@@ -29,10 +29,8 @@ public class DownloaderImpl extends Downloader {
     }
 
     /**
-     * 🔥 CRITICAL: Required for POST requests in v0.25.2+.
-     * YouTube and other services now require this for extraction to work.
+     * Handles POST requests when the extractor invokes this overload.
      */
-    @Override
     public Response post(Request request) throws IOException, ReCaptchaException {
         return makeRequest(request);
     }
