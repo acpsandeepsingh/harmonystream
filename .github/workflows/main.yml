@@ -99,9 +99,19 @@ jobs:
       - name: Accept Android SDK licenses
         run: yes | sdkmanager --licenses
 
+      - name: Verify Android build has no basePath
+        run: |
+          echo "Checking if basePath was removed..."
+          if grep -q "harmonystream" out/index.html; then
+            echo "âŒ WARNING: basePath still present in build!"
+          else
+            echo "âœ… Build is clean (no basePath)"
+          fi
+
       - name: Prepare Android project assets
         run: |
           set -e
+          test -d android || (echo "android project folder is missing" && exit 1)
           mkdir -p android/app/src/main/assets/public
           rm -rf android/app/src/main/assets/*
           mkdir -p android/app/src/main/assets/public
