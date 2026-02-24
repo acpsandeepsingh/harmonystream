@@ -21,7 +21,6 @@ import android.os.Looper;
 import android.os.PowerManager;
 import android.util.Log;
 import android.webkit.WebView;
-import android.widget.Toast;
 
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
@@ -62,8 +61,6 @@ import java.util.concurrent.Executors;
 public class PlaybackService extends Service {
 
     private static final String TAG = "PlaybackService";
-    private static final boolean AUDIO_VALIDATION_MODE = true;
-
     public static final String CHANNEL_ID = "harmonystream_playback";
     public static final int NOTIFICATION_ID = 1001;
     private static final long ENABLED_PLAYBACK_ACTIONS = PlaybackStateCompat.ACTION_PLAY
@@ -277,9 +274,6 @@ public class PlaybackService extends Service {
         player.addListener(new Player.Listener() {
             @Override
             public void onIsPlayingChanged(boolean isPlaying) {
-                if (AUDIO_VALIDATION_MODE && isPlaying) {
-                    showDebugToast("STAGE 8: Playing");
-                }
                 syncWakeLock(isPlaying);
                 if (isPlaying) {
                     startProgressUpdates();
@@ -293,17 +287,8 @@ public class PlaybackService extends Service {
 
             @Override
             public void onPlaybackStateChanged(int state) {
-                if (AUDIO_VALIDATION_MODE && state == Player.STATE_BUFFERING) {
-                    showDebugToast("STAGE 6: Buffering");
-                }
-                if (AUDIO_VALIDATION_MODE && state == Player.STATE_READY) {
-                    showDebugToast("STAGE 7: Ready");
-                }
                 if (state == Player.STATE_READY || state == Player.STATE_BUFFERING) {
                     currentDurationMs = Math.max(0, player.getDuration());
-                }
-                if (AUDIO_VALIDATION_MODE && state == Player.STATE_IDLE && pendingPlayRequestedAtMs == 0L) {
-                    showDebugToast("Playback stopped unexpectedly");
                 }
                 if (state == Player.STATE_ENDED) {
                     handleSkip(+1);
@@ -323,9 +308,6 @@ public class PlaybackService extends Service {
             @Override
             public void onPlayerError(PlaybackException error) {
                 Log.e(TAG, "Playback error", error);
-                if (AUDIO_VALIDATION_MODE) {
-                    showDebugToast("PLAYER ERROR: " + (error == null ? "unknown" : error.getMessage()));
-                }
             }
         });
     }
@@ -461,66 +443,14 @@ public class PlaybackService extends Service {
     private void resolveAndPlay(String videoId, long seekMs) {
         resolverExecutor.execute(() -> {
             try {
-                if (AUDIO_VALIDATION_MODE) {
-                    showDebugToast("STAGE 1: Extraction started");
-                    String safeVideoId = videoId == null ? "null" : videoId;
-                    String trimmedVideoId = videoId == null ? "" : videoId.trim();
-                    boolean isNull = videoId == null;
-                    boolean isEmpty = !isNull && trimmedVideoId.isEmpty();
-                    boolean looksLikeUrl = trimmedVideoId.startsWith("http://") || trimmedVideoId.startsWith("https://");
-                    boolean looksLikeYouTubeId = trimmedVideoId.matches("^[A-Za-z0-9_-]{11}$");
-                    Log.d(TAG, "DEBUG STAGE 1 videoId=" + safeVideoId
-                            + " isNull=" + isNull
-                            + " isEmpty=" + isEmpty
-                            + " looksLikeUrl=" + looksLikeUrl
-                            + " looksLikeYouTubeId=" + looksLikeYouTubeId);
-                }
                 StreamingService yt = ServiceList.YouTube;
                 StreamInfo info = resolveStreamInfo(yt, videoId);
-                if (AUDIO_VALIDATION_MODE) {
-                    showDebugToast("STAGE 2: Streams fetched");
-                }
                 List<AudioStream> audioStreams = info.getAudioStreams();
                 List<VideoStream> videoStreams = info.getVideoStreams();
-
-                if (AUDIO_VALIDATION_MODE) {
-                    int count = audioStreams == null ? 0 : audioStreams.size();
-                    if (count > 0) {
-                        showDebugToast("STAGE 3: Audio streams found: " + count);
-                    } else {
-                        showDebugToast("STAGE 3 FAILED: No audio streams");
-                    }
-                }
 
                 audioStreamUrl = pickItag140(audioStreams);
                 if (videoStreams != null && !videoStreams.isEmpty()) {
                     videoStreamUrl = videoStreams.get(0).getContent();
-                }
-
-                if (AUDIO_VALIDATION_MODE) {
-                    if (audioStreamUrl != null) {
-                        showDebugToast("STAGE 4: Audio URL selected");
-                    } else {
-                        showDebugToast("STAGE 4 FAILED: URL null");
-                    }
-
-                    AudioStream selectedAudio = null;
-                    if (audioStreams != null) {
-                        for (AudioStream stream : audioStreams) {
-                            if (stream != null && audioStreamUrl != null && audioStreamUrl.equals(stream.getContent())) {
-                                selectedAudio = stream;
-                                break;
-                            }
-                        }
-                    }
-                    String format = selectedAudio == null ? "unknown" : String.valueOf(selectedAudio.getFormat());
-                    int bitrate = selectedAudio == null ? -1 : selectedAudio.getAverageBitrate();
-                    int streamCount = audioStreams == null ? 0 : audioStreams.size();
-                    Log.d(TAG, "DEBUG extractor videoId=" + videoId
-                            + " streamCount=" + streamCount
-                            + " format=" + format
-                            + " bitrate=" + bitrate
-                            + " mediaUrl=" + audioStreamUrl);
                 }
 
                 String selected = videoMode && videoStreamUrl != null ? videoStreamUrl : audioStreamUrl;
@@ -530,9 +460,6 @@ public class PlaybackService extends Service {
 
                 mainHandler.post(() -> {
                     if (player == null) return;
-                    if (AUDIO_VALIDATION_MODE) {
-                        showDebugToast("STAGE 5: Native player received URL");
-                    }
                     player.setMediaItem(MediaItem.fromUri(selected));
                     player.prepare();
                     if (seekMs > 0) {
@@ -547,13 +474,6 @@ public class PlaybackService extends Service {
             } catch (Throwable throwable) {
                 pendingPlayRequestedAtMs = 0L;
                 Log.e(TAG, "Unable to resolve stream URL", throwable);
-                Log.e(TAG, "Extractor throwable=" + throwable + " cause=" + throwable.getCause());
-                Log.e(TAG, "Extractor stacktrace:\n" + Log.getStackTraceString(throwable));
-                if (AUDIO_VALIDATION_MODE) {
-                    String type = throwable.getClass().getSimpleName();
-                    String message = throwable.getMessage() == null ? "(no message)" : throwable.getMessage();
-                    showDebugToast("STAGE 2 FAILED: " + type + " - " + message);
-                }
             }
         });
     }
@@ -702,11 +622,6 @@ public class PlaybackService extends Service {
     }
 
     private void switchMode(boolean enableVideo) {
-        if (AUDIO_VALIDATION_MODE) {
-            videoMode = false;
-            Log.d(TAG, "DEBUG AUDIO_VALIDATION_MODE forcing audio-only playback; ignoring video mode switch");
-            return;
-        }
         if (videoMode == enableVideo) return;
         videoMode = enableVideo;
         long ts = player == null ? 0L : player.getCurrentPosition();
@@ -763,14 +678,35 @@ public class PlaybackService extends Service {
     }
 
     private void updateNotification() {
-        boolean playing = player != null && player.isPlaying();
+        Notification notification = buildPlaybackNotification(player != null && player.isPlaying());
+        if (!hasNotificationPermission()) return;
+        startForeground(NOTIFICATION_ID, notification);
+        if (player == null || !player.isPlaying()) {
+            NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, notification);
+        }
+    }
+
+    private Notification buildPlaybackNotification(boolean playing) {
+        PendingIntent previousIntent = createServiceActionIntent(ACTION_PREVIOUS);
+        PendingIntent playPauseIntent = createServiceActionIntent(ACTION_PLAY_PAUSE);
+        PendingIntent nextIntent = createServiceActionIntent(ACTION_NEXT);
+        NotificationCompat.Action previousAction = new NotificationCompat.Action(
+                android.R.drawable.ic_media_previous,
+                "Previous",
+                previousIntent
+        );
         NotificationCompat.Action playPauseAction = new NotificationCompat.Action(
                 playing ? android.R.drawable.ic_media_pause : android.R.drawable.ic_media_play,
                 playing ? "Pause" : "Play",
-                createServiceActionIntent(ACTION_PLAY_PAUSE)
+                playPauseIntent
+        );
+        NotificationCompat.Action nextAction = new NotificationCompat.Action(
+                android.R.drawable.ic_media_next,
+                "Next",
+                nextIntent
         );
 
-        Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
+        return new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.ic_media_play)
                 .setContentTitle(currentTitle)
                 .setContentText(currentArtist)
@@ -780,32 +716,16 @@ public class PlaybackService extends Service {
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                 .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
                 .setContentIntent(createContentIntent())
-                .addAction(new NotificationCompat.Action(android.R.drawable.ic_media_previous, "Previous", createServiceActionIntent(ACTION_PREVIOUS)))
+                .addAction(previousAction)
                 .addAction(playPauseAction)
-                .addAction(new NotificationCompat.Action(android.R.drawable.ic_media_next, "Next", createServiceActionIntent(ACTION_NEXT)))
+                .addAction(nextAction)
                 .setStyle(new MediaStyle().setMediaSession(mediaSession.getSessionToken()).setShowActionsInCompactView(0, 1, 2))
                 .build();
-
-        if (!hasNotificationPermission()) return;
-
-        startForeground(NOTIFICATION_ID, notification);
-        if (!playing) {
-            NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, notification);
-        }
     }
 
     private void ensureForegroundWithCurrentState() {
         if (!hasNotificationPermission()) return;
-        Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setSmallIcon(android.R.drawable.ic_media_play)
-                .setContentTitle(currentTitle)
-                .setContentText(currentArtist)
-                .setOnlyAlertOnce(true)
-                .setOngoing(true)
-                .setLargeIcon(currentArtworkBitmap != null ? currentArtworkBitmap : getOrCreatePlaceholderBitmap())
-                .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
-                .setContentIntent(createContentIntent())
-                .build();
+        Notification notification = buildPlaybackNotification(true);
         startForeground(NOTIFICATION_ID, notification);
     }
 
@@ -1123,19 +1043,11 @@ public class PlaybackService extends Service {
 
     @Override
     public void onTaskRemoved(Intent rootIntent) {
-        if (AUDIO_VALIDATION_MODE) {
-            showDebugToast("Lifecycle paused playback");
-        }
         if (player != null && player.isPlaying()) {
             updateNotification();
             return;
         }
         stopSelf();
-    }
-
-    private void showDebugToast(String message) {
-        if (!AUDIO_VALIDATION_MODE) return;
-        mainHandler.post(() -> Toast.makeText(getApplicationContext(), "DEBUG: " + message, Toast.LENGTH_SHORT).show());
     }
 
     public PlaybackSnapshot getCurrentSnapshot() {
