@@ -82,6 +82,8 @@ declare global {
 }
 
 
+const AUDIO_VALIDATION_MODE = true;
+
 const PortraitPlayer = React.memo(function PortraitPlayer({
   currentTrack,
   progress,
@@ -459,7 +461,7 @@ export function MusicPlayer() {
     return isAndroidUa && (isFileProtocol || isWebViewAssetHost || hasNativeBridge);
   }, []);
 
-  const shouldControlIframePlayback = !isAndroidAppRuntime || playerMode === 'video';
+  const shouldControlIframePlayback = !AUDIO_VALIDATION_MODE && (!isAndroidAppRuntime || playerMode === 'video');
 
   const applyNativeCommand = useCallback((action: string) => {
     if (!action) return;
@@ -700,7 +702,7 @@ export function MusicPlayer() {
   const handleTogglePlayPause = useCallback(() => {
     if (!currentTrack) return;
 
-    if (isAndroidAppRuntime && !shouldControlIframePlayback) {
+    if (isAndroidAppRuntime) {
       if (isGlobalPlayingRef.current) {
         window.AndroidNative?.pause?.();
         setGlobalIsPlaying(false);
@@ -811,7 +813,11 @@ export function MusicPlayer() {
     }
 
     setPlayerMode(newMode);
-    window.AndroidNative?.setVideoMode?.(newMode === 'video');
+    if (!AUDIO_VALIDATION_MODE) {
+      window.AndroidNative?.setVideoMode?.(newMode === 'video');
+    } else {
+      window.AndroidNative?.setVideoMode?.(false);
+    }
   }, [isPip, playerMode, setPlayerMode, setInitialLoadIsVideoShare]);
   
   const handleToggleLike = useCallback(() => {
@@ -901,6 +907,7 @@ export function MusicPlayer() {
   }, []);
 
   useEffect(() => {
+    if (AUDIO_VALIDATION_MODE) return;
     const handleFullscreenChange = () => {
         if (!document.fullscreenElement) {
             if (playerMode === 'video') setPlayerMode('audio');
@@ -912,6 +919,7 @@ export function MusicPlayer() {
   }, [playerMode, setPlayerMode, setInitialLoadIsVideoShare]);
 
   useEffect(() => {
+    if (AUDIO_VALIDATION_MODE) return;
     if (prevPathname && prevPathname !== pathname && playerMode === 'video' && !isPip) {
        const iframe = playerRef.current?.getIframe();
        if(iframe && document.pictureInPictureEnabled && !document.pictureInPictureElement) {
@@ -929,7 +937,7 @@ export function MusicPlayer() {
     if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
     setShowControls(true);
     
-    const canAutoHide = playerMode === 'video' && isGlobalPlaying && !isPip;
+    const canAutoHide = !AUDIO_VALIDATION_MODE && playerMode === 'video' && isGlobalPlaying && !isPip;
     if (canAutoHide) {
       controlsTimeoutRef.current = setTimeout(() => setShowControls(false), 3000);
     }
@@ -949,7 +957,7 @@ export function MusicPlayer() {
 
       // When app goes to background while in video mode, force audio mode so playback
       // has the best chance to continue (especially on Android TV/WebView builds).
-      if (playerMode === 'video' && isGlobalPlaying) {
+      if (!AUDIO_VALIDATION_MODE && playerMode === 'video' && isGlobalPlaying) {
         setPlayerMode('audio');
       }
     };
@@ -1075,7 +1083,7 @@ export function MusicPlayer() {
     const hostResumedListener = () => {
       window.HarmonyNative?.getState?.();
       window.AndroidNative?.resume?.();
-      if (isGlobalPlayingRef.current) {
+      if (!AUDIO_VALIDATION_MODE && isGlobalPlayingRef.current) {
         const player = playerRef.current;
         if (player && typeof player.playVideo === 'function') {
           player.playVideo();
@@ -1222,12 +1230,13 @@ export function MusicPlayer() {
         >
             <div className={cn(
                 "absolute inset-0 w-full h-full transition-all duration-300 ease-in-out pointer-events-none",
-                playerMode === 'video' ? 'opacity-100' : 'opacity-0'
+                playerMode === 'video' ? 'opacity-100' : 'opacity-0',
+                AUDIO_VALIDATION_MODE ? 'pointer-events-none' : ''
               )}
               style={{ transform: `scale(${zoomLevel})` }}
             >
               <YouTube
-                  videoId={currentTrack.videoId}
+                  videoId={AUDIO_VALIDATION_MODE ? '' : currentTrack.videoId}
                   opts={{ playerVars: { playsinline: 1, controls: 0, modestbranding: 1, rel: 0, iv_load_policy: 3, autoplay: shouldControlIframePlayback ? 1 : 0, origin: typeof window !== 'undefined' ? window.location.origin : undefined } }}
                   onReady={onReady}
                   onStateChange={onStateChange}
@@ -1240,7 +1249,7 @@ export function MusicPlayer() {
            <PortraitPlayer {...playerProps} />
            <LandscapePlayer {...playerProps} />
 
-           {playerMode === 'video' && !isPip && (
+           {playerMode === 'video' && !isPip && !AUDIO_VALIDATION_MODE && (
               <>
                 <div className="absolute top-4 right-4 z-[70] hidden md:block">
                   <Tooltip>
@@ -1345,7 +1354,7 @@ export function MusicPlayer() {
         </DndContext>
       </SheetContent>
     </Sheet>
-    {isPip && (
+    {isPip && !AUDIO_VALIDATION_MODE && (
       <div className="fixed bottom-5 right-5 w-64 h-auto bg-black rounded-lg shadow-2xl z-[60] overflow-hidden">
           <div className="relative aspect-video">
                 <YouTube
