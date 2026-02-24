@@ -63,6 +63,7 @@ declare global {
       pause?: () => void;
       next?: () => void;
       previous?: () => void;
+      setIndex?: (index: number) => void;
       seek?: (positionMs: number) => void;
       setQueue?: (queueJson: string) => void;
       updateState?: (title: string, artist: string, playing: boolean, positionMs: number, durationMs: number, thumbnailUrl: string) => void;
@@ -416,6 +417,7 @@ export function MusicPlayer() {
     reorderPlaylist,
     playerMode,
     setPlayerMode,
+    syncNativeIndex,
     initialLoadIsVideoShare,
     setInitialLoadIsVideoShare,
   } = usePlayer();
@@ -502,16 +504,14 @@ export function MusicPlayer() {
         break;
       case 'com.sansoft.harmonystram.NEXT':
         setGlobalIsPlaying(true);
-        globalPlayNext();
         break;
       case 'com.sansoft.harmonystram.PREVIOUS':
         setGlobalIsPlaying(true);
-        globalPlayPrev();
         break;
       default:
         break;
     }
-  }, [setGlobalIsPlaying, globalPlayNext, globalPlayPrev, shouldControlIframePlayback]);
+  }, [setGlobalIsPlaying, shouldControlIframePlayback]);
 
   useEffect(() => {
     isGlobalPlayingRef.current = isGlobalPlaying;
@@ -704,12 +704,12 @@ export function MusicPlayer() {
 
     if (isAndroidAppRuntime) {
       if (isGlobalPlayingRef.current) {
-        window.AndroidNative?.pause?.();
+        window.HarmonyNative?.pause?.();
         setGlobalIsPlaying(false);
       } else {
         nativePlayRequestAtMsRef.current = Date.now();
         setGlobalIsPlaying(true);
-        window.AndroidNative?.play?.(currentTrack.videoId, currentTrack.title, currentTrack.artist, Math.max(0, Math.floor(duration * 1000)), currentTrack.thumbnailUrl);
+        window.HarmonyNative?.play?.();
       }
       return;
     }
@@ -732,7 +732,7 @@ export function MusicPlayer() {
         // For all subsequent clicks, toggle based on current player state.
         const state = player.getPlayerState();
         if (state === 1) { // is playing
-            window.AndroidNative?.pause?.();
+            window.HarmonyNative?.pause?.();
             if (!isAndroidAppRuntime) {
               player.pauseVideo();
             }
@@ -741,7 +741,7 @@ export function MusicPlayer() {
               nativePlayRequestAtMsRef.current = Date.now();
               setGlobalIsPlaying(true);
             }
-            window.AndroidNative?.play?.(currentTrack.videoId, currentTrack.title, currentTrack.artist, Math.max(0, Math.floor(duration * 1000)), currentTrack.thumbnailUrl);
+            window.HarmonyNative?.play?.();
             if (!isAndroidAppRuntime) {
               player.playVideo();
             }
@@ -793,6 +793,24 @@ export function MusicPlayer() {
       playPlaylist(playlist, songId);
   }, [playlist, playPlaylist]);
   
+  const handlePlayPrev = useCallback(() => {
+    if (isAndroidAppRuntime) {
+      window.HarmonyNative?.previous?.();
+      setGlobalIsPlaying(true);
+      return;
+    }
+    globalPlayPrev();
+  }, [globalPlayPrev, isAndroidAppRuntime, setGlobalIsPlaying]);
+
+  const handlePlayNext = useCallback(() => {
+    if (isAndroidAppRuntime) {
+      window.HarmonyNative?.next?.();
+      setGlobalIsPlaying(true);
+      return;
+    }
+    globalPlayNext();
+  }, [globalPlayNext, isAndroidAppRuntime, setGlobalIsPlaying]);
+
   const handleTogglePlayerMode = useCallback(async () => {
     if (isPip) {
       try { await document.exitPictureInPicture(); } catch (error) { console.warn('Could not exit PiP:', error); }
@@ -991,8 +1009,8 @@ export function MusicPlayer() {
     
     navigator.mediaSession.setActionHandler('play', () => setGlobalIsPlaying(true));
     navigator.mediaSession.setActionHandler('pause', () => setGlobalIsPlaying(false));
-    navigator.mediaSession.setActionHandler('previoustrack', globalPlayPrev);
-    navigator.mediaSession.setActionHandler('nexttrack', globalPlayNext);
+    navigator.mediaSession.setActionHandler('previoustrack', handlePlayPrev);
+    navigator.mediaSession.setActionHandler('nexttrack', handlePlayNext);
     navigator.mediaSession.setActionHandler('seekbackward', null);
     navigator.mediaSession.setActionHandler('seekforward', null);
     if (isAndroidAppRuntime) {
@@ -1005,7 +1023,7 @@ export function MusicPlayer() {
       navigator.mediaSession.setActionHandler('seekto', null);
     }
 
-  }, [isGlobalPlaying, setGlobalIsPlaying, globalPlayPrev, globalPlayNext, handleSeekCommit, isAndroidAppRuntime]);
+  }, [isGlobalPlaying, setGlobalIsPlaying, handlePlayPrev, handlePlayNext, handleSeekCommit, isAndroidAppRuntime]);
 
   useEffect(() => {
     if ('mediaSession' in navigator && navigator.mediaSession.metadata) {
@@ -1050,7 +1068,7 @@ export function MusicPlayer() {
     };
 
     const nativeStateListener = (event: Event) => {
-      const detail = (event as CustomEvent<{ playing?: boolean; pending_play?: boolean; event_ts?: number }>).detail;
+      const detail = (event as CustomEvent<{ playing?: boolean; pending_play?: boolean; event_ts?: number; queue_index?: number }>).detail;
       if (typeof detail?.playing !== 'boolean') return;
 
       const eventTs = typeof detail.event_ts === 'number' ? detail.event_ts : Date.now();
@@ -1069,6 +1087,9 @@ export function MusicPlayer() {
       }
 
       setGlobalIsPlaying(detail.playing);
+      if (typeof detail.queue_index === 'number') {
+        syncNativeIndex(detail.queue_index);
+      }
       if (!isAndroidAppRuntime && detail.playing) {
         const player = playerRef.current;
         if (player && typeof player.getPlayerState === 'function' && typeof player.playVideo === 'function') {
@@ -1082,7 +1103,6 @@ export function MusicPlayer() {
 
     const hostResumedListener = () => {
       window.HarmonyNative?.getState?.();
-      window.AndroidNative?.resume?.();
       if (!AUDIO_VALIDATION_MODE && isGlobalPlayingRef.current) {
         const player = playerRef.current;
         if (player && typeof player.playVideo === 'function') {
@@ -1112,35 +1132,8 @@ export function MusicPlayer() {
       window.__harmonyNativeApplyCommand = undefined;
       window.__harmonyNativeManagedByApp = false;
     };
-  }, [isAndroidAppRuntime, applyNativeCommand, currentTrack, setGlobalIsPlaying]);
+  }, [isAndroidAppRuntime, applyNativeCommand, currentTrack, setGlobalIsPlaying, syncNativeIndex]);
 
-  useEffect(() => {
-    if (!isAndroidAppRuntime || !currentTrack) return;
-    const positionMs = Math.max(0, Math.floor(currentTime * 1000));
-    const durationMs = Math.max(0, Math.floor(duration * 1000));
-
-    window.HarmonyNative?.updateState?.(
-      currentTrack.title,
-      currentTrack.artist,
-      isGlobalPlaying,
-      positionMs,
-      durationMs,
-      currentTrack.thumbnailUrl
-    );
-  }, [isAndroidAppRuntime, currentTrack, isGlobalPlaying, currentTime, duration]);
-
-  useEffect(() => {
-    if (!isAndroidAppRuntime) return;
-    const queueForNative = playlist.map((song) => ({
-      id: song.id,
-      title: song.title,
-      artist: song.artist,
-      videoId: song.videoId,
-      thumbnailUrl: song.thumbnailUrl,
-    }));
-    window.HarmonyNative?.setQueue?.(JSON.stringify(queueForNative));
-  }, [isAndroidAppRuntime, playlist]);
-  
   if (!currentTrack) {
     return null;
   }
@@ -1199,8 +1192,8 @@ export function MusicPlayer() {
     playlists,
     onToggleLike: handleToggleLike,
     onTogglePlayerMode: handleTogglePlayerMode,
-    onPlayPrev: globalPlayPrev,
-    onPlayNext: globalPlayNext,
+    onPlayPrev: handlePlayPrev,
+    onPlayNext: handlePlayNext,
     onTogglePlayPause: handleTogglePlayPause,
     onVolumeChange: handleVolumeChange,
     onSeekChange: handleSeekChange,
