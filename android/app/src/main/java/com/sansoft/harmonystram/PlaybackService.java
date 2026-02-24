@@ -612,6 +612,23 @@ public class PlaybackService extends Service {
         return null;
     }
 
+    private String formatStage2Failure(Throwable throwable) {
+        if (throwable == null) return "Extraction error";
+        String raw = throwable.getMessage();
+        if (raw == null || raw.trim().isEmpty()) {
+            raw = throwable.getClass().getSimpleName();
+        }
+        String message = raw.trim();
+        String lower = message.toLowerCase();
+        if (lower.startsWith("error")) {
+            message = message.substring(5).trim();
+        }
+        if (message.isEmpty()) {
+            message = "Extraction error";
+        }
+        return message;
+    }
+
     private void switchMode(boolean enableVideo) {
         if (AUDIO_VALIDATION_MODE) {
             videoMode = false;
