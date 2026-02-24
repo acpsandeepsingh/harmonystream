@@ -75,6 +75,7 @@ public class PlaybackService extends Service {
     public static final String ACTION_NEXT = "com.sansoft.harmonystram.NEXT";
     public static final String ACTION_SEEK = "com.sansoft.harmonystram.SEEK";
     public static final String ACTION_SET_QUEUE = "com.sansoft.harmonystram.SET_QUEUE";
+    public static final String ACTION_SET_INDEX = "com.sansoft.harmonystram.SET_INDEX";
     public static final String ACTION_MEDIA_CONTROL = "com.sansoft.harmonystram.MEDIA_CONTROL";
     public static final String ACTION_GET_STATE = "com.sansoft.harmonystram.GET_STATE";
     public static final String ACTION_STATE_CHANGED = "com.sansoft.harmonystram.STATE_CHANGED";
@@ -385,6 +386,10 @@ public class PlaybackService extends Service {
                 handleSetQueue(intent);
                 dispatchActionToUi(action);
                 break;
+            case ACTION_SET_INDEX:
+                handleSetIndex(intent);
+                dispatchActionToUi(action);
+                break;
             case ACTION_GET_STATE:
                 broadcastState();
                 break;
@@ -404,7 +409,11 @@ public class PlaybackService extends Service {
     private void handlePlay(Intent intent) {
         String videoId = intent.getStringExtra("video_id");
         if (videoId == null || videoId.isEmpty()) {
-            if (player != null) player.play();
+            if (player != null) {
+                player.play();
+            } else if (currentVideoId != null && !currentVideoId.isEmpty()) {
+                resolveAndPlay(currentVideoId, Math.max(0L, currentPositionMs));
+            }
             return;
         }
 
@@ -601,6 +610,25 @@ public class PlaybackService extends Service {
             Log.w(TAG, "Invalid queue_json payload", jsonException);
             currentQueueIndex = -1;
         }
+        persistState();
+    }
+
+
+    private void handleSetIndex(Intent intent) {
+        if (intent == null || playbackQueue.isEmpty()) return;
+        int requestedIndex = intent.getIntExtra("index", -1);
+        if (requestedIndex < 0 || requestedIndex >= playbackQueue.size()) {
+            return;
+        }
+        QueueItem item = playbackQueue.get(requestedIndex);
+        currentQueueIndex = requestedIndex;
+        currentVideoId = item.videoId;
+        currentTitle = item.title;
+        currentArtist = item.artist;
+        currentThumbnailUrl = sanitizeThumbnailUrl(item.thumbnailUrl, item.videoId);
+        refreshArtworkAsync(currentThumbnailUrl);
+        pendingPlayRequestedAtMs = 0L;
+        resolveAndPlay(item.videoId, 0L);
         persistState();
     }
 
@@ -874,6 +902,8 @@ public class PlaybackService extends Service {
                 .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, currentArtist)
                 .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, Math.max(0L, player == null ? currentDurationMs : player.getDuration()))
                 .putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, currentArtworkBitmap != null ? currentArtworkBitmap : getOrCreatePlaceholderBitmap())
+                .putLong(MediaMetadataCompat.METADATA_KEY_TRACK_NUMBER, currentQueueIndex >= 0 ? currentQueueIndex + 1 : 0)
+                .putLong(MediaMetadataCompat.METADATA_KEY_NUM_TRACKS, playbackQueue.size())
                 .build();
         mediaSession.setMetadata(metadata);
     }

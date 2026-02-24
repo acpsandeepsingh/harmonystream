@@ -22,6 +22,7 @@ interface PlayerContextType {
   playPrev: () => void;
   setIsPlaying: (isPlaying: boolean) => void;
   setPlayerMode: (mode: 'audio' | 'video') => void;
+  syncNativeIndex: (index: number) => void;
   isPlayerVisible: boolean;
   shufflePlaylist: () => void;
   handleTrackError: (songId: string) => void;
@@ -122,6 +123,23 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
   }, [currentTrack, playlist, history, isMounted]);
 
+  const isAndroidNativeRuntime = () => {
+    if (typeof window === 'undefined') return false;
+    return typeof (window as any).HarmonyNative !== 'undefined';
+  };
+
+  const sendQueueToNative = (queue: Song[]) => {
+    if (!isAndroidNativeRuntime()) return;
+    const payload = queue.map((song) => ({
+      id: song.id,
+      title: song.title,
+      artist: song.artist,
+      videoId: song.videoId,
+      thumbnailUrl: song.thumbnailUrl,
+    }));
+    (window as any).HarmonyNative?.setQueue?.(JSON.stringify(payload));
+  };
+
   const setNewCurrentTrack = useCallback((track: Song | null) => {
     if (track) {
       // Add to history, ensuring no duplicates and maintaining a max size
@@ -134,6 +152,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setPlaylist([track]);
     setNewCurrentTrack(track);
     setIsPlaying(true);
+
+    if (isAndroidNativeRuntime()) {
+      sendQueueToNative([track]);
+      (window as any).HarmonyNative?.setIndex?.(0);
+      (window as any).HarmonyNative?.play?.();
+    }
   }, [setNewCurrentTrack]);
   
   const playPlaylist = useCallback((newPlaylist: Song[], startingTrackId?: string) => {
@@ -162,6 +186,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setPlaylist(playlistToPlay);
     
     if (trackToStart) {
+      const selectedIndex = playlistToPlay.findIndex((song) => song.id === trackToStart?.id);
       if (currentTrack?.id === trackToStart.id) {
          // If it's the same track, just ensure it's playing.
          // This handles un-pausing.
@@ -170,6 +195,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         // This is a new track.
         setNewCurrentTrack(trackToStart);
         setIsPlaying(true);
+      }
+
+      if (isAndroidNativeRuntime()) {
+        sendQueueToNative(playlistToPlay);
+        (window as any).HarmonyNative?.setIndex?.(Math.max(0, selectedIndex));
+        (window as any).HarmonyNative?.play?.();
       }
     } else {
         // This case is unlikely if newPlaylist has items.
@@ -310,6 +341,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     });
 }, [currentTrack, setNewCurrentTrack]);
 
+  const syncNativeIndex = useCallback((index: number) => {
+    if (index < 0 || index >= playlist.length) return;
+    const nextTrack = playlist[index];
+    if (!nextTrack) return;
+    if (currentTrack?.id !== nextTrack.id) {
+      setNewCurrentTrack(nextTrack);
+    }
+  }, [playlist, currentTrack, setNewCurrentTrack]);
+
   const reorderPlaylist = useCallback((oldIndex: number, newIndex: number) => {
     setPlaylist(playlist => {
       if (oldIndex < 0 || oldIndex >= playlist.length || newIndex < 0 || newIndex >= playlist.length) {
@@ -338,6 +378,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     playPrev,
     setIsPlaying,
     setPlayerMode,
+    syncNativeIndex,
     isPlayerVisible: isMounted && !!currentTrack,
     shufflePlaylist,
     handleTrackError,

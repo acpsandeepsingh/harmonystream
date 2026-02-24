@@ -134,6 +134,8 @@ public class WebAppActivity extends AppCompatActivity {
                 payload.put("position_ms", intent.getLongExtra("position_ms", 0));
                 payload.put("duration_ms", intent.getLongExtra("duration_ms", 0));
                 payload.put("pending_play", intent.getBooleanExtra("pending_play", false));
+                payload.put("queue_index", intent.getIntExtra("queue_index", -1));
+                payload.put("video_mode", intent.getBooleanExtra("video_mode", false));
                 payload.put("event_ts", intent.getLongExtra("event_ts", System.currentTimeMillis()));
             } catch (JSONException ignored) {
             }
@@ -729,6 +731,16 @@ public class WebAppActivity extends AppCompatActivity {
             startPlaybackService(queueIntent);
         }
 
+
+        @JavascriptInterface
+        public void setIndex(int index) {
+            Intent indexIntent = new Intent(WebAppActivity.this, PlaybackService.class);
+            indexIntent.setAction(PlaybackService.ACTION_SET_INDEX);
+            indexIntent.putExtra("index", Math.max(0, index));
+            indexIntent.putExtra("source", "web");
+            startPlaybackService(indexIntent);
+        }
+
         @JavascriptInterface
         public void updateState(String title, String artist, boolean playing, long positionMs, long durationMs, String thumbnailUrl) {
             Intent serviceIntent = new Intent(WebAppActivity.this, PlaybackService.class);
@@ -777,6 +789,7 @@ public class WebAppActivity extends AppCompatActivity {
                 || PlaybackService.ACTION_PREVIOUS.equals(action)
                 || PlaybackService.ACTION_SEEK.equals(action)
                 || PlaybackService.ACTION_SEEK_RELATIVE.equals(action)
+                || PlaybackService.ACTION_SET_INDEX.equals(action)
                 || (PlaybackService.ACTION_UPDATE_STATE.equals(action)
                 && intent.getBooleanExtra("should_foreground", false));
 
