@@ -669,7 +669,7 @@ public class WebAppActivity extends AppCompatActivity {
             serviceIntent.putExtra("title", title == null ? "HarmonyStream" : title);
             serviceIntent.putExtra("artist", artist == null ? "" : artist);
             serviceIntent.putExtra("duration_ms", Math.max(0L, durationMs));
-            serviceIntent.putExtra("thumbnail_url", thumbnailUrl == null ? "" : thumbnailUrl);
+            serviceIntent.putExtra("thumbnailUrl", thumbnailUrl == null ? "" : thumbnailUrl);
             serviceIntent.putExtra("source", "web");
             startPlaybackService(serviceIntent);
         }
@@ -739,7 +739,7 @@ public class WebAppActivity extends AppCompatActivity {
             serviceIntent.putExtra("should_foreground", playing);
             serviceIntent.putExtra("position_ms", Math.max(0L, positionMs));
             serviceIntent.putExtra("duration_ms", Math.max(0L, durationMs));
-            serviceIntent.putExtra("thumbnail_url", thumbnailUrl == null ? "" : thumbnailUrl);
+            serviceIntent.putExtra("thumbnailUrl", thumbnailUrl == null ? "" : thumbnailUrl);
             serviceIntent.putExtra("source", "web");
             startPlaybackService(serviceIntent);
         }

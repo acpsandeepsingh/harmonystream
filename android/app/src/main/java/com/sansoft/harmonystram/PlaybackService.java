@@ -414,7 +414,7 @@ public class PlaybackService extends Service {
         if (artist != null) {
             currentArtist = artist;
         }
-        currentThumbnailUrl = sanitizeThumbnailUrl(intent.getStringExtra("thumbnail_url"), videoId);
+        currentThumbnailUrl = sanitizeThumbnailUrl(intent.getStringExtra("thumbnailUrl"), videoId);
         syncQueueIndexForVideo(videoId);
         pendingPlayRequestedAtMs = System.currentTimeMillis();
         ensureForegroundWithCurrentState();
@@ -426,7 +426,7 @@ public class PlaybackService extends Service {
         if (intent == null) return;
         String title = intent.getStringExtra("title");
         String artist = intent.getStringExtra("artist");
-        String thumbnailUrl = intent.getStringExtra("thumbnail_url");
+        String thumbnailUrl = intent.getStringExtra("thumbnailUrl");
         if (title != null && !title.trim().isEmpty()) {
             currentTitle = title;
         }
@@ -469,14 +469,6 @@ public class PlaybackService extends Service {
                 }
                 StreamingService yt = ServiceList.YouTube;
                 StreamInfo info = resolveStreamInfo(yt, videoId);
-                String extractorThumbnailUrl = null;
-                try {
-                    extractorThumbnailUrl = info.getThumbnailUrl();
-                } catch (Throwable ignored) {
-                }
-                if ((currentThumbnailUrl == null || currentThumbnailUrl.trim().isEmpty()) && extractorThumbnailUrl != null) {
-                    currentThumbnailUrl = sanitizeThumbnailUrl(extractorThumbnailUrl, videoId);
-                }
                 if (AUDIO_VALIDATION_MODE) {
                     showDebugToast("STAGE 2: Streams fetched");
                 }
@@ -727,7 +719,7 @@ public class PlaybackService extends Service {
         stateIntent.putExtra("pending_play", pendingPlayRequestedAtMs > 0L);
         stateIntent.putExtra("queue_index", currentQueueIndex);
         stateIntent.putExtra("video_mode", videoMode);
-        stateIntent.putExtra("thumbnail_url", currentThumbnailUrl);
+        stateIntent.putExtra("thumbnailUrl", currentThumbnailUrl);
         stateIntent.putExtra("event_ts", System.currentTimeMillis());
         sendBroadcast(stateIntent);
         PlaybackWidgetProvider.requestRefresh(this);
