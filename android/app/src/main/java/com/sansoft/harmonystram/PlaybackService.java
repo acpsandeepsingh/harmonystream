@@ -501,9 +501,9 @@ public class PlaybackService extends Service {
                 });
             } catch (Throwable throwable) {
                 pendingPlayRequestedAtMs = 0L;
-                Log.e(TAG, "Unable to resolve stream URL for videoId=" + videoId, throwable);
+                Log.e(TAG, "Unable to resolve stream URL", throwable);
                 if (AUDIO_VALIDATION_MODE) {
-                    showDebugToast("STAGE 2 FAILED: " + formatStage2Failure(throwable));
+                    showDebugToast("STAGE 2 FAILED: Extraction error");
                 }
             }
         });
