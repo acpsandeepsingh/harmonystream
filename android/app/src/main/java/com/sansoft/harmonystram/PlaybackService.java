@@ -429,7 +429,17 @@ public class PlaybackService extends Service {
             try {
                 if (AUDIO_VALIDATION_MODE) {
                     showDebugToast("STAGE 1: Extraction started");
-                    Log.d(TAG, "DEBUG STAGE 1 videoId=" + videoId);
+                    String safeVideoId = videoId == null ? "null" : videoId;
+                    String trimmedVideoId = videoId == null ? "" : videoId.trim();
+                    boolean isNull = videoId == null;
+                    boolean isEmpty = !isNull && trimmedVideoId.isEmpty();
+                    boolean looksLikeUrl = trimmedVideoId.startsWith("http://") || trimmedVideoId.startsWith("https://");
+                    boolean looksLikeYouTubeId = trimmedVideoId.matches("^[A-Za-z0-9_-]{11}$");
+                    Log.d(TAG, "DEBUG STAGE 1 videoId=" + safeVideoId
+                            + " isNull=" + isNull
+                            + " isEmpty=" + isEmpty
+                            + " looksLikeUrl=" + looksLikeUrl
+                            + " looksLikeYouTubeId=" + looksLikeYouTubeId);
                 }
                 StreamingService yt = ServiceList.YouTube;
                 StreamInfo info = resolveStreamInfo(yt, videoId);
@@ -502,8 +512,12 @@ public class PlaybackService extends Service {
             } catch (Throwable throwable) {
                 pendingPlayRequestedAtMs = 0L;
                 Log.e(TAG, "Unable to resolve stream URL", throwable);
+                Log.e(TAG, "Extractor throwable=" + throwable + " cause=" + throwable.getCause());
+                Log.e(TAG, "Extractor stacktrace:\n" + Log.getStackTraceString(throwable));
                 if (AUDIO_VALIDATION_MODE) {
-                    showDebugToast("STAGE 2 FAILED: Extraction error");
+                    String type = throwable.getClass().getSimpleName();
+                    String message = throwable.getMessage() == null ? "(no message)" : throwable.getMessage();
+                    showDebugToast("STAGE 2 FAILED: " + type + " - " + message);
                 }
             }
         });
