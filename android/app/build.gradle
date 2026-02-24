@@ -195,7 +195,7 @@ dependencies {
     implementation 'com.google.android.exoplayer:exoplayer:2.19.1'
     implementation 'com.google.android.exoplayer:extension-mediasession:2.19.1'
     implementation 'androidx.lifecycle:lifecycle-viewmodel:2.7.0'
-    implementation 'com.github.TeamNewPipe:NewPipeExtractor:v0.25.2'
+    implementation 'com.github.TeamNewPipe:NewPipeExtractor:v0.25.11'
 
     // NewPipeExtractor pulls jsoup; jsoup's Re2jRegex implementation references
     // com.google.re2j classes which must be present in release shrinking.
