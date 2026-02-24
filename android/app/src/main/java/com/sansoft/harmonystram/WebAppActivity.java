@@ -65,7 +65,7 @@ import java.util.regex.Pattern;
 public class WebAppActivity extends AppCompatActivity {
 
     public static final String EXTRA_START_URL = "start_url";
-    private static final String BUNDLED_HOME_URL = "https://appassets.androidplatform.net/";
+    private static final String BUNDLED_HOME_URL = "https://appassets.androidplatform.net/assets/public/index.html";
     private static final String BUNDLED_HOME_URL_BASE_PATH = "https://appassets.androidplatform.net/harmonystream/index.html";
     private static final String FALLBACK_SHELL_URL = "https://appassets.androidplatform.net/assets/web/offline_shell.html";
     private static final String FALLBACK_SHELL_ASSET_PATH = "web/offline_shell.html";
@@ -191,14 +191,7 @@ public class WebAppActivity extends AppCompatActivity {
 
         webView.setBackgroundColor(Color.rgb(11, 18, 32));
 
-        WebViewAssetLoader assetLoader = new WebViewAssetLoader.Builder()
-                .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
-                .addPathHandler("/_next/", new MultiPathAssetsHandler(new String[]{"public/_next/", "_next/", "public/next/", "next/", "public/harmonystream/_next/", "harmonystream/_next/", "public/harmonystream/next/", "harmonystream/next/"}))
-                .addPathHandler("/harmonystream/_next/", new MultiPathAssetsHandler(new String[]{"public/_next/", "_next/", "public/next/", "next/", "public/harmonystream/_next/", "harmonystream/_next/", "public/harmonystream/next/", "harmonystream/next/"}))
-                .addPathHandler("/harmonystream/", new PublicRoutesPathHandler("harmonystream/"))
-                .addPathHandler("/", new PublicRoutesPathHandler())
-                .build();
-
+        
         NativePlaybackBridge bridge = new NativePlaybackBridge();
         webView.addJavascriptInterface(bridge, "HarmonyNative");
         webView.addJavascriptInterface(bridge, "AndroidNative");
@@ -223,7 +216,12 @@ public class WebAppActivity extends AppCompatActivity {
         if (savedInstanceState != null) {
             webView.restoreState(savedInstanceState);
         } else {
-            String startUrl = getIntent().getStringExtra(EXTRA_START_URL);
+            WebViewAssetLoader assetLoader = new WebViewAssetLoader.Builder()
+        // This single line handles everything if your website is built correctly
+        .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
+        .build();
+            
+        String startUrl = getIntent().getStringExtra(EXTRA_START_URL);
             if (startUrl != null && startUrl.startsWith("https://appassets.androidplatform.net/assets/")) {
                 Log.i(TAG, "Loading explicit start URL: " + startUrl);
                 logStartupLoadPlan(startUrl, startUrl);
