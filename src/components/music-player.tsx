@@ -698,9 +698,9 @@ export function MusicPlayer() {
     setGlobalIsPlaying, startProgressPolling, stopProgressPolling, globalPlayNext,
   ]);
 
-  const onPlayerError = useCallback((event: YouTubeEvent) => {
-    handleTrackError(String(event?.data ?? 'unknown'));
-  }, [handleTrackError]);
+  const onPlayerError = useCallback((_event: YouTubeEvent) => {
+    if (currentTrack) handleTrackError(currentTrack.id);
+  }, [handleTrackError, currentTrack]);
 
   // ---------------------------------------------------------------------------
   // Seek
@@ -786,7 +786,7 @@ export function MusicPlayer() {
 
   const handleToggleLike = useCallback(() => {
     if (!currentTrack) return;
-    toggleLikeSong(currentTrack.id);
+    toggleLikeSong(currentTrack);
   }, [currentTrack, toggleLikeSong]);
 
   const handleAddToPlaylist = useCallback((playlistId: string) => {
