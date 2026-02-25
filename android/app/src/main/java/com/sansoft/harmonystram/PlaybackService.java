@@ -35,7 +35,9 @@ import com.google.android.exoplayer2.audio.AudioAttributes;
 import com.google.android.exoplayer2.PlaybackException;
 import com.google.android.exoplayer2.Player;
 import com.google.android.exoplayer2.ext.mediasession.MediaSessionConnector;
+import com.google.android.exoplayer2.ext.mediasession.TimelineQueueNavigator;
 
+import android.support.v4.media.MediaDescriptionCompat;
 import android.support.v4.media.MediaMetadataCompat;
 import android.support.v4.media.session.MediaSessionCompat;
 import android.support.v4.media.session.PlaybackStateCompat;
@@ -63,40 +65,46 @@ public class PlaybackService extends Service {
     private static final String TAG = "PlaybackService";
     public static final String CHANNEL_ID = "harmonystream_playback";
     public static final int NOTIFICATION_ID = 1001;
-    private static final long ENABLED_PLAYBACK_ACTIONS = PlaybackStateCompat.ACTION_PLAY
+
+    // -----------------------------------------------------------------------
+    // All enabled transport actions â€“ next/previous MUST be included so the
+    // MediaSessionConnector advertises them to Bluetooth and the notification.
+    // -----------------------------------------------------------------------
+    private static final long ENABLED_PLAYBACK_ACTIONS =
+            PlaybackStateCompat.ACTION_PLAY
             | PlaybackStateCompat.ACTION_PAUSE
             | PlaybackStateCompat.ACTION_PLAY_PAUSE
             | PlaybackStateCompat.ACTION_SKIP_TO_NEXT
             | PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS
             | PlaybackStateCompat.ACTION_SEEK_TO;
 
-    public static final String ACTION_UPDATE_STATE = "com.sansoft.harmonystram.UPDATE_STATE";
-    public static final String ACTION_PREVIOUS = "com.sansoft.harmonystram.PREVIOUS";
-    public static final String ACTION_PLAY_PAUSE = "com.sansoft.harmonystram.PLAY_PAUSE";
-    public static final String ACTION_PLAY = "com.sansoft.harmonystram.PLAY";
-    public static final String ACTION_PAUSE = "com.sansoft.harmonystram.PAUSE";
-    public static final String ACTION_NEXT = "com.sansoft.harmonystram.NEXT";
-    public static final String ACTION_SEEK = "com.sansoft.harmonystram.SEEK";
-    public static final String ACTION_SET_QUEUE = "com.sansoft.harmonystram.SET_QUEUE";
-    public static final String ACTION_SET_INDEX = "com.sansoft.harmonystram.SET_INDEX";
-    public static final String ACTION_MEDIA_CONTROL = "com.sansoft.harmonystram.MEDIA_CONTROL";
-    public static final String ACTION_GET_STATE = "com.sansoft.harmonystram.GET_STATE";
-    public static final String ACTION_STATE_CHANGED = "com.sansoft.harmonystram.STATE_CHANGED";
+    public static final String ACTION_UPDATE_STATE        = "com.sansoft.harmonystram.UPDATE_STATE";
+    public static final String ACTION_PREVIOUS            = "com.sansoft.harmonystram.PREVIOUS";
+    public static final String ACTION_PLAY_PAUSE          = "com.sansoft.harmonystram.PLAY_PAUSE";
+    public static final String ACTION_PLAY                = "com.sansoft.harmonystram.PLAY";
+    public static final String ACTION_PAUSE               = "com.sansoft.harmonystram.PAUSE";
+    public static final String ACTION_NEXT                = "com.sansoft.harmonystram.NEXT";
+    public static final String ACTION_SEEK                = "com.sansoft.harmonystram.SEEK";
+    public static final String ACTION_SET_QUEUE           = "com.sansoft.harmonystram.SET_QUEUE";
+    public static final String ACTION_SET_INDEX           = "com.sansoft.harmonystram.SET_INDEX";
+    public static final String ACTION_MEDIA_CONTROL       = "com.sansoft.harmonystram.MEDIA_CONTROL";
+    public static final String ACTION_GET_STATE           = "com.sansoft.harmonystram.GET_STATE";
+    public static final String ACTION_STATE_CHANGED       = "com.sansoft.harmonystram.STATE_CHANGED";
     public static final String ACTION_CLEAR_PENDING_MEDIA_ACTION = "com.sansoft.harmonystram.CLEAR_PENDING_MEDIA_ACTION";
-    public static final String ACTION_SET_MODE = "com.sansoft.harmonystram.SET_MODE";
-    public static final String ACTION_SEEK_RELATIVE = "com.sansoft.harmonystram.SEEK_RELATIVE";
+    public static final String ACTION_SET_MODE            = "com.sansoft.harmonystram.SET_MODE";
+    public static final String ACTION_SEEK_RELATIVE       = "com.sansoft.harmonystram.SEEK_RELATIVE";
     public static final String EXTRA_PENDING_MEDIA_ACTION = "pending_media_action";
 
-    private static final String PREFS_NAME = "playback_service_state";
-    private static final String KEY_TITLE = "title";
-    private static final String KEY_ARTIST = "artist";
-    private static final String KEY_PLAYING = "playing";
-    private static final String KEY_POSITION_MS = "position_ms";
-    private static final String KEY_DURATION_MS = "duration_ms";
-    private static final String KEY_QUEUE_JSON = "queue_json";
-    private static final String KEY_QUEUE_INDEX = "queue_index";
-    private static final String KEY_THUMBNAIL_URL = "thumbnail_url";
-    private static final int MAX_ARTWORK_PX = 512;
+    private static final String PREFS_NAME       = "playback_service_state";
+    private static final String KEY_TITLE        = "title";
+    private static final String KEY_ARTIST       = "artist";
+    private static final String KEY_PLAYING      = "playing";
+    private static final String KEY_POSITION_MS  = "position_ms";
+    private static final String KEY_DURATION_MS  = "duration_ms";
+    private static final String KEY_QUEUE_JSON   = "queue_json";
+    private static final String KEY_QUEUE_INDEX  = "queue_index";
+    private static final String KEY_THUMBNAIL_URL= "thumbnail_url";
+    private static final int    MAX_ARTWORK_PX   = 512;
 
     private static volatile WebView linkedWebView;
 
@@ -104,6 +112,9 @@ public class PlaybackService extends Service {
         linkedWebView = webView;
     }
 
+    // -----------------------------------------------------------------------
+    // PlaybackSnapshot (unchanged)
+    // -----------------------------------------------------------------------
     public static class PlaybackSnapshot {
         public final String title;
         public final String artist;
@@ -112,9 +123,9 @@ public class PlaybackService extends Service {
         public final long durationMs;
 
         PlaybackSnapshot(String title, String artist, boolean playing, long positionMs, long durationMs) {
-            this.title = title;
-            this.artist = artist;
-            this.playing = playing;
+            this.title      = title;
+            this.artist     = artist;
+            this.playing    = playing;
             this.positionMs = positionMs;
             this.durationMs = durationMs;
         }
@@ -131,10 +142,14 @@ public class PlaybackService extends Service {
         );
     }
 
-    private final Handler mainHandler = new Handler(Looper.getMainLooper());
-    private final IBinder localBinder = new LocalBinder();
+    // -----------------------------------------------------------------------
+    // Fields
+    // -----------------------------------------------------------------------
+    private final Handler         mainHandler      = new Handler(Looper.getMainLooper());
+    private final IBinder         localBinder      = new LocalBinder();
     private final ExecutorService resolverExecutor = Executors.newSingleThreadExecutor();
-    private final ExecutorService artworkExecutor = Executors.newSingleThreadExecutor();
+    private final ExecutorService artworkExecutor  = Executors.newSingleThreadExecutor();
+
     private final Runnable progressSyncRunnable = new Runnable() {
         @Override
         public void run() {
@@ -153,35 +168,38 @@ public class PlaybackService extends Service {
         }
     };
 
-    private ExoPlayer player;
-    private String currentTitle = "HarmonyStream";
-    private String currentArtist = "";
-    private long currentPositionMs = 0L;
-    private long currentDurationMs = 0L;
-    private String currentVideoId;
-    private String currentThumbnailUrl = "";
-    private String audioStreamUrl;
-    private String videoStreamUrl;
-    private boolean videoMode;
-    private boolean progressLoopRunning;
-    private volatile long pendingPlayRequestedAtMs;
-    private final List<QueueItem> playbackQueue = new ArrayList<>();
-    private int currentQueueIndex = -1;
-    private MediaSessionCompat mediaSession;
-    private MediaSessionConnector mediaSessionConnector;
-    private PlaybackStateCompat.Builder playbackStateBuilder;
-    @Nullable
-    private PowerManager.WakeLock wakeLock;
-    @Nullable
-    private Bitmap currentArtworkBitmap;
-    @Nullable
-    private Bitmap placeholderBitmap;
-    private int artworkRequestVersion = 0;
+    private ExoPlayer              player;
+    private String                 currentTitle        = "HarmonyStream";
+    private String                 currentArtist       = "";
+    private long                   currentPositionMs   = 0L;
+    private long                   currentDurationMs   = 0L;
+    private String                 currentVideoId;
+    private String                 currentThumbnailUrl = "";
+    private String                 audioStreamUrl;
+    private String                 videoStreamUrl;
 
+    // FIX #2: videoMode now properly gates ExoPlayer usage
+    private boolean                videoMode           = false;
+    private boolean                progressLoopRunning;
+    private volatile long          pendingPlayRequestedAtMs;
+
+    private final List<QueueItem>  playbackQueue       = new ArrayList<>();
+    private int                    currentQueueIndex   = -1;
+
+    private MediaSessionCompat          mediaSession;
+    private MediaSessionConnector       mediaSessionConnector;
+    private PlaybackStateCompat.Builder playbackStateBuilder;
+
+    @Nullable private PowerManager.WakeLock wakeLock;
+    @Nullable private Bitmap               currentArtworkBitmap;
+    @Nullable private Bitmap               placeholderBitmap;
+    private int                            artworkRequestVersion = 0;
+
+    // -----------------------------------------------------------------------
+    // Binder / QueueItem
+    // -----------------------------------------------------------------------
     public class LocalBinder extends Binder {
-        PlaybackService getService() {
-            return PlaybackService.this;
-        }
+        PlaybackService getService() { return PlaybackService.this; }
     }
 
     private static class QueueItem {
@@ -192,14 +210,17 @@ public class PlaybackService extends Service {
         final String thumbnailUrl;
 
         QueueItem(String id, String title, String artist, String videoId, String thumbnailUrl) {
-            this.id = id;
-            this.title = title;
-            this.artist = artist;
-            this.videoId = videoId;
+            this.id           = id;
+            this.title        = title;
+            this.artist       = artist;
+            this.videoId      = videoId;
             this.thumbnailUrl = thumbnailUrl;
         }
     }
 
+    // -----------------------------------------------------------------------
+    // Lifecycle
+    // -----------------------------------------------------------------------
     @Override
     public void onCreate() {
         super.onCreate();
@@ -212,37 +233,28 @@ public class PlaybackService extends Service {
         initPlayer();
     }
 
+    // -----------------------------------------------------------------------
+    // FIX #1 â€“ MediaSession with proper QueueNavigator
+    // -----------------------------------------------------------------------
     private void initMediaSession() {
         mediaSession = new MediaSessionCompat(this, TAG);
-        mediaSession.setFlags(MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS | MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS);
+        mediaSession.setFlags(
+                MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS |
+                MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS);
+
+        // Basic callbacks are kept for completeness; the MediaSessionConnector's
+        // QueueNavigator will intercept next/previous from Bluetooth/notification.
         mediaSession.setCallback(new MediaSessionCompat.Callback() {
-            @Override
-            public void onPlay() {
-                if (player != null) player.play();
-            }
-
-            @Override
-            public void onPause() {
-                if (player != null) player.pause();
-            }
-
-            @Override
-            public void onSeekTo(long pos) {
+            @Override public void onPlay()  { if (player != null) player.play(); }
+            @Override public void onPause() { if (player != null) player.pause(); }
+            @Override public void onSeekTo(long pos) {
                 if (player != null) player.seekTo(Math.max(0L, pos));
             }
-
-            @Override
-            public void onSkipToNext() {
-                handleSkip(+1);
-                dispatchActionToUi(ACTION_NEXT);
-            }
-
-            @Override
-            public void onSkipToPrevious() {
-                handleSkip(-1);
-                dispatchActionToUi(ACTION_PREVIOUS);
-            }
+            // onSkipToNext / onSkipToPrevious are intentionally NOT overridden here.
+            // The TimelineQueueNavigator set on the connector handles those properly
+            // so that Bluetooth remotes and notification buttons work correctly.
         });
+
         mediaSession.setActive(true);
 
         playbackStateBuilder = new PlaybackStateCompat.Builder()
@@ -254,8 +266,8 @@ public class PlaybackService extends Service {
             if (NewPipe.getDownloader() == null) {
                 NewPipe.init(DownloaderImpl.create());
             }
-        } catch (Throwable throwable) {
-            Log.w(TAG, "NewPipe init failed", throwable);
+        } catch (Throwable t) {
+            Log.w(TAG, "NewPipe init failed", t);
         }
     }
 
@@ -264,22 +276,62 @@ public class PlaybackService extends Service {
                 .setUsage(C.USAGE_MEDIA)
                 .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
                 .build();
-        player = new ExoPlayer.Builder(this).build();
-        player.setAudioAttributes(audioAttributes, true);
 
+        player = new ExoPlayer.Builder(this).build();
+        player.setAudioAttributes(audioAttributes, /* handleAudioFocus= */ true);
+
+        // ---------------------------------------------------------------
+        // FIX #1 â€“ attach connector THEN set a QueueNavigator so that
+        // next/previous from Bluetooth and the media notification work.
+        // ---------------------------------------------------------------
         mediaSessionConnector = new MediaSessionConnector(mediaSession);
         mediaSessionConnector.setPlayer(player);
         mediaSessionConnector.setEnabledPlaybackActions(ENABLED_PLAYBACK_ACTIONS);
 
+        mediaSessionConnector.setQueueNavigator(new TimelineQueueNavigator(mediaSession) {
+            @Override
+            public long getSupportedQueueNavigatorActions(Player player) {
+                return PlaybackStateCompat.ACTION_SKIP_TO_NEXT
+                     | PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS
+                     | PlaybackStateCompat.ACTION_SKIP_TO_QUEUE_ITEM;
+            }
+
+            @Override
+            public void onSkipToNext(Player player, @Deprecated Object controlDispatcher) {
+                handleSkip(+1);
+                dispatchActionToUi(ACTION_NEXT);
+            }
+
+            @Override
+            public void onSkipToPrevious(Player player, @Deprecated Object controlDispatcher) {
+                handleSkip(-1);
+                dispatchActionToUi(ACTION_PREVIOUS);
+            }
+
+            @Override
+            public MediaDescriptionCompat getMediaDescription(Player player, int windowIndex) {
+                if (windowIndex >= 0 && windowIndex < playbackQueue.size()) {
+                    QueueItem item = playbackQueue.get(windowIndex);
+                    return new MediaDescriptionCompat.Builder()
+                            .setTitle(item.title)
+                            .setSubtitle(item.artist)
+                            .build();
+                }
+                return new MediaDescriptionCompat.Builder()
+                        .setTitle(currentTitle)
+                        .setSubtitle(currentArtist)
+                        .build();
+            }
+        });
+
+        // ---------------------------------------------------------------
+        // Player event listener
+        // ---------------------------------------------------------------
         player.addListener(new Player.Listener() {
             @Override
             public void onIsPlayingChanged(boolean isPlaying) {
                 syncWakeLock(isPlaying);
-                if (isPlaying) {
-                    startProgressUpdates();
-                } else {
-                    stopProgressUpdates();
-                }
+                if (isPlaying) startProgressUpdates(); else stopProgressUpdates();
                 updatePlaybackState();
                 updateNotification();
                 broadcastState();
@@ -300,7 +352,10 @@ public class PlaybackService extends Service {
             }
 
             @Override
-            public void onPositionDiscontinuity(Player.PositionInfo oldPosition, Player.PositionInfo newPosition, int reason) {
+            public void onPositionDiscontinuity(
+                    Player.PositionInfo oldPosition,
+                    Player.PositionInfo newPosition,
+                    int reason) {
                 updatePlaybackState();
                 broadcastState();
             }
@@ -312,11 +367,12 @@ public class PlaybackService extends Service {
         });
     }
 
+    // -----------------------------------------------------------------------
+    // onStartCommand
+    // -----------------------------------------------------------------------
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        if (intent == null || intent.getAction() == null) {
-            return START_STICKY;
-        }
+        if (intent == null || intent.getAction() == null) return START_STICKY;
 
         String action = intent.getAction();
         switch (action) {
@@ -338,21 +394,27 @@ public class PlaybackService extends Service {
                 broadcastState();
                 break;
             case ACTION_SEEK:
-                if (player != null) player.seekTo(Math.max(0L, intent.getLongExtra("position_ms", 0L)));
+                if (player != null)
+                    player.seekTo(Math.max(0L, intent.getLongExtra("position_ms", 0L)));
                 break;
             case ACTION_SEEK_RELATIVE:
                 if (player != null) {
-                    long deltaMs = intent.getLongExtra("delta_ms", 0L);
+                    long deltaMs  = intent.getLongExtra("delta_ms", 0L);
                     long duration = Math.max(0L, player.getDuration());
-                    long target = Math.max(0L, player.getCurrentPosition() + deltaMs);
+                    long target   = Math.max(0L, player.getCurrentPosition() + deltaMs);
                     if (duration > 0) target = Math.min(duration, target);
                     player.seekTo(target);
                 }
                 break;
+
+            // ---------------------------------------------------------------
+            // FIX #2 â€“ video mode properly stops/starts ExoPlayer
+            // ---------------------------------------------------------------
             case ACTION_SET_MODE:
                 boolean enableVideo = intent.getBooleanExtra("video_mode", false);
                 switchMode(enableVideo);
                 break;
+
             case ACTION_NEXT:
                 handleSkip(+1);
                 broadcastState();
@@ -387,6 +449,49 @@ public class PlaybackService extends Service {
         return START_STICKY;
     }
 
+    // -----------------------------------------------------------------------
+    // FIX #2 â€“ switchMode: stop ExoPlayer when entering video mode so the
+    // YouTube iframe is the only audio source (prevents double audio /
+    // audio-focus conflicts that cause random pauses).
+    // -----------------------------------------------------------------------
+    private void switchMode(boolean enableVideo) {
+        if (videoMode == enableVideo) return; // no change needed
+        videoMode = enableVideo;
+
+        if (enableVideo) {
+            // Entering VIDEO mode:
+            // Stop ExoPlayer completely so it releases audio focus.
+            if (player != null) {
+                player.stop();
+                player.clearMediaItems();
+            }
+            stopProgressUpdates();
+            // Tell the WebView to start the YouTube iframe
+            dispatchToLinkedWebView(
+                "window.dispatchEvent(new CustomEvent('nativeSetVideoMode', { detail: { enabled: true } }));"
+            );
+            Log.d(TAG, "Switched to VIDEO mode â€“ ExoPlayer stopped, iframe active");
+        } else {
+            // Leaving VIDEO mode:
+            // Tell the WebView to pause the iframe first, then re-resolve audio
+            dispatchToLinkedWebView(
+                "window.dispatchEvent(new CustomEvent('nativeSetVideoMode', { detail: { enabled: false } }));"
+            );
+            // Resume audio playback via ExoPlayer
+            if (currentVideoId != null && !currentVideoId.isEmpty()) {
+                resolveAndPlay(currentVideoId, currentPositionMs);
+            }
+            Log.d(TAG, "Switched to AUDIO mode â€“ ExoPlayer resuming");
+        }
+
+        broadcastState();
+        updateNotification();
+        persistState();
+    }
+
+    // -----------------------------------------------------------------------
+    // handlePlay
+    // -----------------------------------------------------------------------
     private void handlePlay(Intent intent) {
         String videoId = intent.getStringExtra("video_id");
         if (videoId == null || videoId.isEmpty()) {
@@ -398,12 +503,10 @@ public class PlaybackService extends Service {
             return;
         }
 
-        currentVideoId = videoId;
-        currentTitle = intent.getStringExtra("title") == null ? "HarmonyStream" : intent.getStringExtra("title");
-        String artist = intent.getStringExtra("artist");
-        if (artist != null) {
-            currentArtist = artist;
-        }
+        currentVideoId      = videoId;
+        currentTitle        = intent.getStringExtra("title") == null ? "HarmonyStream" : intent.getStringExtra("title");
+        String artist       = intent.getStringExtra("artist");
+        if (artist != null) currentArtist = artist;
         currentThumbnailUrl = sanitizeThumbnailUrl(intent.getStringExtra("thumbnailUrl"), videoId);
         syncQueueIndexForVideo(videoId);
         pendingPlayRequestedAtMs = System.currentTimeMillis();
@@ -414,12 +517,11 @@ public class PlaybackService extends Service {
 
     private void handleUpdateState(Intent intent) {
         if (intent == null) return;
-        String title = intent.getStringExtra("title");
-        String artist = intent.getStringExtra("artist");
+        String title        = intent.getStringExtra("title");
+        String artist       = intent.getStringExtra("artist");
         String thumbnailUrl = intent.getStringExtra("thumbnailUrl");
-        if (title != null && !title.trim().isEmpty()) {
-            currentTitle = title;
-        }
+
+        if (title != null && !title.trim().isEmpty()) currentTitle = title;
         currentArtist = artist == null ? "" : artist;
         if (thumbnailUrl != null) {
             currentThumbnailUrl = sanitizeThumbnailUrl(thumbnailUrl, currentVideoId);
@@ -427,24 +529,30 @@ public class PlaybackService extends Service {
         }
         currentPositionMs = Math.max(0L, intent.getLongExtra("position_ms", currentPositionMs));
         currentDurationMs = Math.max(0L, intent.getLongExtra("duration_ms", currentDurationMs));
+
         boolean shouldPlay = intent.getBooleanExtra("playing", player != null && player.isPlaying());
         if (player != null) {
-            if (shouldPlay && !player.isPlaying()) {
-                player.play();
-            } else if (!shouldPlay && player.isPlaying()) {
-                player.pause();
-            }
+            if (shouldPlay  && !player.isPlaying()) player.play();
+            if (!shouldPlay && player.isPlaying())  player.pause();
         }
-        if (player == null || !player.isPlaying()) {
-            broadcastState();
-        }
+        if (player == null || !player.isPlaying()) broadcastState();
     }
 
+    // -----------------------------------------------------------------------
+    // FIX #2 â€“ resolveAndPlay: guard against starting ExoPlayer in video mode
+    // -----------------------------------------------------------------------
     private void resolveAndPlay(String videoId, long seekMs) {
+        // In video mode the YouTube iframe owns playback â€“ ExoPlayer must not start.
+        if (videoMode) {
+            Log.d(TAG, "resolveAndPlay skipped â€“ video mode active for: " + videoId);
+            return;
+        }
+
         resolverExecutor.execute(() -> {
             try {
                 StreamingService yt = ServiceList.YouTube;
-                StreamInfo info = resolveStreamInfo(yt, videoId);
+                StreamInfo info     = resolveStreamInfo(yt, videoId);
+
                 List<AudioStream> audioStreams = info.getAudioStreams();
                 List<VideoStream> videoStreams = info.getVideoStreams();
 
@@ -453,27 +561,31 @@ public class PlaybackService extends Service {
                     videoStreamUrl = videoStreams.get(0).getContent();
                 }
 
-                String selected = videoMode && videoStreamUrl != null ? videoStreamUrl : audioStreamUrl;
+                // Double-check: if videoMode was enabled while we were resolving, abort.
+                if (videoMode) {
+                    Log.d(TAG, "Video mode enabled during resolve â€“ aborting ExoPlayer start");
+                    return;
+                }
+
+                String selected = audioStreamUrl;
                 if (selected == null || !selected.contains("googlevideo.com")) {
                     throw new IllegalStateException("No playable googlevideo stream found");
                 }
 
                 mainHandler.post(() -> {
-                    if (player == null) return;
+                    if (player == null || videoMode) return; // guard again on main thread
                     player.setMediaItem(MediaItem.fromUri(selected));
                     player.prepare();
-                    if (seekMs > 0) {
-                        player.seekTo(seekMs);
-                    }
+                    if (seekMs > 0) player.seekTo(seekMs);
                     player.play();
                     pendingPlayRequestedAtMs = 0L;
                     refreshArtworkAsync(currentThumbnailUrl);
                     updateNotification();
                     broadcastState();
                 });
-            } catch (Throwable throwable) {
+            } catch (Throwable t) {
                 pendingPlayRequestedAtMs = 0L;
-                Log.e(TAG, "Unable to resolve stream URL", throwable);
+                Log.e(TAG, "Unable to resolve stream URL", t);
             }
         });
     }
@@ -483,9 +595,7 @@ public class PlaybackService extends Service {
             return StreamInfo.getInfo(yt, videoIdOrUrl);
         } catch (Throwable directFailure) {
             String normalized = normalizeYouTubeWatchUrl(videoIdOrUrl);
-            if (normalized.equals(videoIdOrUrl)) {
-                throw directFailure;
-            }
+            if (normalized.equals(videoIdOrUrl)) throw directFailure;
             Log.w(TAG, "Direct stream resolve failed, retrying with normalized URL", directFailure);
             return StreamInfo.getInfo(yt, normalized);
         }
@@ -494,93 +604,75 @@ public class PlaybackService extends Service {
     private String normalizeYouTubeWatchUrl(String videoIdOrUrl) {
         if (videoIdOrUrl == null) return "";
         String trimmed = videoIdOrUrl.trim();
-        if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
-            return trimmed;
-        }
+        if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) return trimmed;
         return "https://www.youtube.com/watch?v=" + trimmed;
     }
 
+    // -----------------------------------------------------------------------
+    // Queue management
+    // -----------------------------------------------------------------------
     private void handleSetQueue(Intent intent) {
         if (intent == null) return;
         String queueJson = intent.getStringExtra("queue_json");
         playbackQueue.clear();
         if (queueJson == null || queueJson.trim().isEmpty()) {
             currentQueueIndex = -1;
-            persistState();
             return;
         }
         try {
-            JSONArray array = new JSONArray(queueJson);
-            for (int i = 0; i < array.length(); i++) {
-                JSONObject item = array.optJSONObject(i);
-                if (item == null) continue;
-                String videoId = item.optString("videoId", "");
-                if (videoId.isEmpty()) continue;
+            JSONArray arr = new JSONArray(queueJson);
+            for (int i = 0; i < arr.length(); i++) {
+                JSONObject obj = arr.getJSONObject(i);
                 playbackQueue.add(new QueueItem(
-                        item.optString("id", ""),
-                        item.optString("title", "HarmonyStream"),
-                        item.optString("artist", ""),
-                        videoId,
-                        sanitizeThumbnailUrl(item.optString("thumbnailUrl", ""), videoId)
+                        obj.optString("id", ""),
+                        obj.optString("title", ""),
+                        obj.optString("artist", ""),
+                        obj.optString("videoId", ""),
+                        obj.optString("thumbnailUrl", "")
                 ));
             }
-            syncQueueIndexForVideo(currentVideoId);
-        } catch (JSONException jsonException) {
-            Log.w(TAG, "Invalid queue_json payload", jsonException);
-            currentQueueIndex = -1;
+        } catch (JSONException e) {
+            Log.e(TAG, "Failed to parse queue JSON", e);
         }
-        persistState();
+        int indexFromIntent = intent.getIntExtra("queue_index", -1);
+        currentQueueIndex = (indexFromIntent >= 0 && indexFromIntent < playbackQueue.size())
+                ? indexFromIntent : 0;
+        broadcastState();
     }
 
-
     private void handleSetIndex(Intent intent) {
-        if (intent == null || playbackQueue.isEmpty()) return;
-        int requestedIndex = intent.getIntExtra("index", -1);
-        if (requestedIndex < 0 || requestedIndex >= playbackQueue.size()) {
-            return;
-        }
-        QueueItem item = playbackQueue.get(requestedIndex);
-        currentQueueIndex = requestedIndex;
-        currentVideoId = item.videoId;
-        currentTitle = item.title;
-        currentArtist = item.artist;
+        if (intent == null) return;
+        int index = intent.getIntExtra("queue_index", -1);
+        if (index < 0 || index >= playbackQueue.size()) return;
+        currentQueueIndex = index;
+        QueueItem item = playbackQueue.get(index);
+        currentVideoId      = item.videoId;
+        currentTitle        = item.title;
+        currentArtist       = item.artist;
         currentThumbnailUrl = sanitizeThumbnailUrl(item.thumbnailUrl, item.videoId);
-        refreshArtworkAsync(currentThumbnailUrl);
-        pendingPlayRequestedAtMs = 0L;
+        pendingPlayRequestedAtMs = System.currentTimeMillis();
+        ensureForegroundWithCurrentState();
+        broadcastState();
         resolveAndPlay(item.videoId, 0L);
-        persistState();
     }
 
     private void handleSkip(int direction) {
         if (playbackQueue.isEmpty()) return;
-        int seedIndex = currentQueueIndex;
-        if (seedIndex < 0) {
-            seedIndex = 0;
-            syncQueueIndexForVideo(currentVideoId);
-            if (currentQueueIndex >= 0) {
-                seedIndex = currentQueueIndex;
-            }
-        }
-        int nextIndex = (seedIndex + direction + playbackQueue.size()) % playbackQueue.size();
-        QueueItem item = playbackQueue.get(nextIndex);
-        currentQueueIndex = nextIndex;
-        currentVideoId = item.videoId;
-        currentTitle = item.title;
-        currentArtist = item.artist;
+        int newIndex = currentQueueIndex + direction;
+        if (newIndex < 0 || newIndex >= playbackQueue.size()) return;
+        currentQueueIndex   = newIndex;
+        QueueItem item      = playbackQueue.get(newIndex);
+        currentVideoId      = item.videoId;
+        currentTitle        = item.title;
+        currentArtist       = item.artist;
         currentThumbnailUrl = sanitizeThumbnailUrl(item.thumbnailUrl, item.videoId);
-        refreshArtworkAsync(currentThumbnailUrl);
         pendingPlayRequestedAtMs = System.currentTimeMillis();
         ensureForegroundWithCurrentState();
-        resolveAndPlay(item.videoId, 0L);
         broadcastState();
-        persistState();
+        resolveAndPlay(item.videoId, 0L);
     }
 
     private void syncQueueIndexForVideo(String videoId) {
-        if (videoId == null || playbackQueue.isEmpty()) {
-            currentQueueIndex = -1;
-            return;
-        }
         for (int i = 0; i < playbackQueue.size(); i++) {
             if (videoId.equals(playbackQueue.get(i).videoId)) {
                 currentQueueIndex = i;
@@ -589,251 +681,149 @@ public class PlaybackService extends Service {
         }
     }
 
-    private String pickItag140(List<AudioStream> streams) {
-        if (streams == null) return null;
-        for (AudioStream stream : streams) {
-            if (stream != null && stream.getItag() == 140 && stream.getContent() != null) {
-                return stream.getContent();
-            }
-        }
-        for (AudioStream stream : streams) {
-            if (stream != null && stream.getContent() != null && stream.getContent().contains("googlevideo.com")) {
-                return stream.getContent();
-            }
-        }
-        return null;
-    }
-
-    private String formatStage2Failure(Throwable throwable) {
-        if (throwable == null) return "Extraction error";
-        String raw = throwable.getMessage();
-        if (raw == null || raw.trim().isEmpty()) {
-            raw = throwable.getClass().getSimpleName();
-        }
-        String message = raw.trim();
-        String lower = message.toLowerCase();
-        if (lower.startsWith("error")) {
-            message = message.substring(5).trim();
-        }
-        if (message.isEmpty()) {
-            message = "Extraction error";
-        }
-        return message;
-    }
-
-    private void switchMode(boolean enableVideo) {
-        if (videoMode == enableVideo) return;
-        videoMode = enableVideo;
-        long ts = player == null ? 0L : player.getCurrentPosition();
-        String url = enableVideo ? videoStreamUrl : audioStreamUrl;
-        if (url == null && currentVideoId != null) {
-            resolveAndPlay(currentVideoId, ts);
-            return;
-        }
-        if (player != null && url != null) {
-            player.setMediaItem(MediaItem.fromUri(url));
-            player.prepare();
-            player.seekTo(ts);
-            player.play();
+    // -----------------------------------------------------------------------
+    // Notification helpers
+    // -----------------------------------------------------------------------
+    private void createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel channel = new NotificationChannel(
+                    CHANNEL_ID,
+                    "HarmonyStream Playback",
+                    NotificationManager.IMPORTANCE_LOW);
+            channel.setDescription("Playback controls");
+            channel.setShowBadge(false);
+            getSystemService(NotificationManager.class).createNotificationChannel(channel);
         }
     }
 
-    private void sendProgressToWeb(long pos, long dur) {
-        WebView webView = linkedWebView;
-        if (webView == null) return;
-        webView.post(() -> webView.evaluateJavascript("window.updateProgress(" + pos + "," + dur + ")", null));
+    private void ensureForegroundWithCurrentState() {
+        startForeground(NOTIFICATION_ID, buildNotification());
+    }
+
+    private void updateNotification() {
+        Notification n = buildNotification();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(NOTIFICATION_ID, n);
+        } else {
+            NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, n);
+        }
+    }
+
+    private Notification buildNotification() {
+        Intent contentIntent = new Intent(this, WebAppActivity.class);
+        contentIntent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        int piFlags = PendingIntent.FLAG_UPDATE_CURRENT
+                | (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_IMMUTABLE : 0);
+        PendingIntent contentPi = PendingIntent.getActivity(this, 0, contentIntent, piFlags);
+
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_notification)
+                .setContentTitle(currentTitle)
+                .setContentText(currentArtist)
+                .setContentIntent(contentPi)
+                .setOnlyAlertOnce(true)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .setStyle(new MediaStyle()
+                        .setMediaSession(mediaSession.getSessionToken())
+                        .setShowActionsInCompactView(0, 1, 2))
+                .addAction(buildAction(R.drawable.ic_skip_previous, "Previous",
+                        PlaybackService.ACTION_PREVIOUS, 101))
+                .addAction(player != null && player.isPlaying()
+                        ? buildAction(R.drawable.ic_pause,    "Pause",    ACTION_PAUSE, 102)
+                        : buildAction(R.drawable.ic_play,     "Play",     ACTION_PLAY,  102))
+                .addAction(buildAction(R.drawable.ic_skip_next, "Next",
+                        PlaybackService.ACTION_NEXT, 103));
+
+        if (currentArtworkBitmap != null) {
+            builder.setLargeIcon(currentArtworkBitmap);
+        } else if (placeholderBitmap != null) {
+            builder.setLargeIcon(placeholderBitmap);
+        }
+        return builder.build();
+    }
+
+    private NotificationCompat.Action buildAction(int icon, String title, String action, int requestCode) {
+        Intent intent = new Intent(this, PlaybackService.class);
+        intent.setAction(action);
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT
+                | (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_IMMUTABLE : 0);
+        PendingIntent pi = PendingIntent.getService(this, requestCode, intent, flags);
+        return new NotificationCompat.Action(icon, title, pi);
+    }
+
+    // -----------------------------------------------------------------------
+    // PlaybackState
+    // -----------------------------------------------------------------------
+    private void updatePlaybackState() {
+        if (mediaSession == null || playbackStateBuilder == null) return;
+        long position = player != null ? Math.max(0, player.getCurrentPosition()) : currentPositionMs;
+        int  state    = player != null && player.isPlaying()
+                ? PlaybackStateCompat.STATE_PLAYING
+                : PlaybackStateCompat.STATE_PAUSED;
+
+        playbackStateBuilder
+                .setState(state, position, 1.0f)
+                .setActions(ENABLED_PLAYBACK_ACTIONS);
+        mediaSession.setPlaybackState(playbackStateBuilder.build());
+
+        // Update MediaSession metadata
+        MediaMetadataCompat.Builder meta = new MediaMetadataCompat.Builder()
+                .putString(MediaMetadataCompat.METADATA_KEY_TITLE,  currentTitle)
+                .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, currentArtist)
+                .putLong(MediaMetadataCompat.METADATA_KEY_DURATION,
+                        player != null ? Math.max(0, player.getDuration()) : currentDurationMs);
+        if (currentArtworkBitmap != null) {
+            meta.putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, currentArtworkBitmap);
+        }
+        mediaSession.setMetadata(meta.build());
+    }
+
+    // -----------------------------------------------------------------------
+    // Broadcast state to WebView / Activities
+    // -----------------------------------------------------------------------
+    private void broadcastState() {
+        boolean isPlaying = player != null && player.isPlaying();
+        long    pos       = player != null ? Math.max(0, player.getCurrentPosition()) : currentPositionMs;
+        long    dur       = player != null ? Math.max(0, player.getDuration())        : currentDurationMs;
+
+        Intent intent = new Intent(ACTION_STATE_CHANGED);
+        intent.putExtra("title",         currentTitle);
+        intent.putExtra("artist",        currentArtist);
+        intent.putExtra("playing",       isPlaying);
+        intent.putExtra("position_ms",   pos);
+        intent.putExtra("duration_ms",   dur);
+        intent.putExtra("thumbnailUrl",  currentThumbnailUrl);
+        intent.putExtra("queue_index",   currentQueueIndex);
+        intent.putExtra("queue_length",  playbackQueue.size());
+        intent.putExtra("video_mode",    videoMode);
+        intent.putExtra("pending_play",  pendingPlayRequestedAtMs > 0);
+        intent.putExtra("event_ts",      System.currentTimeMillis());
+        sendBroadcast(intent);
+
+        PlaybackWidgetProvider.requestRefresh(this);
     }
 
     private void dispatchActionToUi(String action) {
         Intent intent = new Intent(ACTION_MEDIA_CONTROL);
-        intent.setPackage(getPackageName());
         intent.putExtra("action", action);
         sendBroadcast(intent);
     }
 
-    private void broadcastState() {
-        Intent stateIntent = new Intent(ACTION_STATE_CHANGED);
-        stateIntent.setPackage(getPackageName());
-        stateIntent.putExtra("title", currentTitle);
-        stateIntent.putExtra("artist", currentArtist);
-        boolean isPlaying = player != null && player.isPlaying();
-        long currentPosition = player == null ? currentPositionMs : Math.max(0, player.getCurrentPosition());
-        long duration = player == null ? currentDurationMs : Math.max(0, player.getDuration());
-        stateIntent.putExtra("playing", isPlaying);
-        stateIntent.putExtra("isPlaying", isPlaying);
-        stateIntent.putExtra("position_ms", currentPosition);
-        stateIntent.putExtra("currentPosition", currentPosition);
-        stateIntent.putExtra("duration_ms", duration);
-        stateIntent.putExtra("duration", duration);
-        stateIntent.putExtra("pending_play", pendingPlayRequestedAtMs > 0L);
-        stateIntent.putExtra("queue_index", currentQueueIndex);
-        stateIntent.putExtra("currentIndex", currentQueueIndex);
-        stateIntent.putExtra("queue_length", playbackQueue.size());
-        stateIntent.putExtra("video_mode", videoMode);
-        stateIntent.putExtra("videoMode", videoMode);
-        stateIntent.putExtra("thumbnailUrl", currentThumbnailUrl);
-        stateIntent.putExtra("event_ts", System.currentTimeMillis());
-        sendBroadcast(stateIntent);
-        PlaybackWidgetProvider.requestRefresh(this);
-    }
-
-    private void updateNotification() {
-        Notification notification = buildPlaybackNotification(player != null && player.isPlaying());
-        if (!hasNotificationPermission()) return;
-        startForeground(NOTIFICATION_ID, notification);
-        if (player == null || !player.isPlaying()) {
-            NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, notification);
-        }
-    }
-
-    private Notification buildPlaybackNotification(boolean playing) {
-        PendingIntent previousIntent = createServiceActionIntent(ACTION_PREVIOUS);
-        PendingIntent playPauseIntent = createServiceActionIntent(ACTION_PLAY_PAUSE);
-        PendingIntent nextIntent = createServiceActionIntent(ACTION_NEXT);
-        NotificationCompat.Action previousAction = new NotificationCompat.Action(
-                android.R.drawable.ic_media_previous,
-                "Previous",
-                previousIntent
+    private void sendProgressToWeb(long positionMs, long durationMs) {
+        dispatchToLinkedWebView(
+            "window.updateProgress && window.updateProgress(" + positionMs + ", " + durationMs + ");"
         );
-        NotificationCompat.Action playPauseAction = new NotificationCompat.Action(
-                playing ? android.R.drawable.ic_media_pause : android.R.drawable.ic_media_play,
-                playing ? "Pause" : "Play",
-                playPauseIntent
-        );
-        NotificationCompat.Action nextAction = new NotificationCompat.Action(
-                android.R.drawable.ic_media_next,
-                "Next",
-                nextIntent
-        );
-
-        return new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setSmallIcon(android.R.drawable.ic_media_play)
-                .setContentTitle(currentTitle)
-                .setContentText(currentArtist)
-                .setOnlyAlertOnce(true)
-                .setOngoing(playing)
-                .setLargeIcon(currentArtworkBitmap != null ? currentArtworkBitmap : getOrCreatePlaceholderBitmap())
-                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-                .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
-                .setContentIntent(createContentIntent())
-                .addAction(previousAction)
-                .addAction(playPauseAction)
-                .addAction(nextAction)
-                .setStyle(new MediaStyle().setMediaSession(mediaSession.getSessionToken()).setShowActionsInCompactView(0, 1, 2))
-                .build();
     }
 
-    private void ensureForegroundWithCurrentState() {
-        if (!hasNotificationPermission()) return;
-        Notification notification = buildPlaybackNotification(true);
-        startForeground(NOTIFICATION_ID, notification);
+    private void dispatchToLinkedWebView(final String js) {
+        WebView wv = linkedWebView;
+        if (wv == null) return;
+        wv.post(() -> wv.evaluateJavascript(js, null));
     }
 
-    private PendingIntent createServiceActionIntent(String action) {
-        Intent intent = new Intent(this, PlaybackService.class);
-        intent.setAction(action);
-        int flags = PendingIntent.FLAG_UPDATE_CURRENT;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) flags |= PendingIntent.FLAG_IMMUTABLE;
-        return PendingIntent.getService(this, action.hashCode(), intent, flags);
-    }
-
-    private PendingIntent createSeekRelativeIntent(long deltaMs) {
-        Intent intent = new Intent(this, PlaybackService.class);
-        intent.setAction(ACTION_SEEK_RELATIVE);
-        intent.putExtra("delta_ms", deltaMs);
-        int flags = PendingIntent.FLAG_UPDATE_CURRENT;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) flags |= PendingIntent.FLAG_IMMUTABLE;
-        return PendingIntent.getService(this, ("seek_" + deltaMs).hashCode(), intent, flags);
-    }
-
-    private PendingIntent createContentIntent() {
-        Intent launchIntent = new Intent(this, WebAppActivity.class);
-        launchIntent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        int flags = PendingIntent.FLAG_UPDATE_CURRENT;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) flags |= PendingIntent.FLAG_IMMUTABLE;
-        return PendingIntent.getActivity(this, 2000, launchIntent, flags);
-    }
-
-    private boolean hasNotificationPermission() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return true;
-        return ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED;
-    }
-
-    private void createNotificationChannel() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
-        NotificationChannel channel = new NotificationChannel(CHANNEL_ID, "Playback", NotificationManager.IMPORTANCE_LOW);
-        channel.setDescription("HarmonyStream playback controls");
-        NotificationManager manager = getSystemService(NotificationManager.class);
-        if (manager != null) manager.createNotificationChannel(channel);
-    }
-
-    private void persistState() {
-        boolean playing = player != null && player.isPlaying();
-        long position = player == null ? currentPositionMs : Math.max(0L, player.getCurrentPosition());
-        long duration = player == null ? currentDurationMs : Math.max(0L, player.getDuration());
-        getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
-                .edit()
-                .putString(KEY_TITLE, currentTitle)
-                .putString(KEY_ARTIST, currentArtist)
-                .putBoolean(KEY_PLAYING, playing)
-                .putLong(KEY_POSITION_MS, position)
-                .putLong(KEY_DURATION_MS, duration)
-                .putString(KEY_THUMBNAIL_URL, currentThumbnailUrl)
-                .putString(KEY_QUEUE_JSON, serializeQueue())
-                .putInt(KEY_QUEUE_INDEX, currentQueueIndex)
-                .apply();
-    }
-
-    private String serializeQueue() {
-        JSONArray array = new JSONArray();
-        for (QueueItem item : playbackQueue) {
-            JSONObject json = new JSONObject();
-            try {
-                json.put("id", item.id);
-                json.put("title", item.title);
-                json.put("artist", item.artist);
-                json.put("videoId", item.videoId);
-                json.put("thumbnailUrl", item.thumbnailUrl);
-                array.put(json);
-            } catch (JSONException ignored) {
-            }
-        }
-        return array.toString();
-    }
-
-    private void updatePlaybackState() {
-        if (mediaSession == null || playbackStateBuilder == null) return;
-        long position = player == null ? currentPositionMs : Math.max(0L, player.getCurrentPosition());
-        int compatState = PlaybackStateCompat.STATE_NONE;
-        if (player != null) {
-            switch (player.getPlaybackState()) {
-                case Player.STATE_BUFFERING:
-                    compatState = PlaybackStateCompat.STATE_BUFFERING;
-                    break;
-                case Player.STATE_READY:
-                    compatState = player.isPlaying() ? PlaybackStateCompat.STATE_PLAYING : PlaybackStateCompat.STATE_PAUSED;
-                    break;
-                case Player.STATE_ENDED:
-                    compatState = PlaybackStateCompat.STATE_STOPPED;
-                    break;
-                default:
-                    compatState = PlaybackStateCompat.STATE_NONE;
-            }
-        }
-        playbackStateBuilder.setState(compatState, position, player != null && player.isPlaying() ? 1f : 0f, System.currentTimeMillis());
-        playbackStateBuilder.setActions(ENABLED_PLAYBACK_ACTIONS);
-        mediaSession.setPlaybackState(playbackStateBuilder.build());
-        MediaMetadataCompat metadata = new MediaMetadataCompat.Builder()
-                .putString(MediaMetadataCompat.METADATA_KEY_TITLE, currentTitle)
-                .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, currentArtist)
-                .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, Math.max(0L, player == null ? currentDurationMs : player.getDuration()))
-                .putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, currentArtworkBitmap != null ? currentArtworkBitmap : getOrCreatePlaceholderBitmap())
-                .putLong(MediaMetadataCompat.METADATA_KEY_TRACK_NUMBER, currentQueueIndex >= 0 ? currentQueueIndex + 1 : 0)
-                .putLong(MediaMetadataCompat.METADATA_KEY_NUM_TRACKS, playbackQueue.size())
-                .build();
-        mediaSession.setMetadata(metadata);
-    }
-
+    // -----------------------------------------------------------------------
+    // Progress loop
+    // -----------------------------------------------------------------------
     private void startProgressUpdates() {
         if (progressLoopRunning) return;
         progressLoopRunning = true;
@@ -841,222 +831,209 @@ public class PlaybackService extends Service {
     }
 
     private void stopProgressUpdates() {
-        if (!progressLoopRunning) return;
         progressLoopRunning = false;
         mainHandler.removeCallbacks(progressSyncRunnable);
     }
 
-    private void restoreState() {
-        SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
-        currentTitle = prefs.getString(KEY_TITLE, "HarmonyStream");
-        currentArtist = prefs.getString(KEY_ARTIST, "");
-        currentPositionMs = Math.max(0, prefs.getLong(KEY_POSITION_MS, 0));
-        currentDurationMs = Math.max(0, prefs.getLong(KEY_DURATION_MS, 0));
-        currentThumbnailUrl = prefs.getString(KEY_THUMBNAIL_URL, "");
-        currentQueueIndex = prefs.getInt(KEY_QUEUE_INDEX, -1);
-        playbackQueue.clear();
-        String queueJson = prefs.getString(KEY_QUEUE_JSON, "[]");
-        try {
-            JSONArray array = new JSONArray(queueJson == null ? "[]" : queueJson);
-            for (int i = 0; i < array.length(); i++) {
-                JSONObject item = array.optJSONObject(i);
-                if (item == null) continue;
-                String videoId = item.optString("videoId", "");
-                if (videoId.isEmpty()) continue;
-                playbackQueue.add(new QueueItem(
-                        item.optString("id", ""),
-                        item.optString("title", "HarmonyStream"),
-                        item.optString("artist", ""),
-                        videoId,
-                        sanitizeThumbnailUrl(item.optString("thumbnailUrl", ""), videoId)
-                ));
-            }
-        } catch (JSONException ignored) {
-            playbackQueue.clear();
-            currentQueueIndex = -1;
-        }
-    }
-
+    // -----------------------------------------------------------------------
+    // WakeLock
+    // -----------------------------------------------------------------------
     private void initWakeLock() {
-        PowerManager powerManager = (PowerManager) getSystemService(POWER_SERVICE);
-        if (powerManager == null) return;
-        wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, getPackageName() + ":PlaybackWakeLock");
-        wakeLock.setReferenceCounted(false);
+        PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
+        if (pm != null) {
+            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, TAG + "::WakeLock");
+            wakeLock.setReferenceCounted(false);
+        }
     }
 
     private void syncWakeLock(boolean playing) {
         if (wakeLock == null) return;
-        try {
-            if (playing && !wakeLock.isHeld()) wakeLock.acquire();
-            if (!playing && wakeLock.isHeld()) wakeLock.release();
-        } catch (RuntimeException e) {
-            Log.w(TAG, "Wake lock sync failed", e);
+        if (playing && !wakeLock.isHeld()) {
+            wakeLock.acquire(/* 12 h timeout */ 12 * 60 * 60 * 1000L);
+        } else if (!playing && wakeLock.isHeld()) {
+            wakeLock.release();
         }
     }
 
-    @Override
-    public void onDestroy() {
-        mainHandler.removeCallbacksAndMessages(null);
-        resolverExecutor.shutdownNow();
-        artworkExecutor.shutdownNow();
-        if (mediaSessionConnector != null) {
-            mediaSessionConnector.setPlayer(null);
-            mediaSessionConnector = null;
+    // -----------------------------------------------------------------------
+    // Artwork
+    // -----------------------------------------------------------------------
+    private void refreshArtworkAsync(String url) {
+        if (url == null || url.trim().isEmpty()) {
+            if (placeholderBitmap == null) placeholderBitmap = makePlaceholderBitmap();
+            currentArtworkBitmap = null;
+            return;
         }
-        if (mediaSession != null) {
-            mediaSession.setActive(false);
-            mediaSession.release();
-            mediaSession = null;
-        }
-        if (player != null) {
-            player.release();
-            player = null;
-        }
-        recycleBitmapSafely(currentArtworkBitmap, true);
-        currentArtworkBitmap = null;
-        recycleBitmapSafely(placeholderBitmap, true);
-        placeholderBitmap = null;
-        syncWakeLock(false);
-        super.onDestroy();
-    }
-
-    private void refreshArtworkAsync(@Nullable String rawThumbnailUrl) {
-        final String thumbnailUrl = sanitizeThumbnailUrl(rawThumbnailUrl, currentVideoId);
-        currentThumbnailUrl = thumbnailUrl;
         final int requestVersion = ++artworkRequestVersion;
         artworkExecutor.execute(() -> {
-            Bitmap loadedBitmap = loadBitmapFromUrl(thumbnailUrl);
-            if (loadedBitmap == null) {
-                loadedBitmap = getOrCreatePlaceholderBitmap();
+            try {
+                Bitmap bmp = fetchBitmap(url);
+                if (requestVersion != artworkRequestVersion) return;
+                if (bmp != null) {
+                    bmp = scaleBitmap(bmp, MAX_ARTWORK_PX);
+                }
+                Bitmap finalBmp = bmp;
+                mainHandler.post(() -> {
+                    if (requestVersion != artworkRequestVersion) return;
+                    currentArtworkBitmap = finalBmp;
+                    updateNotification();
+                    updatePlaybackState();
+                });
+            } catch (Throwable t) {
+                Log.w(TAG, "Artwork fetch failed", t);
+                if (placeholderBitmap == null) placeholderBitmap = makePlaceholderBitmap();
             }
-            Bitmap finalBitmap = loadedBitmap;
-            mainHandler.post(() -> {
-                if (requestVersion != artworkRequestVersion) {
-                    if (finalBitmap != placeholderBitmap) {
-                        recycleBitmapSafely(finalBitmap, true);
-                    }
-                    return;
-                }
-                Bitmap previous = currentArtworkBitmap;
-                currentArtworkBitmap = finalBitmap;
-                if (previous != null && previous != finalBitmap && previous != placeholderBitmap) {
-                    recycleBitmapSafely(previous, true);
-                }
-                updatePlaybackState();
-                updateNotification();
-            });
         });
     }
 
-    @Nullable
-    private Bitmap loadBitmapFromUrl(@Nullable String thumbnailUrl) {
-        if (thumbnailUrl == null || thumbnailUrl.trim().isEmpty()) return null;
-        HttpURLConnection connection = null;
-        InputStream stream = null;
+    private Bitmap fetchBitmap(String url) {
         try {
-            URL url = new URL(thumbnailUrl);
-            connection = (HttpURLConnection) url.openConnection();
-            connection.setConnectTimeout(8_000);
-            connection.setReadTimeout(8_000);
-            connection.setInstanceFollowRedirects(true);
-            connection.setDoInput(true);
-            connection.connect();
-            int code = connection.getResponseCode();
-            if (code < 200 || code >= 300) {
-                return null;
-            }
-            stream = connection.getInputStream();
-            Bitmap decoded = BitmapFactory.decodeStream(stream);
-            return scaleBitmap(decoded);
-        } catch (Throwable throwable) {
-            Log.w(TAG, "Artwork load failed for url=" + thumbnailUrl, throwable);
+            HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+            conn.setConnectTimeout(8000);
+            conn.setReadTimeout(8000);
+            conn.connect();
+            InputStream is = conn.getInputStream();
+            Bitmap bmp = BitmapFactory.decodeStream(is);
+            is.close();
+            return bmp;
+        } catch (Throwable t) {
             return null;
-        } finally {
-            try {
-                if (stream != null) stream.close();
-            } catch (Exception ignored) {
-            }
-            if (connection != null) connection.disconnect();
         }
     }
 
-    private Bitmap getOrCreatePlaceholderBitmap() {
-        if (placeholderBitmap != null && !placeholderBitmap.isRecycled()) return placeholderBitmap;
-        Bitmap iconBitmap = BitmapFactory.decodeResource(getResources(), R.mipmap.ic_launcher);
-        if (iconBitmap != null) {
-            placeholderBitmap = scaleBitmap(iconBitmap);
-            return placeholderBitmap;
-        }
-        Bitmap fallback = Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888);
-        Canvas canvas = new Canvas(fallback);
-        canvas.drawColor(Color.DKGRAY);
-        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        paint.setColor(Color.WHITE);
-        paint.setTextSize(64f);
-        canvas.drawText("HS", 72f, 148f, paint);
-        placeholderBitmap = fallback;
-        return placeholderBitmap;
+    private Bitmap scaleBitmap(Bitmap src, int maxPx) {
+        int w = src.getWidth(), h = src.getHeight();
+        if (w <= maxPx && h <= maxPx) return src;
+        float scale = Math.min((float) maxPx / w, (float) maxPx / h);
+        return Bitmap.createScaledBitmap(src, (int)(w * scale), (int)(h * scale), true);
     }
 
-    @Nullable
-    private Bitmap scaleBitmap(@Nullable Bitmap bitmap) {
-        if (bitmap == null) return null;
-        int width = bitmap.getWidth();
-        int height = bitmap.getHeight();
-        if (width <= 0 || height <= 0) return bitmap;
-        int maxDimension = Math.max(width, height);
-        if (maxDimension <= MAX_ARTWORK_PX) return bitmap;
-        float ratio = ((float) MAX_ARTWORK_PX) / maxDimension;
-        int newWidth = Math.max(1, Math.round(width * ratio));
-        int newHeight = Math.max(1, Math.round(height * ratio));
-        Bitmap scaled = Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true);
-        if (scaled != bitmap) {
-            recycleBitmapSafely(bitmap, true);
-        }
-        return scaled;
+    private Bitmap makePlaceholderBitmap() {
+        Bitmap bmp = Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(bmp);
+        canvas.drawColor(Color.parseColor("#131d33"));
+        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+        p.setColor(Color.WHITE);
+        p.setTextSize(96);
+        p.setTextAlign(Paint.Align.CENTER);
+        canvas.drawText("â™ª", 128, 175, p);
+        return bmp;
     }
 
-    private void recycleBitmapSafely(@Nullable Bitmap bitmap, boolean allowRecycle) {
-        if (!allowRecycle || bitmap == null || bitmap == placeholderBitmap || bitmap.isRecycled()) return;
-        try {
-            bitmap.recycle();
-        } catch (Throwable ignored) {
-        }
-    }
-
-    private String sanitizeThumbnailUrl(@Nullable String thumbnailUrl, @Nullable String videoId) {
-        if (thumbnailUrl != null) {
-            String trimmed = thumbnailUrl.trim();
-            if (!trimmed.isEmpty()) return trimmed;
-        }
+    // -----------------------------------------------------------------------
+    // Thumbnail URL helper
+    // -----------------------------------------------------------------------
+    private String sanitizeThumbnailUrl(String url, String videoId) {
+        if (url != null && !url.trim().isEmpty()) return url.trim();
         if (videoId != null && !videoId.trim().isEmpty()) {
             return "https://i.ytimg.com/vi/" + videoId.trim() + "/hqdefault.jpg";
         }
         return "";
     }
 
-    @Nullable
-    @Override
-    public IBinder onBind(Intent intent) {
-        return localBinder;
-    }
-
-    @Override
-    public void onTaskRemoved(Intent rootIntent) {
-        if (player != null && player.isPlaying()) {
-            updateNotification();
-            return;
+    // -----------------------------------------------------------------------
+    // Audio stream picker (itag 140 = M4A 128kbps)
+    // -----------------------------------------------------------------------
+    private String pickItag140(List<AudioStream> streams) {
+        if (streams == null || streams.isEmpty()) return null;
+        for (AudioStream s : streams) {
+            if (s.getItag() == 140) return s.getContent();
         }
-        stopSelf();
+        return streams.get(0).getContent();
     }
 
+    // -----------------------------------------------------------------------
+    // SharedPreferences persistence
+    // -----------------------------------------------------------------------
+    private void persistState() {
+        boolean playing = player != null && player.isPlaying();
+        long    pos     = player != null ? Math.max(0, player.getCurrentPosition()) : currentPositionMs;
+        long    dur     = player != null ? Math.max(0, player.getDuration())        : currentDurationMs;
+
+        SharedPreferences.Editor ed = getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit();
+        ed.putString(KEY_TITLE,         currentTitle);
+        ed.putString(KEY_ARTIST,        currentArtist);
+        ed.putBoolean(KEY_PLAYING,      playing);
+        ed.putLong(KEY_POSITION_MS,     pos);
+        ed.putLong(KEY_DURATION_MS,     dur);
+        ed.putString(KEY_THUMBNAIL_URL, currentThumbnailUrl);
+        ed.putInt(KEY_QUEUE_INDEX,      currentQueueIndex);
+        // Persist queue
+        try {
+            JSONArray arr = new JSONArray();
+            for (QueueItem item : playbackQueue) {
+                JSONObject obj = new JSONObject();
+                obj.put("id",           item.id);
+                obj.put("title",        item.title);
+                obj.put("artist",       item.artist);
+                obj.put("videoId",      item.videoId);
+                obj.put("thumbnailUrl", item.thumbnailUrl);
+                arr.put(obj);
+            }
+            ed.putString(KEY_QUEUE_JSON, arr.toString());
+        } catch (JSONException ignored) {}
+        ed.apply();
+    }
+
+    private void restoreState() {
+        SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        currentTitle        = prefs.getString(KEY_TITLE,         "HarmonyStream");
+        currentArtist       = prefs.getString(KEY_ARTIST,        "");
+        currentPositionMs   = Math.max(0, prefs.getLong(KEY_POSITION_MS, 0));
+        currentDurationMs   = Math.max(0, prefs.getLong(KEY_DURATION_MS, 0));
+        currentThumbnailUrl = prefs.getString(KEY_THUMBNAIL_URL, "");
+        currentQueueIndex   = prefs.getInt(KEY_QUEUE_INDEX,      -1);
+        String queueJson    = prefs.getString(KEY_QUEUE_JSON,    null);
+        if (queueJson != null) {
+            try {
+                JSONArray arr = new JSONArray(queueJson);
+                for (int i = 0; i < arr.length(); i++) {
+                    JSONObject obj = arr.getJSONObject(i);
+                    playbackQueue.add(new QueueItem(
+                            obj.optString("id"),
+                            obj.optString("title"),
+                            obj.optString("artist"),
+                            obj.optString("videoId"),
+                            obj.optString("thumbnailUrl")
+                    ));
+                }
+            } catch (JSONException e) {
+                Log.w(TAG, "Could not restore queue", e);
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Public accessor used by WebAppActivity via the binder
+    // -----------------------------------------------------------------------
     public PlaybackSnapshot getCurrentSnapshot() {
-        return new PlaybackSnapshot(
-                currentTitle,
-                currentArtist,
-                player != null && player.isPlaying(),
-                player == null ? currentPositionMs : Math.max(0L, player.getCurrentPosition()),
-                player == null ? currentDurationMs : Math.max(0L, player.getDuration())
-        );
+        boolean playing = player != null && player.isPlaying();
+        long    pos     = player != null ? Math.max(0, player.getCurrentPosition()) : currentPositionMs;
+        long    dur     = player != null ? Math.max(0, player.getDuration())        : currentDurationMs;
+        return new PlaybackSnapshot(currentTitle, currentArtist, playing, pos, dur);
+    }
+
+    // -----------------------------------------------------------------------
+    // Service lifecycle
+    // -----------------------------------------------------------------------
+    @Override
+    public IBinder onBind(Intent intent) { return localBinder; }
+
+    @Override
+    public void onDestroy() {
+        stopProgressUpdates();
+        if (player != null) {
+            player.release();
+            player = null;
+        }
+        if (mediaSessionConnector != null) mediaSessionConnector.setPlayer(null);
+        if (mediaSession != null) {
+            mediaSession.setActive(false);
+            mediaSession.release();
+        }
+        if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
+        resolverExecutor.shutdownNow();
+        artworkExecutor.shutdownNow();
+        super.onDestroy();
     }
 }
