@@ -4,8 +4,14 @@ import { usePlayer } from '@/contexts/player-context';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Slider } from '@/components/ui/slider';
-import { Play, Pause, SkipBack, SkipForward, Volume2, Video, Music as MusicIcon, Plus, ListMusic, PlusCircle, Heart, X, Maximize2, Minimize2, History, GripVertical, Share2 } from 'lucide-react';
-import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
+import {
+  Play, Pause, SkipBack, SkipForward, Volume2,
+  Video, Music as MusicIcon, Plus, ListMusic, PlusCircle,
+  Heart, X, Maximize2, Minimize2, History, GripVertical, Share2,
+} from 'lucide-react';
+import React, {
+  useEffect, useState, useRef, useCallback, useMemo,
+} from 'react';
 import YouTube from 'react-youtube';
 import type { YouTubePlayer, YouTubeProps, YouTubeEvent } from 'react-youtube';
 import { cn } from '@/lib/utils';
@@ -21,41 +27,35 @@ import {
   DropdownMenuPortal,
 } from '@/components/ui/dropdown-menu';
 import { CreatePlaylistDialog } from './create-playlist-dialog';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
+import {
+  Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger,
+} from '@/components/ui/sheet';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import Image from 'next/image';
 import type { Song } from '@/lib/types';
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog"
-import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
+  AlertDialog, AlertDialogAction, AlertDialogCancel,
+  AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
+  AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
+  Tooltip, TooltipContent, TooltipTrigger, TooltipProvider,
+} from '@/components/ui/tooltip';
 import { usePathname } from 'next/navigation';
 import { usePrevious } from '@/hooks/use-previous';
 import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
+  DndContext, closestCenter, KeyboardSensor, PointerSensor,
+  useSensor, useSensors, type DragEndEvent,
 } from '@dnd-kit/core';
 import {
-  SortableContext,
-  sortableKeyboardCoordinates,
-  verticalListSortingStrategy,
-  useSortable,
+  SortableContext, sortableKeyboardCoordinates,
+  verticalListSortingStrategy, useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
+// ---------------------------------------------------------------------------
+// Global type augmentation for native bridge
+// ---------------------------------------------------------------------------
 declare global {
   interface Window {
     HarmonyNative?: {
@@ -66,11 +66,16 @@ declare global {
       setIndex?: (index: number) => void;
       seek?: (positionMs: number) => void;
       setQueue?: (queueJson: string) => void;
-      updateState?: (title: string, artist: string, playing: boolean, positionMs: number, durationMs: number, thumbnailUrl: string) => void;
+      setVideoMode?: (enabled: boolean) => void;
+      updateState?: (
+        title: string, artist: string, playing: boolean,
+        positionMs: number, durationMs: number, thumbnailUrl: string,
+      ) => void;
       getState?: () => void;
     };
     AndroidNative?: {
-      play?: (id?: string, title?: string, artist?: string, durationMs?: number, thumbnailUrl?: string) => void;
+      play?: (id?: string, title?: string, artist?: string,
+               durationMs?: number, thumbnailUrl?: string) => void;
       pause?: () => void;
       resume?: () => void;
       seekTo?: (positionMs: number) => void;
@@ -82,246 +87,262 @@ declare global {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Utility
+// ---------------------------------------------------------------------------
+const formatDuration = (seconds: number) => {
+  if (isNaN(seconds) || seconds < 0) return '0:00';
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = Math.floor(seconds % 60);
+  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+};
 
+// ---------------------------------------------------------------------------
+// Portrait player sub-component (mobile bottom bar)
+// ---------------------------------------------------------------------------
 const PortraitPlayer = React.memo(function PortraitPlayer({
-  currentTrack,
-  progress,
-  duration,
-  currentTime,
-  isPlaying,
-  isLiked,
-  playerMode,
-  volume,
-  playlists,
-  onToggleLike,
-  onTogglePlayerMode,
-  onPlayPrev,
-  onPlayNext,
-  onTogglePlayPause,
-  onVolumeChange,
-  onSeekChange,
-  onSeekCommit,
-  onAddToPlaylist,
-  onShare,
-  onOpenCreatePlaylistDialog,
-  container,
+  currentTrack, progress, duration, currentTime, isPlaying, isLiked,
+  playerMode, volume, playlists, onToggleLike, onTogglePlayerMode,
+  onPlayPrev, onPlayNext, onTogglePlayPause, onVolumeChange,
+  onSeekChange, onSeekCommit, onAddToPlaylist, onShare,
+  onOpenCreatePlaylistDialog, container,
 }: any) {
   return (
-    <div className={cn("md:hidden flex flex-col fixed bottom-0 left-0 right-0 z-50 transition-colors", "bg-background border-t text-foreground")}>
-        {/* Row 1: Progress Bar */}
-        <div className="w-full flex items-center gap-2 px-2 pt-2">
-            <span className={cn("text-xs w-10 text-right", "text-muted-foreground")}>{formatDuration(currentTime)}</span>
-            <Slider value={[progress]} max={100} step={1} onValueChange={onSeekChange} onValueCommit={onSeekCommit} className="w-full [&>span:first-of-type]:h-4 [&_.h-2]:h-3" />
-            <span className={cn("text-xs w-10", "text-muted-foreground")}>{formatDuration(duration)}</span>
-        </div>
-        
-        <div className="w-full flex items-center p-2">
-            <div className='min-w-0 flex-1 flex items-center gap-3'>
-                <Avatar className="h-12 w-12 rounded-md">
-                    <AvatarImage src={currentTrack.thumbnailUrl} alt={currentTrack.title} />
-                    <AvatarFallback>{currentTrack.artist.charAt(0)}</AvatarFallback>
-                </Avatar>
-                <div className='min-w-0'>
-                    <p className="font-bold truncate text-base">{currentTrack.title}</p>
-                    <p className={cn("truncate text-sm", "text-muted-foreground")}>{currentTrack.artist}</p>
-                </div>
-            </div>
-            <div className="flex items-center shrink-0">
-                <Button variant="ghost" size="icon" onClick={onToggleLike} className="h-8 w-8">
-                    <Heart className={cn("h-5 w-5", isLiked && "fill-red-500 text-red-500")} />
-                </Button>
-                <SheetTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-8 w-8">
-                        <ListMusic className="h-5 w-5" />
-                    </Button>
-                </SheetTrigger>
-                <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={(e) => e.stopPropagation()}><Plus className="h-5 w-5" /><span className="sr-only">Add to playlist</span></Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent container={container} align="end" forceMount>
-                        <DropdownMenuLabel>Add to Playlist</DropdownMenuLabel>
-                        <DropdownMenuSeparator />
-                        {playlists.map((playlist: any) => (<DropdownMenuItem key={playlist.id} onClick={() => onAddToPlaylist(playlist.id)}><ListMusic className="mr-2 h-4 w-4" /><span>{playlist.name}</span></DropdownMenuItem>))}
-                        {playlists.length > 0 && <DropdownMenuSeparator />}
-                        <DropdownMenuItem onSelect={() => onOpenCreatePlaylistDialog(true)}><PlusCircle className="mr-2 h-4 w-4" />Create new playlist</DropdownMenuItem>
-                    </DropdownMenuContent>
-                </DropdownMenu>
-                <Button variant="ghost" size="icon" onClick={onShare} className="h-8 w-8">
-                    <Share2 className="h-5 w-5" />
-                    <span className="sr-only">Share song</span>
-                </Button>
-            </div>
-        </div>
+    <div className={cn(
+      "md:hidden flex flex-col fixed bottom-0 left-0 right-0 z-50 transition-colors",
+      "bg-background border-t text-foreground",
+    )}>
+      {/* Progress bar */}
+      <div className="w-full flex items-center gap-2 px-2 pt-2">
+        <span className={cn("text-xs w-10 text-right", "text-muted-foreground")}>
+          {formatDuration(currentTime)}
+        </span>
+        <Slider
+          value={[progress]} max={100} step={1}
+          onValueChange={onSeekChange} onValueCommit={onSeekCommit}
+          className="w-full [&>span:first-of-type]:h-4 [&_.h-2]:h-3"
+        />
+        <span className={cn("text-xs w-10", "text-muted-foreground")}>
+          {formatDuration(duration)}
+        </span>
+      </div>
 
-        <div className="w-full flex items-center justify-between px-2 pb-2">
-            <div className="w-20">
-                <Button variant="ghost" size="icon" onClick={onTogglePlayerMode} className="h-8 w-8">
-                    {playerMode === 'audio' ? <Video className="h-5 w-5" /> : <MusicIcon className="h-5 w-5" />}
-                </Button>
-            </div>
-            <div className="flex items-center">
-                <Button variant="ghost" size="icon" onClick={onPlayPrev}><SkipBack className="h-6 w-6" /></Button>
-                <Button variant='ghost' size="icon" className="h-14 w-14" onClick={onTogglePlayPause}>
-                    {isPlaying ? <Pause className="h-10 w-10" /> : <Play className="h-10 w-10 ml-1" />}
-                </Button>
-                <Button variant="ghost" size="icon" onClick={onPlayNext}><SkipForward className="h-6 w-6" /></Button>
-            </div>
-            <div className="flex items-center gap-1 w-20">
-                <Volume2 className={cn("h-5 w-5", "text-muted-foreground")} />
-                <Slider defaultValue={[volume]} max={100} step={1} className="w-full" onValueChange={(value) => onVolumeChange(value[0])} />
-            </div>
+      {/* Track info row */}
+      <div className="w-full flex items-center p-2">
+        <div className="min-w-0 flex-1 flex items-center gap-3">
+          <Avatar className="h-12 w-12 rounded-md">
+            <AvatarImage src={currentTrack.thumbnailUrl} alt={currentTrack.title} />
+            <AvatarFallback>{currentTrack.artist.charAt(0)}</AvatarFallback>
+          </Avatar>
+          <div className="min-w-0">
+            <p className="font-bold truncate text-base">{currentTrack.title}</p>
+            <p className={cn("truncate text-sm", "text-muted-foreground")}>{currentTrack.artist}</p>
+          </div>
         </div>
+        <div className="flex items-center shrink-0">
+          <Button variant="ghost" size="icon" onClick={onToggleLike} className="h-8 w-8">
+            <Heart className={cn("h-5 w-5", isLiked && "fill-red-500 text-red-500")} />
+          </Button>
+          <SheetTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-8 w-8">
+              <ListMusic className="h-5 w-5" />
+            </Button>
+          </SheetTrigger>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={e => e.stopPropagation()}>
+                <Plus className="h-5 w-5" /><span className="sr-only">Add to playlist</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent container={container} align="end" forceMount>
+              <DropdownMenuLabel>Add to Playlist</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {playlists.map((pl: any) => (
+                <DropdownMenuItem key={pl.id} onClick={() => onAddToPlaylist(pl.id)}>
+                  <ListMusic className="mr-2 h-4 w-4" /><span>{pl.name}</span>
+                </DropdownMenuItem>
+              ))}
+              {playlists.length > 0 && <DropdownMenuSeparator />}
+              <DropdownMenuItem onSelect={() => onOpenCreatePlaylistDialog(true)}>
+                <PlusCircle className="mr-2 h-4 w-4" />Create new playlist
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button variant="ghost" size="icon" onClick={onShare} className="h-8 w-8">
+            <Share2 className="h-5 w-5" /><span className="sr-only">Share song</span>
+          </Button>
+        </div>
+      </div>
+
+      {/* Controls row */}
+      <div className="w-full flex items-center justify-between px-2 pb-2">
+        <div className="w-20">
+          <Button variant="ghost" size="icon" onClick={onTogglePlayerMode} className="h-8 w-8">
+            {playerMode === 'audio' ? <Video className="h-5 w-5" /> : <MusicIcon className="h-5 w-5" />}
+          </Button>
+        </div>
+        <div className="flex items-center">
+          <Button variant="ghost" size="icon" onClick={onPlayPrev}><SkipBack className="h-6 w-6" /></Button>
+          <Button variant="ghost" size="icon" className="h-14 w-14" onClick={onTogglePlayPause}>
+            {isPlaying
+              ? <Pause className="h-10 w-10" />
+              : <Play className="h-10 w-10 ml-1" />}
+          </Button>
+          <Button variant="ghost" size="icon" onClick={onPlayNext}><SkipForward className="h-6 w-6" /></Button>
+        </div>
+        <div className="flex items-center gap-1 w-20">
+          <Volume2 className={cn("h-5 w-5", "text-muted-foreground")} />
+          <Slider
+            defaultValue={[volume]} max={100} step={1}
+            className="w-full" onValueChange={v => onVolumeChange(v[0])}
+          />
+        </div>
+      </div>
     </div>
   );
 });
 PortraitPlayer.displayName = 'PortraitPlayer';
 
+// ---------------------------------------------------------------------------
+// Landscape player sub-component (desktop / video mode)
+// ---------------------------------------------------------------------------
 const LandscapePlayer = React.memo(function LandscapePlayer({
-  currentTrack,
-  progress,
-  duration,
-  currentTime,
-  isPlaying,
-  isLiked,
-  playerMode,
-  volume,
-  playlists,
-  onToggleLike,
-  onTogglePlayerMode,
-  onPlayPrev,
-  onPlayNext,
-  onTogglePlayPause,
-  onVolumeChange,
-  onSeekChange,
-  onSeekCommit,
-  onAddToPlaylist,
-  onShare,
-  onOpenCreatePlaylistDialog,
-  isPip,
-  showControls,
-  onResetControlsTimeout,
+  currentTrack, progress, duration, currentTime, isPlaying, isLiked,
+  playerMode, volume, playlists, onToggleLike, onTogglePlayerMode,
+  onPlayPrev, onPlayNext, onTogglePlayPause, onVolumeChange,
+  onSeekChange, onSeekCommit, onAddToPlaylist, onShare,
+  onOpenCreatePlaylistDialog, isPip, showControls, onResetControlsTimeout,
   container,
 }: any) {
-  // In video mode, this component is part of the fullscreen container. We don't use the outer fixed div.
   const PlayerContainer = 'div';
   const containerProps = {
     className: cn(
-      'hidden md:block', // This is the key: always hide on mobile
+      'hidden md:block',
       playerMode === 'audio' && 'w-full h-auto fixed bottom-0 left-0 right-0 z-[60]',
-      playerMode === 'audio' && (isPip ? 'opacity-0 pointer-events-none' : 'opacity-100')
+      playerMode === 'audio' && (isPip ? 'opacity-0 pointer-events-none' : 'opacity-100'),
     ),
   };
 
   return (
     <PlayerContainer {...containerProps}>
-      <div 
+      <div
         className={cn(
-           "w-full flex flex-col p-2 gap-1 transition-all duration-300",
-           playerMode === 'video'
-               ? "bg-gradient-to-t from-black/80 to-transparent text-white fixed bottom-0 left-0 right-0 z-[60]"
-               : "border-t bg-card/95 backdrop-blur-xl text-foreground"
-       )}
-       onMouseMove={onResetControlsTimeout}
-       >
-         <div className={cn(
-           "relative w-full flex items-center gap-2 px-2 transition-opacity duration-300 z-10",
-           playerMode === 'video' && !showControls && 'opacity-0 pointer-events-none'
-         )}>
-             <span className="text-xs w-10 text-right text-muted-foreground">{formatDuration(currentTime)}</span>
-             <Slider value={[progress]} max={100} step={1} onValueChange={onSeekChange} onValueCommit={onSeekCommit} className="w-full [&>span:first-of-type]:h-4 [&>span:first-of-type_>_.bg-primary]:h-1 [&>span:first-of-type_>_.bg-primary]:top-1/2 [&>span:first-of-type_>_.bg-primary]:-translate-y-1/2 [&_.h-2]:h-1" />
-             <span className="text-xs w-10 text-muted-foreground">{formatDuration(duration)}</span>
-         </div>
-         <div className={cn("relative w-full flex items-center justify-between gap-2 transition-opacity duration-300 h-[64px] z-10", playerMode === 'video' && !showControls && 'opacity-0 pointer-events-none')}>
-            <div className="flex items-center gap-3 min-w-0 w-1/3">
-                <Avatar className="h-12 w-12 rounded-md">
-                    <AvatarImage src={currentTrack.thumbnailUrl} alt={currentTrack.title} />
-                    <AvatarFallback>{currentTrack.artist.charAt(0)}</AvatarFallback>
-                </Avatar>
-                <div className='min-w-0'>
-                    <p className="font-bold truncate">{currentTrack.title}</p>
-                    <p className="text-sm truncate text-muted-foreground">{currentTrack.artist}</p>
-                </div>
-                <Button variant="ghost" size="icon" onClick={onToggleLike}><Heart className={cn("h-5 w-5", isLiked && "fill-red-500 text-red-500")} /></Button>
+          "w-full flex flex-col p-2 gap-1 transition-all duration-300",
+          playerMode === 'video'
+            ? "bg-gradient-to-t from-black/80 to-transparent text-white fixed bottom-0 left-0 right-0 z-[60]"
+            : "border-t bg-card/95 backdrop-blur-xl text-foreground",
+        )}
+        onMouseMove={onResetControlsTimeout}
+      >
+        {/* Progress bar */}
+        <div className={cn(
+          "relative w-full flex items-center gap-2 px-2 transition-opacity duration-300 z-10",
+          playerMode === 'video' && !showControls && 'opacity-0 pointer-events-none',
+        )}>
+          <span className="text-xs w-10 text-right text-muted-foreground">{formatDuration(currentTime)}</span>
+          <Slider
+            value={[progress]} max={100} step={1}
+            onValueChange={onSeekChange} onValueCommit={onSeekCommit}
+            className="w-full [&>span:first-of-type]:h-4 [&_.h-2]:h-1"
+          />
+          <span className="text-xs w-10 text-muted-foreground">{formatDuration(duration)}</span>
+        </div>
+
+        {/* Controls row */}
+        <div className={cn(
+          "relative w-full flex items-center justify-between gap-2 transition-opacity duration-300 h-[64px] z-10",
+          playerMode === 'video' && !showControls && 'opacity-0 pointer-events-none',
+        )}>
+          {/* Left: track info */}
+          <div className="flex items-center gap-3 min-w-0 w-1/3">
+            <Avatar className="h-12 w-12 rounded-md">
+              <AvatarImage src={currentTrack.thumbnailUrl} alt={currentTrack.title} />
+              <AvatarFallback>{currentTrack.artist.charAt(0)}</AvatarFallback>
+            </Avatar>
+            <div className="min-w-0">
+              <p className="font-bold truncate">{currentTrack.title}</p>
+              <p className="text-sm truncate text-muted-foreground">{currentTrack.artist}</p>
             </div>
-            <div className="flex items-center gap-4">
-                <Button variant="ghost" size="icon" onClick={onPlayPrev}><SkipBack className="h-5 w-5" /></Button>
-                <Button variant='default' size="icon" className="h-10 w-10" onClick={onTogglePlayPause}>{isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5 ml-0.5" />}</Button>
-                <Button variant="ghost" size="icon" onClick={onPlayNext}><SkipForward className="h-5 w-5" /></Button>
-            </div>
-            <div className="flex items-center gap-2 w-1/3 justify-end">
-                <Button variant="ghost" size="icon" onClick={onShare}>
-                    <Share2 className="h-5 w-5" />
-                    <span className="sr-only">Share</span>
+            <Button variant="ghost" size="icon" onClick={onToggleLike}>
+              <Heart className={cn("h-5 w-5", isLiked && "fill-red-500 text-red-500")} />
+            </Button>
+          </div>
+
+          {/* Center: playback buttons */}
+          <div className="flex items-center gap-4">
+            <Button variant="ghost" size="icon" onClick={onPlayPrev}><SkipBack className="h-5 w-5" /></Button>
+            <Button variant="default" size="icon" className="h-10 w-10" onClick={onTogglePlayPause}>
+              {isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5 ml-0.5" />}
+            </Button>
+            <Button variant="ghost" size="icon" onClick={onPlayNext}><SkipForward className="h-5 w-5" /></Button>
+          </div>
+
+          {/* Right: extras */}
+          <div className="flex items-center gap-2 w-1/3 justify-end">
+            <Button variant="ghost" size="icon" onClick={onShare}>
+              <Share2 className="h-5 w-5" /><span className="sr-only">Share</span>
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" onClick={e => e.stopPropagation()}>
+                  <Plus className="h-5 w-5" /><span className="sr-only">Add to playlist</span>
                 </Button>
-                <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" onClick={(e) => e.stopPropagation()}><Plus className="h-5 w-5" /><span className="sr-only">Add to playlist</span></Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent container={container} align="end">
-                        <DropdownMenuLabel>Add to Playlist</DropdownMenuLabel>
-                        <DropdownMenuSeparator />
-                        {playlists.map((playlist: any) => (<DropdownMenuItem key={playlist.id} onClick={() => onAddToPlaylist(playlist.id)}><ListMusic className="mr-2 h-4 w-4" /><span>{playlist.name}</span></DropdownMenuItem>))}
-                        {playlists.length > 0 && <DropdownMenuSeparator />}
-                        <DropdownMenuItem onSelect={() => onOpenCreatePlaylistDialog(true)}><PlusCircle className="mr-2 h-4 w-4" />Create new playlist</DropdownMenuItem>
-                    </DropdownMenuContent>
-                </DropdownMenu>
-                <SheetTrigger asChild>
-                    <Button variant="ghost" size="icon"><ListMusic className="h-5 w-5" /><span className="sr-only">Open Queue</span></Button>
-                </SheetTrigger>
-                <Button variant="ghost" size="icon" onClick={onTogglePlayerMode}>
-                    {playerMode === 'audio' ? <Video className="h-5 w-5" /> : <MusicIcon className="h-5 w-5" />}
-                </Button>
-                <div className="flex items-center gap-2">
-                    <Volume2 className="h-5 w-5 text-muted-foreground" />
-                    <Slider defaultValue={[volume]} max={100} step={1} className="w-24" onValueChange={(value) => onVolumeChange(value[0])} />
-                </div>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent container={container} align="end">
+                <DropdownMenuLabel>Add to Playlist</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {playlists.map((pl: any) => (
+                  <DropdownMenuItem key={pl.id} onClick={() => onAddToPlaylist(pl.id)}>
+                    <ListMusic className="mr-2 h-4 w-4" /><span>{pl.name}</span>
+                  </DropdownMenuItem>
+                ))}
+                {playlists.length > 0 && <DropdownMenuSeparator />}
+                <DropdownMenuItem onSelect={() => onOpenCreatePlaylistDialog(true)}>
+                  <PlusCircle className="mr-2 h-4 w-4" />Create new playlist
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <SheetTrigger asChild>
+              <Button variant="ghost" size="icon">
+                <ListMusic className="h-5 w-5" /><span className="sr-only">Open Queue</span>
+              </Button>
+            </SheetTrigger>
+            <Button variant="ghost" size="icon" onClick={onTogglePlayerMode}>
+              {playerMode === 'audio' ? <Video className="h-5 w-5" /> : <MusicIcon className="h-5 w-5" />}
+            </Button>
+            <div className="flex items-center gap-2">
+              <Volume2 className="h-5 w-5 text-muted-foreground" />
+              <Slider
+                defaultValue={[volume]} max={100} step={1}
+                className="w-24" onValueChange={v => onVolumeChange(v[0])}
+              />
             </div>
-         </div>
+          </div>
+        </div>
       </div>
     </PlayerContainer>
   );
 });
 LandscapePlayer.displayName = 'LandscapePlayer';
 
-const formatDuration = (seconds: number) => {
-    if (isNaN(seconds) || seconds < 0) return '0:00';
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = Math.floor(seconds % 60);
-    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
-};
-
+// ---------------------------------------------------------------------------
+// Sortable queue item
+// ---------------------------------------------------------------------------
 const SortableSongItem = ({
-  song,
-  isCurrent,
-  isPlaying,
-  isLiked,
-  hasBeenPlayed,
-  onPlay,
-  onRemove,
+  song, isCurrent, isPlaying, isLiked, hasBeenPlayed, onPlay, onRemove,
 }: {
-  song: Song;
-  isCurrent: boolean;
-  isPlaying: boolean;
-  isLiked: boolean;
-  hasBeenPlayed: boolean;
-  onPlay: () => void;
-  onRemove: () => void;
+  song: Song; isCurrent: boolean; isPlaying: boolean;
+  isLiked: boolean; hasBeenPlayed: boolean;
+  onPlay: () => void; onRemove: () => void;
 }) => {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: song.id });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: song.id });
 
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.5 : 1,
-    zIndex: isDragging ? 10 : 'auto',
+    zIndex: isDragging ? 10 : ('auto' as any),
   };
 
   return (
@@ -329,44 +350,27 @@ const SortableSongItem = ({
       ref={setNodeRef}
       id={`queue-song-${song.id}`}
       style={style}
-      className={cn(
-        "group flex items-center gap-2 p-2 rounded-md hover:bg-muted",
-        isCurrent && "bg-secondary"
-      )}
+      className={cn("group flex items-center gap-2 p-2 rounded-md hover:bg-muted", isCurrent && "bg-secondary")}
     >
       <button {...attributes} {...listeners} className="p-2 cursor-grab rounded-md hover:bg-accent -ml-2">
         <GripVertical className="h-5 w-5 text-muted-foreground" />
         <span className="sr-only">Drag to reorder</span>
       </button>
-
-      <div
-        className="flex-1 flex items-center gap-4 min-w-0 cursor-pointer"
-        onClick={onPlay}
-      >
+      <div className="flex-1 flex items-center gap-4 min-w-0 cursor-pointer" onClick={onPlay}>
         <div className="relative h-12 w-12 shrink-0">
-          <Image
-            src={song.thumbnailUrl}
-            alt={song.title}
-            fill
-            className="rounded-md object-cover"
-          />
+          <Image src={song.thumbnailUrl} alt={song.title} fill className="rounded-md object-cover" />
           {isCurrent && (
             <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-              {isPlaying ? (
-                <MusicIcon className="h-5 w-5 text-white animate-pulse" />
-              ) : (
-                <Play className="h-5 w-5 text-white ml-0.5" />
-              )}
+              {isPlaying
+                ? <MusicIcon className="h-5 w-5 text-white animate-pulse" />
+                : <Play className="h-5 w-5 text-white ml-0.5" />}
             </div>
           )}
         </div>
-        
         <div className="min-w-0 flex-1">
-          <p className={cn(
-            "font-semibold", 
-            (isCurrent || isLiked) && "text-primary",
-            "whitespace-normal break-words"
-          )}>{song.title}</p>
+          <p className={cn("font-semibold", (isCurrent || isLiked) && "text-primary", "whitespace-normal break-words")}>
+            {song.title}
+          </p>
           <div className="flex items-center justify-between gap-2">
             <p className="text-sm text-muted-foreground truncate">{song.artist}</p>
             {hasBeenPlayed && (
@@ -375,9 +379,7 @@ const SortableSongItem = ({
                   <TooltipTrigger>
                     <History className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                   </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Played</p>
-                  </TooltipContent>
+                  <TooltipContent><p>Played</p></TooltipContent>
                 </Tooltip>
               </TooltipProvider>
             )}
@@ -385,89 +387,114 @@ const SortableSongItem = ({
         </div>
       </div>
       <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8 shrink-0 opacity-0 group-hover:opacity-100"
-          onClick={onRemove}
-        >
-          <X className="h-4 w-4" />
-          <span className="sr-only">Remove from queue</span>
-        </Button>
+        variant="ghost" size="icon"
+        className="h-8 w-8 shrink-0 opacity-0 group-hover:opacity-100"
+        onClick={onRemove}
+      >
+        <X className="h-4 w-4" /><span className="sr-only">Remove from queue</span>
+      </Button>
     </div>
   );
 };
 
-
+// ---------------------------------------------------------------------------
+// Main MusicPlayer component
+// ---------------------------------------------------------------------------
 export function MusicPlayer() {
-  const { 
-    currentTrack, 
-    playlist,
-    history,
-    playPlaylist, 
-    handleTrackError, 
-    clearQueue,
-    isPlaying: isGlobalPlaying,
-    setIsPlaying: setGlobalIsPlaying,
-    playNext: globalPlayNext,
-    playPrev: globalPlayPrev,
-    shufflePlaylist,
-    removeSongFromQueue,
-    reorderPlaylist,
-    playerMode,
-    setPlayerMode,
-    syncNativeIndex,
-    initialLoadIsVideoShare,
-    setInitialLoadIsVideoShare,
+  const {
+    currentTrack, playlist, history, playPlaylist, handleTrackError,
+    clearQueue, isPlaying: isGlobalPlaying, setIsPlaying: setGlobalIsPlaying,
+    playNext: globalPlayNext, playPrev: globalPlayPrev, shufflePlaylist,
+    removeSongFromQueue, reorderPlaylist, playerMode, setPlayerMode,
+    syncNativeIndex, initialLoadIsVideoShare, setInitialLoadIsVideoShare,
   } = usePlayer();
 
-  const { playlists, addSongToPlaylist, toggleLikeSong, isSongLiked, removeSongFromDatabase } = usePlaylists();
+  const { playlists, addSongToPlaylist, toggleLikeSong, isSongLiked, removeSongFromDatabase } =
+    usePlaylists();
   const { toast } = useToast();
-  const pathname = usePathname();
+  const pathname    = usePathname();
   const prevPathname = usePrevious(pathname);
-  
-  const playerRef = useRef<YouTubePlayer | null>(null);
-  const playerAndVideoContainerRef = useRef<HTMLDivElement | null>(null);
-  
-  const isSeekingRef = useRef(false);
-  const isChangingTrackRef = useRef(false);
-  const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const isGlobalPlayingRef = useRef(isGlobalPlaying);
-  const pendingNativeActionRef = useRef<string | null>(null);
-  const nativePlayRequestAtMsRef = useRef(0);
-  const lastNativeStateTsRef = useRef(0);
 
-  // Player-specific UI state
-  const [container, setContainer] = useState<HTMLElement | null>(null);
-  const [volume, setVolume] = useState(100);
-  const [isQueueOpen, setIsQueueOpen] = useState(false);
-  const [isPip, setIsPip] = useState(false);
-  const [zoomLevel, setZoomLevel] = useState(1.25); // 1, 1.25, 1.5
+  const playerRef                  = useRef<YouTubePlayer | null>(null);
+  const playerAndVideoContainerRef = useRef<HTMLDivElement | null>(null);
+  const isSeekingRef               = useRef(false);
+  const isChangingTrackRef         = useRef(false);
+  const progressIntervalRef        = useRef<NodeJS.Timeout | null>(null);
+  const isGlobalPlayingRef         = useRef(isGlobalPlaying);
+  const pendingNativeActionRef     = useRef<string | null>(null);
+  const nativePlayRequestAtMsRef   = useRef(0);
+  const lastNativeStateTsRef       = useRef(0);
+
+  // UI state
+  const [container, setContainer]                         = useState<HTMLElement | null>(null);
+  const [volume, setVolume]                               = useState(100);
+  const [isQueueOpen, setIsQueueOpen]                     = useState(false);
+  const [isPip, setIsPip]                                 = useState(false);
+  const [showControls, setShowControls]                   = useState(true);
   const [isCreatePlaylistDialogOpen, setIsCreatePlaylistDialogOpen] = useState(false);
-  
-  // Local state for rapidly updating progress values, managed internally
-  const [progress, setProgress] = useState(0);
-  const [duration, setDuration] = useState(0);
+  const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Progress state (local, rapidly updating)
+  const [progress, setProgress]     = useState(0);
+  const [duration, setDuration]     = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
 
+  // ---------------------------------------------------------------------------
+  // Detect Android WebView runtime
+  // ---------------------------------------------------------------------------
   const isAndroidAppRuntime = useMemo(() => {
     if (typeof window === 'undefined') return false;
-
-    const userAgent = navigator.userAgent || '';
-    const isAndroidUa = /Android/i.test(userAgent);
-    const isFileProtocol = window.location.protocol === 'file:';
+    const ua                = navigator.userAgent || '';
+    const isAndroidUa       = /Android/i.test(ua);
+    const isFileProtocol    = window.location.protocol === 'file:';
     const isWebViewAssetHost = window.location.hostname === 'appassets.androidplatform.net';
-    const hasNativeBridge = typeof window.HarmonyNative !== 'undefined';
-
+    const hasNativeBridge   = typeof window.HarmonyNative !== 'undefined';
     return isAndroidUa && (isFileProtocol || isWebViewAssetHost || hasNativeBridge);
   }, []);
 
+  // FIX #2: In audio mode on Android, we never touch the iframe.
+  // In video mode we use the iframe. On web we always use the iframe.
   const shouldControlIframePlayback = !isAndroidAppRuntime || playerMode === 'video';
 
+  // Keep ref in sync
+  useEffect(() => { isGlobalPlayingRef.current = isGlobalPlaying; }, [isGlobalPlaying]);
+
+  // ---------------------------------------------------------------------------
+  // FIX #2: Listen for 'nativeSetVideoMode' from the Android service.
+  // When entering video mode  → start the YouTube iframe.
+  // When leaving video mode   → pause/stop the YouTube iframe.
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    const handleSetVideoMode = (e: Event) => {
+      const detail = (e as CustomEvent<{ enabled: boolean }>).detail;
+      if (detail.enabled) {
+        // Android switched to video mode: play the iframe if a track is loaded
+        if (playerRef.current && typeof playerRef.current.playVideo === 'function') {
+          playerRef.current.playVideo();
+        }
+      } else {
+        // Android switched back to audio mode: pause/stop the iframe so there
+        // is no overlap with ExoPlayer audio.
+        if (playerRef.current && typeof playerRef.current.pauseVideo === 'function') {
+          playerRef.current.pauseVideo();
+        }
+      }
+    };
+
+    window.addEventListener('nativeSetVideoMode', handleSetVideoMode);
+    return () => window.removeEventListener('nativeSetVideoMode', handleSetVideoMode);
+  }, []);
+
+  // ---------------------------------------------------------------------------
+  // Apply pending native action once the player is ready
+  // ---------------------------------------------------------------------------
   const applyNativeCommand = useCallback((action: string) => {
     if (!action) return;
-
     const player = playerRef.current;
-    const canControlPlayer = shouldControlIframePlayback && !!player && typeof player.getPlayerState === 'function';
+    const canControlPlayer =
+      shouldControlIframePlayback &&
+      !!player &&
+      typeof player.getPlayerState === 'function';
 
     if (!canControlPlayer) {
       pendingNativeActionRef.current = action;
@@ -475,870 +502,514 @@ export function MusicPlayer() {
 
     switch (action) {
       case 'com.sansoft.harmonystram.PLAY':
-        if (canControlPlayer && typeof player.playVideo === 'function') {
-          player.playVideo();
-        }
+        if (canControlPlayer && typeof player!.playVideo === 'function') player!.playVideo();
         break;
       case 'com.sansoft.harmonystram.PAUSE':
-        if (canControlPlayer && typeof player.pauseVideo === 'function') {
-          player.pauseVideo();
-        }
-        break;
-      case 'com.sansoft.harmonystram.PLAY_PAUSE':
-        if (canControlPlayer && typeof player.getPlayerState === 'function') {
-          const playerState = player.getPlayerState();
-          const shouldPlay = playerState !== 1;
-          if (shouldPlay && typeof player.playVideo === 'function') {
-            player.playVideo();
-          } else if (!shouldPlay && typeof player.pauseVideo === 'function') {
-            player.pauseVideo();
-          }
-        }
+        if (canControlPlayer && typeof player!.pauseVideo === 'function') player!.pauseVideo();
         break;
       case 'com.sansoft.harmonystram.NEXT':
+        globalPlayNext();
+        break;
       case 'com.sansoft.harmonystram.PREVIOUS':
+        globalPlayPrev();
         break;
       default:
         break;
     }
-  }, [shouldControlIframePlayback]);
+  }, [shouldControlIframePlayback, globalPlayNext, globalPlayPrev]);
 
+  // Expose the command handler globally so Android can call it
   useEffect(() => {
-    isGlobalPlayingRef.current = isGlobalPlaying;
-  }, [isGlobalPlaying]);
+    window.__harmonyNativeApplyCommand = applyNativeCommand;
+    return () => { delete window.__harmonyNativeApplyCommand; };
+  }, [applyNativeCommand]);
 
+  // ---------------------------------------------------------------------------
+  // Listen for nativePlaybackCommand (next/prev from notification/Bluetooth)
+  // ---------------------------------------------------------------------------
   useEffect(() => {
-    if (isQueueOpen && currentTrack) {
-      // Use a short timeout to allow the sheet and its content to render before scrolling
-      setTimeout(() => {
-        const element = document.getElementById(`queue-song-${currentTrack.id}`);
-        element?.scrollIntoView({
-          behavior: 'smooth',
-          block: 'center',
-        });
-      }, 100);
-    }
-  }, [isQueueOpen, currentTrack]);
+    const handler = (e: Event) => {
+      const action = (e as CustomEvent<{ action: string }>).detail?.action;
+      if (action) applyNativeCommand(action);
+    };
+    window.addEventListener('nativePlaybackCommand', handler);
+    return () => window.removeEventListener('nativePlaybackCommand', handler);
+  }, [applyNativeCommand]);
 
+  // ---------------------------------------------------------------------------
+  // Listen for nativePlaybackState (state updates from Android service)
+  // ---------------------------------------------------------------------------
   useEffect(() => {
-    // This makes the container available for portals after the initial render.
-    if (playerAndVideoContainerRef.current) {
-      setContainer(playerAndVideoContainerRef.current);
-    }
-  }, []);
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<any>).detail;
+      if (!detail) return;
+      const ts = detail.event_ts ?? 0;
+      if (ts < lastNativeStateTsRef.current) return; // stale update
+      lastNativeStateTsRef.current = ts;
 
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem('harmony-video-zoom');
-      if (stored) {
-        const parsedZoom = parseFloat(stored);
-        if ([1, 1.25, 1.5].includes(parsedZoom)) {
-            setZoomLevel(parsedZoom);
+      const posMs = detail.position_ms ?? detail.currentPosition ?? 0;
+      const durMs = detail.duration_ms ?? detail.duration ?? 0;
+      setCurrentTime(posMs / 1000);
+      setDuration(durMs / 1000);
+      setProgress(durMs > 0 ? (posMs / durMs) * 100 : 0);
+
+      if (typeof detail.playing === 'boolean') setGlobalIsPlaying(detail.playing);
+    };
+
+    window.addEventListener('nativePlaybackState', handler);
+    return () => window.removeEventListener('nativePlaybackState', handler);
+  }, [setGlobalIsPlaying]);
+
+  // ---------------------------------------------------------------------------
+  // Progress polling for iframe (web / video mode on Android)
+  // ---------------------------------------------------------------------------
+  const startProgressPolling = useCallback(() => {
+    if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
+    progressIntervalRef.current = setInterval(async () => {
+      if (!playerRef.current || isSeekingRef.current) return;
+      try {
+        const pos = await playerRef.current.getCurrentTime();
+        const dur = await playerRef.current.getDuration();
+        if (!isSeekingRef.current) {
+          setCurrentTime(pos);
+          setDuration(dur);
+          setProgress(dur > 0 ? (pos / dur) * 100 : 0);
         }
-      }
-    } catch (error) {
-      console.error('Could not load video zoom preference', error);
-    }
+      } catch { /* player not ready */ }
+    }, 500);
   }, []);
 
-  useEffect(() => {
-    try {
-      localStorage.setItem('harmony-video-zoom', String(zoomLevel));
-    } catch (error) {
-      console.error('Could not save video zoom preference', error);
-    }
-  }, [zoomLevel]);
-
-  // --- Core Player Logic ---
-  
-  const stopProgressInterval = useCallback(() => {
+  const stopProgressPolling = useCallback(() => {
     if (progressIntervalRef.current) {
       clearInterval(progressIntervalRef.current);
       progressIntervalRef.current = null;
     }
   }, []);
 
-  const startProgressInterval = useCallback(() => {
-    stopProgressInterval();
-    progressIntervalRef.current = setInterval(() => {
-      if (playerRef.current && typeof playerRef.current.getDuration === 'function' && !isSeekingRef.current) {
-        const player = playerRef.current;
-        const cTime = player.getCurrentTime();
-        const dur = player.getDuration();
-        if (dur > 0) {
-          setCurrentTime(cTime);
-          setDuration(dur);
-          setProgress((cTime / dur) * 100);
-        }
-      }
-    }, 1000);
-  }, [stopProgressInterval]);
-
-  const onReady: YouTubeProps['onReady'] = useCallback((event: YouTubeEvent) => {
-    playerRef.current = event.target;
-    playerRef.current.setVolume(volume);
-    if (pendingNativeActionRef.current) {
-      const action = pendingNativeActionRef.current;
-      pendingNativeActionRef.current = null;
-      setTimeout(() => {
-        if (action) {
-          window.__harmonyNativeApplyCommand?.(action);
-        }
-      }, 50);
-    }
-  }, [volume]);
-
-  const onStateChange: YouTubeProps['onStateChange'] = useCallback((event: YouTubeEvent<number>) => {
-    if (!shouldControlIframePlayback) {
-      return;
-    }
-
-    const playerState = event.data;
-    const player = event.target;
-
-    switch (playerState) {
-      case -1: // Unstarted
-        stopProgressInterval();
-        break;
-      case 0: // Ended
-        stopProgressInterval();
-        setGlobalIsPlaying(false);
-        globalPlayNext();
-        break;
-      case 1: // Playing
-        isChangingTrackRef.current = false;
-        setGlobalIsPlaying(true);
-        startProgressInterval();
-        break;
-      case 2: // Paused
-        if (!isChangingTrackRef.current) {
-          setGlobalIsPlaying(false);
-        }
-        stopProgressInterval();
-        break;
-      case 3: // Buffering
-        stopProgressInterval();
-        break;
-      case 5: // Video Cued
-        if (isGlobalPlaying) {
-          player.playVideo();
-        }
-        break;
-    }
-  }, [setGlobalIsPlaying, globalPlayNext, startProgressInterval, stopProgressInterval, isGlobalPlaying, shouldControlIframePlayback]);
-  
-  const onError: YouTubeProps['onError'] = useCallback((event: YouTubeEvent<number>) => {
-    const errorCode = event.data;
-    stopProgressInterval();
-    if (currentTrack) {
-        if (errorCode === 100 || errorCode === 101 || errorCode === 150) {
-            toast({
-                variant: 'destructive',
-                title: 'Video Unavailable',
-                description: `"${currentTrack.title}" will be removed.`,
-            });
-            removeSongFromDatabase(currentTrack.id, currentTrack.title);
-        } else {
-             toast({
-                variant: 'destructive',
-                title: 'Playback Error',
-                description: `An error occurred with "${currentTrack.title}". Skipping.`,
-            });
-        }
-        handleTrackError(currentTrack.id);
-    }
-  }, [currentTrack, handleTrackError, removeSongFromDatabase, toast, stopProgressInterval]);
-  
-  // Effect to load a new track when the global currentTrack changes
+  // Start/stop polling based on whether we should control the iframe
   useEffect(() => {
-    if (!shouldControlIframePlayback) {
-      stopProgressInterval();
-      return;
+    if (shouldControlIframePlayback && isGlobalPlaying) {
+      startProgressPolling();
+    } else {
+      stopProgressPolling();
     }
+    return stopProgressPolling;
+  }, [shouldControlIframePlayback, isGlobalPlaying, startProgressPolling, stopProgressPolling]);
 
-    if (currentTrack && playerRef.current && typeof playerRef.current.loadVideoById === 'function') {
-        isChangingTrackRef.current = true;
-        stopProgressInterval();
-        setProgress(0);
-        setCurrentTime(0);
-        setDuration(0);
-        playerRef.current.loadVideoById(currentTrack.videoId);
-    }
-  }, [currentTrack, stopProgressInterval, shouldControlIframePlayback]);
-
-  // Effect to sync player's play/pause state with global state
-  useEffect(() => {
-    if (isAndroidAppRuntime) return;
-    const player = playerRef.current;
-    if (!player || isChangingTrackRef.current || !player.getPlayerState) return;
-
-    const playerState = player.getPlayerState();
-
-    if (isGlobalPlaying && playerState !== 1) {
-      player.playVideo();
-    } else if (!isGlobalPlaying && playerState === 1) {
-      player.pauseVideo();
-    }
-  }, [isAndroidAppRuntime, isGlobalPlaying]);
-
-  useEffect(() => {
-    if (playerRef.current && typeof playerRef.current.setVolume === 'function') {
-      playerRef.current.setVolume(volume);
-    }
-  }, [volume]);
-  
-  // --- UI Handlers ---
-
-  const handleTogglePlayPause = useCallback(() => {
-    if (!currentTrack) return;
+  // ---------------------------------------------------------------------------
+  // FIX #2: When playerMode changes, sync the iframe and native service.
+  // Audio mode  → pause iframe, tell native to use ExoPlayer.
+  // Video mode  → tell native to stop ExoPlayer, start iframe.
+  // ---------------------------------------------------------------------------
+  const handleTogglePlayerMode = useCallback(() => {
+    const newMode = playerMode === 'audio' ? 'video' : 'audio';
+    setPlayerMode(newMode);
 
     if (isAndroidAppRuntime) {
-      if (isGlobalPlayingRef.current) {
+      // Notify the Android native layer (triggers switchMode() in PlaybackService)
+      if (window.HarmonyNative?.setVideoMode) {
+        window.HarmonyNative.setVideoMode(newMode === 'video');
+      } else if (window.AndroidNative?.setVideoMode) {
+        window.AndroidNative.setVideoMode(newMode === 'video');
+      }
+    }
+
+    if (newMode === 'audio') {
+      // Pause the YouTube iframe immediately so we don't get double audio
+      if (playerRef.current && typeof playerRef.current.pauseVideo === 'function') {
+        playerRef.current.pauseVideo();
+      }
+      stopProgressPolling();
+    } else {
+      // Video mode: play the iframe
+      if (playerRef.current && typeof playerRef.current.playVideo === 'function') {
+        playerRef.current.playVideo();
+      }
+      startProgressPolling();
+    }
+  }, [playerMode, setPlayerMode, isAndroidAppRuntime, stopProgressPolling, startProgressPolling]);
+
+  // ---------------------------------------------------------------------------
+  // Controls timeout (video mode auto-hide)
+  // ---------------------------------------------------------------------------
+  const resetControlsTimeout = useCallback(() => {
+    setShowControls(true);
+    if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
+    if (playerMode === 'video') {
+      controlsTimeoutRef.current = setTimeout(() => setShowControls(false), 3000);
+    }
+  }, [playerMode]);
+
+  useEffect(() => {
+    if (playerMode !== 'video') {
+      setShowControls(true);
+      if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
+    } else {
+      resetControlsTimeout();
+    }
+  }, [playerMode, resetControlsTimeout]);
+
+  // ---------------------------------------------------------------------------
+  // YouTube iframe event handlers
+  // ---------------------------------------------------------------------------
+  const onPlayerReady = useCallback((event: YouTubeEvent) => {
+    playerRef.current = event.target;
+    if (volume !== 100) event.target.setVolume(volume);
+
+    // Apply any pending command that arrived before the player was ready
+    if (pendingNativeActionRef.current) {
+      applyNativeCommand(pendingNativeActionRef.current);
+      pendingNativeActionRef.current = null;
+    }
+
+    // FIX #2: In audio mode on Android, do NOT auto-play the iframe.
+    if (isAndroidAppRuntime && playerMode === 'audio') {
+      event.target.pauseVideo();
+      return;
+    }
+    if (isGlobalPlayingRef.current) event.target.playVideo();
+  }, [volume, applyNativeCommand, isAndroidAppRuntime, playerMode]);
+
+  const onPlayerStateChange = useCallback((event: YouTubeEvent) => {
+    // YT.PlayerState: -1=unstarted, 0=ended, 1=playing, 2=paused, 3=buffering, 5=cued
+    const state = event.data;
+
+    // FIX #2: If we're in audio mode on Android, the iframe should NOT be
+    // controlling playback – force-pause it to prevent double audio.
+    if (isAndroidAppRuntime && playerMode === 'audio' && state === 1 /* playing */) {
+      event.target.pauseVideo();
+      return;
+    }
+
+    if (state === 1) {
+      setGlobalIsPlaying(true);
+      startProgressPolling();
+    } else if (state === 2) {
+      setGlobalIsPlaying(false);
+      stopProgressPolling();
+    } else if (state === 0) {
+      // Ended → play next
+      setGlobalIsPlaying(false);
+      stopProgressPolling();
+      globalPlayNext();
+    }
+  }, [
+    isAndroidAppRuntime, playerMode,
+    setGlobalIsPlaying, startProgressPolling, stopProgressPolling, globalPlayNext,
+  ]);
+
+  const onPlayerError = useCallback((_event: YouTubeEvent) => {
+    handleTrackError();
+  }, [handleTrackError]);
+
+  // ---------------------------------------------------------------------------
+  // Seek
+  // ---------------------------------------------------------------------------
+  const handleSeekChange = useCallback((value: number[]) => {
+    isSeekingRef.current = true;
+    const pct = value[0];
+    setProgress(pct);
+    setCurrentTime((pct / 100) * duration);
+  }, [duration]);
+
+  const handleSeekCommit = useCallback((value: number[]) => {
+    const pct      = value[0];
+    const targetS  = (pct / 100) * duration;
+    const targetMs = Math.round(targetS * 1000);
+
+    if (shouldControlIframePlayback && playerRef.current) {
+      playerRef.current.seekTo(targetS, true);
+    }
+
+    if (isAndroidAppRuntime && window.HarmonyNative?.seek) {
+      window.HarmonyNative.seek(targetMs);
+    }
+
+    isSeekingRef.current = false;
+    setCurrentTime(targetS);
+  }, [duration, shouldControlIframePlayback, isAndroidAppRuntime]);
+
+  // ---------------------------------------------------------------------------
+  // Play / Pause toggle
+  // ---------------------------------------------------------------------------
+  const handleTogglePlayPause = useCallback(() => {
+    if (isAndroidAppRuntime) {
+      if (isGlobalPlaying) {
         window.HarmonyNative?.pause?.();
       } else {
-        nativePlayRequestAtMsRef.current = Date.now();
         window.HarmonyNative?.play?.();
       }
       return;
     }
-
-    if (!playerRef.current) return;
-    const player = playerRef.current;
-
-    // If it's the first interaction for a shared video, GUARANTEE playback and fullscreen.
-    if (initialLoadIsVideoShare && playerMode === 'video') {
-        const fsContainer = playerAndVideoContainerRef.current;
-        if (fsContainer && !document.fullscreenElement) {
-            fsContainer.requestFullscreen().catch(err => {
-                console.warn("Fullscreen request failed on play:", err);
-            });
-        }
-        player.playVideo(); // Directly command PLAY
-        setInitialLoadIsVideoShare(false); // Consume the flag
-        // The onStateChange event will handle setting the global state to true
-    } else {
-        // For all subsequent clicks, toggle based on current player state.
-        const state = player.getPlayerState();
-        if (state === 1) { // is playing
-            window.HarmonyNative?.pause?.();
-            if (!isAndroidAppRuntime) {
-              player.pauseVideo();
-            }
-        } else {
-            window.HarmonyNative?.play?.();
-            if (!isAndroidAppRuntime) {
-              player.playVideo();
-            }
-        }
-    }
-  }, [currentTrack, duration, initialLoadIsVideoShare, isAndroidAppRuntime, playerMode, setInitialLoadIsVideoShare]);
-
-  const handleSeekChange = useCallback((value: number[]) => {
-    isSeekingRef.current = true;
-    stopProgressInterval();
-    const player = playerRef.current;
-    if (player) {
-      const newDuration = player.getDuration();
-      setDuration(newDuration);
-      setCurrentTime((value[0] / 100) * newDuration);
-      setProgress(value[0]);
-    }
-  }, [stopProgressInterval]);
-
-  const handleSeekCommit = useCallback((value: number[]) => {
-    const player = playerRef.current;
-    if (player) {
-      const newDuration = player.getDuration();
-      if (newDuration > 0) {
-        const newTime = (value[0] / 100) * newDuration;
-        window.AndroidNative?.seekTo?.(Math.floor(newTime * 1000));
-        player.seekTo(newTime, true);
-      }
-    }
-    // Let the onStateChange handler restart the interval
-    setTimeout(() => {
-      isSeekingRef.current = false;
+    // Web / video mode: control the iframe directly
+    if (playerRef.current) {
       if (isGlobalPlaying) {
-        startProgressInterval();
+        playerRef.current.pauseVideo();
+      } else {
+        playerRef.current.playVideo();
       }
-    }, 150);
-  }, [isGlobalPlaying, startProgressInterval]);
-
-  const handleVolumeChange = useCallback((newVolume: number) => {
-    setVolume(newVolume);
-  }, []);
-
-  const handleClearQueue = useCallback(() => {
-    clearQueue();
-    setIsQueueOpen(false);
-  }, [clearQueue]);
-
-  const handleQueueSongClick = useCallback((songId: string) => {
-      playPlaylist(playlist, songId);
-  }, [playlist, playPlaylist]);
-  
-  const handlePlayPrev = useCallback(() => {
-    if (isAndroidAppRuntime) {
-      window.HarmonyNative?.previous?.();
-      return;
     }
-    globalPlayPrev();
-  }, [globalPlayPrev, isAndroidAppRuntime]);
+    setGlobalIsPlaying(!isGlobalPlaying);
+  }, [isAndroidAppRuntime, isGlobalPlaying, setGlobalIsPlaying]);
 
+  // ---------------------------------------------------------------------------
+  // Skip
+  // ---------------------------------------------------------------------------
   const handlePlayNext = useCallback(() => {
     if (isAndroidAppRuntime) {
       window.HarmonyNative?.next?.();
       return;
     }
     globalPlayNext();
-  }, [globalPlayNext, isAndroidAppRuntime]);
+  }, [isAndroidAppRuntime, globalPlayNext]);
 
-  const handleTogglePlayerMode = useCallback(async () => {
-    if (isPip) {
-      try { await document.exitPictureInPicture(); } catch (error) { console.warn('Could not exit PiP:', error); }
+  const handlePlayPrev = useCallback(() => {
+    if (isAndroidAppRuntime) {
+      window.HarmonyNative?.previous?.();
+      return;
     }
-    setInitialLoadIsVideoShare(false);
-    
-    const newMode = playerMode === 'audio' ? 'video' : 'audio';
-    const fsContainer = playerAndVideoContainerRef.current;
+    globalPlayPrev();
+  }, [isAndroidAppRuntime, globalPlayPrev]);
 
-    try {
-      if (newMode === 'video' && fsContainer && !document.fullscreenElement) {
-        await fsContainer.requestFullscreen();
-      } else if (newMode === 'audio' && document.fullscreenElement) {
-        await document.exitFullscreen();
-      }
-    } catch (err) {
-      console.warn(`Fullscreen transition failed: ${(err as Error).message}`);
-    }
+  // ---------------------------------------------------------------------------
+  // Volume
+  // ---------------------------------------------------------------------------
+  const handleVolumeChange = useCallback((value: number) => {
+    setVolume(value);
+    if (playerRef.current) playerRef.current.setVolume(value);
+  }, []);
 
-    setPlayerMode(newMode);
-    window.AndroidNative?.setVideoMode?.(newMode === 'video');
-  }, [isPip, playerMode, setPlayerMode, setInitialLoadIsVideoShare]);
-  
+  // ---------------------------------------------------------------------------
+  // Like / playlist / share
+  // ---------------------------------------------------------------------------
+  const isLiked = currentTrack ? isSongLiked(currentTrack.id) : false;
+
   const handleToggleLike = useCallback(() => {
-    if (currentTrack) {
-      toggleLikeSong(currentTrack);
-    }
+    if (!currentTrack) return;
+    toggleLikeSong(currentTrack.id);
   }, [currentTrack, toggleLikeSong]);
 
   const handleAddToPlaylist = useCallback((playlistId: string) => {
-    if (currentTrack) {
-      addSongToPlaylist(playlistId, currentTrack);
-    }
-  }, [currentTrack, addSongToPlaylist]);
-  
-  const handleToggleZoom = () => {
-    setZoomLevel(prev => {
-        if (prev === 1) return 1.25;
-        if (prev === 1.25) return 1.5;
-        return 1; // from 1.5 back to 1
-    });
-  };
-
-  const handleShare = useCallback(async () => {
     if (!currentTrack) return;
-    const shareUrl = `${window.location.origin}/harmonystream/?share_id=${currentTrack.videoId}&mode=${playerMode}`;
-    const shareData = {
-      title: currentTrack.title,
-      text: `Listen to "${currentTrack.title}" by ${currentTrack.artist} on HarmonyStream`,
-      url: shareUrl,
-    };
-    
-    try {
-        if (navigator.share) {
-            await navigator.share(shareData);
-            toast({ title: 'Song shared!' });
-        } else {
-            await navigator.clipboard.writeText(shareUrl);
-            toast({ title: 'Link Copied!', description: 'Shareable link copied to your clipboard.' });
-        }
-    } catch (error) {
-        console.error('Error sharing:', error);
-        // Fallback for browsers that might fail clipboard write in some contexts
-        try {
-          await navigator.clipboard.writeText(shareUrl);
-          toast({ title: 'Link Copied!', description: 'Shareable link copied to your clipboard.' });
-        } catch (copyError) {
-          toast({ variant: 'destructive', title: 'Could not share', description: 'Your browser may not support this feature.' });
-        }
-    }
-  }, [currentTrack, playerMode, toast]);
+    addSongToPlaylist(playlistId, currentTrack);
+    toast({ title: 'Added to playlist' });
+  }, [currentTrack, addSongToPlaylist, toast]);
 
-  // --- Drag and Drop ---
+  const handleShare = useCallback(() => {
+    if (!currentTrack) return;
+    const url = `https://www.youtube.com/watch?v=${currentTrack.id}`;
+    if (navigator.share) {
+      navigator.share({ title: currentTrack.title, url }).catch(() => {});
+    } else {
+      navigator.clipboard.writeText(url).then(() => {
+        toast({ title: 'Link copied to clipboard' });
+      });
+    }
+  }, [currentTrack, toast]);
+
+  // ---------------------------------------------------------------------------
+  // Queue management
+  // ---------------------------------------------------------------------------
   const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8, // Drag only after 8px movement
-      },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
-  const handleDragEnd = (event: DragEndEvent) => {
-    const {active, over} = event;
-
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
     if (over && active.id !== over.id) {
       const oldIndex = playlist.findIndex(s => s.id === active.id);
       const newIndex = playlist.findIndex(s => s.id === over.id);
-      if (oldIndex !== -1 && newIndex !== -1) {
-        reorderPlaylist(oldIndex, newIndex);
-      }
+      if (oldIndex !== -1 && newIndex !== -1) reorderPlaylist(oldIndex, newIndex);
     }
-  };
+  }, [playlist, reorderPlaylist]);
 
+  // ---------------------------------------------------------------------------
+  // YouTube opts – keep iframe hidden in audio mode
+  // ---------------------------------------------------------------------------
+  const youtubeOpts: YouTubeProps['opts'] = useMemo(() => ({
+    width: '100%',
+    height: '100%',
+    playerVars: {
+      autoplay: 1,
+      controls: 0,
+      modestbranding: 1,
+      rel: 0,
+      iv_load_policy: 3,
+      // FIX #2: start muted in audio mode to prevent double audio during mode transitions
+      mute: (isAndroidAppRuntime && playerMode === 'audio') ? 1 : 0,
+    },
+  }), [isAndroidAppRuntime, playerMode]);
 
-  // --- Picture-in-Picture & Fullscreen Handlers ---
-
+  // ---------------------------------------------------------------------------
+  // PiP listener
+  // ---------------------------------------------------------------------------
   useEffect(() => {
-    const handlePictureInPictureChange = () => setIsPip(!!document.pictureInPictureElement);
-    document.addEventListener('enterpictureinpicture', handlePictureInPictureChange);
-    document.addEventListener('leavepictureinpicture', handlePictureInPictureChange);
-    return () => {
-        document.removeEventListener('enterpictureinpicture', handlePictureInPictureChange);
-        document.removeEventListener('leavepictureinpicture', handlePictureInPictureChange);
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ isInPictureInPictureMode: boolean }>).detail;
+      setIsPip(detail?.isInPictureInPictureMode ?? false);
     };
+    window.addEventListener('nativePictureInPictureChanged', handler);
+    return () => window.removeEventListener('nativePictureInPictureChanged', handler);
   }, []);
 
+  // ---------------------------------------------------------------------------
+  // Mount container ref (for dropdown portals)
+  // ---------------------------------------------------------------------------
   useEffect(() => {
-    const handleFullscreenChange = () => {
-        if (!document.fullscreenElement) {
-            if (playerMode === 'video') setPlayerMode('audio');
-            setInitialLoadIsVideoShare(false);
-        }
-    };
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
-    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
-  }, [playerMode, setPlayerMode, setInitialLoadIsVideoShare]);
+    setContainer(document.body);
+  }, []);
 
-  useEffect(() => {
-    if (prevPathname && prevPathname !== pathname && playerMode === 'video' && !isPip) {
-       const iframe = playerRef.current?.getIframe();
-       if(iframe && document.pictureInPictureEnabled && !document.pictureInPictureElement) {
-           iframe.requestPictureInPicture().catch((e: any) => console.warn("PiP request failed automatically.", e));
-       }
-    }
-  }, [pathname, prevPathname, playerMode, isPip]);
-  
-  // --- Video Controls Visibility ---
+  // ---------------------------------------------------------------------------
+  // Early return: nothing to render without a current track
+  // ---------------------------------------------------------------------------
+  if (!currentTrack) return null;
 
-  const [showControls, setShowControls] = useState(true);
-  const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  const resetControlsTimeout = useCallback(() => {
-    if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
-    setShowControls(true);
-    
-    const canAutoHide = playerMode === 'video' && isGlobalPlaying && !isPip;
-    if (canAutoHide) {
-      controlsTimeoutRef.current = setTimeout(() => setShowControls(false), 3000);
-    }
-  }, [playerMode, isGlobalPlaying, isPip]);
-
-  useEffect(() => {
-    resetControlsTimeout();
-    return () => {
-      if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
-    };
-  }, [resetControlsTimeout]);
-  
-
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (!isAndroidAppRuntime || !document.hidden) return;
-
-      // When app goes to background while in video mode, force audio mode so playback
-      // has the best chance to continue (especially on Android TV/WebView builds).
-      if (playerMode === 'video' && isGlobalPlaying) {
-        setPlayerMode('audio');
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [playerMode, isGlobalPlaying, setPlayerMode, isAndroidAppRuntime]);
-
-  // --- Media Session API ---
-  useEffect(() => {
-    if (!('mediaSession' in navigator)) return;
-
-    if (!currentTrack) {
-      navigator.mediaSession.metadata = null;
-      navigator.mediaSession.playbackState = 'none';
-      return;
-    }
-
-    navigator.mediaSession.metadata = new window.MediaMetadata({
-      title: currentTrack.title,
-      artist: currentTrack.artist,
-      album: 'HarmonyStream',
-      artwork: [{ src: currentTrack.thumbnailUrl, sizes: '512x512', type: 'image/jpeg' }],
-    });
-    
-  }, [currentTrack]);
-  
-  useEffect(() => {
-    if (!('mediaSession' in navigator)) return;
-    navigator.mediaSession.playbackState = isGlobalPlaying ? 'playing' : 'paused';
-    
-    navigator.mediaSession.setActionHandler('play', () => setGlobalIsPlaying(true));
-    navigator.mediaSession.setActionHandler('pause', () => setGlobalIsPlaying(false));
-    navigator.mediaSession.setActionHandler('previoustrack', handlePlayPrev);
-    navigator.mediaSession.setActionHandler('nexttrack', handlePlayNext);
-    navigator.mediaSession.setActionHandler('seekbackward', null);
-    navigator.mediaSession.setActionHandler('seekforward', null);
-    if (isAndroidAppRuntime) {
-      navigator.mediaSession.setActionHandler('seekto', (details) => {
-        if (typeof details.seekTime === 'number') {
-          handleSeekCommit([details.seekTime]);
-        }
-      });
-    } else {
-      navigator.mediaSession.setActionHandler('seekto', null);
-    }
-
-  }, [isGlobalPlaying, setGlobalIsPlaying, handlePlayPrev, handlePlayNext, handleSeekCommit, isAndroidAppRuntime]);
-
-  useEffect(() => {
-    if ('mediaSession' in navigator && navigator.mediaSession.metadata) {
-      try {
-        navigator.mediaSession.setPositionState({
-          duration: duration || 0,
-          playbackRate: 1,
-          position: currentTime || 0,
-        });
-      } catch (error) {
-        if (!(error instanceof DOMException && error.name === 'InvalidStateError')) {
-          console.warn("Failed to set MediaSession position state:", error);
-        }
-      }
-    }
-  }, [currentTime, duration]);
-
-  useEffect(() => {
-    if (!isAndroidAppRuntime || typeof window === 'undefined') return;
-
-    window.updateProgress = (positionMs: number, durationMs: number) => {
-      const nextDuration = Math.max(0, durationMs / 1000);
-      const nextTime = Math.max(0, positionMs / 1000);
-      setDuration(nextDuration);
-      setCurrentTime(nextTime);
-      setProgress(nextDuration > 0 ? Math.min(100, (nextTime / nextDuration) * 100) : 0);
-    };
-
-    return () => {
-      window.updateProgress = undefined;
-    };
-  }, [isAndroidAppRuntime]);
-
-  useEffect(() => {
-    if (!isAndroidAppRuntime || typeof window === 'undefined') return;
-
-    window.__harmonyNativeManagedByApp = true;
-    window.__harmonyNativeApplyCommand = applyNativeCommand;
-    const commandListener = (event: Event) => {
-      const detail = (event as CustomEvent<{ action?: string }>).detail;
-      applyNativeCommand(detail?.action ?? '');
-    };
-
-    const nativeStateListener = (event: Event) => {
-      const detail = (event as CustomEvent<{ playing?: boolean; pending_play?: boolean; event_ts?: number; queue_index?: number }>).detail;
-      if (typeof detail?.playing !== 'boolean') return;
-
-      const eventTs = typeof detail.event_ts === 'number' ? detail.event_ts : Date.now();
-      if (eventTs < lastNativeStateTsRef.current) return;
-      lastNativeStateTsRef.current = eventTs;
-
-      const isPendingNativePlay = !!detail.pending_play;
-      const recentPlayRequest = nativePlayRequestAtMsRef.current > 0 && Date.now() - nativePlayRequestAtMsRef.current < 3000;
-
-      if (!detail.playing && (isPendingNativePlay || recentPlayRequest)) {
-        return;
-      }
-
-      if (detail.playing) {
-        nativePlayRequestAtMsRef.current = 0;
-      }
-
-      setGlobalIsPlaying(detail.playing);
-      if (typeof detail.queue_index === 'number') {
-        syncNativeIndex(detail.queue_index);
-      }
-      if (!isAndroidAppRuntime && detail.playing) {
-        const player = playerRef.current;
-        if (player && typeof player.getPlayerState === 'function' && typeof player.playVideo === 'function') {
-          const state = player.getPlayerState();
-          if (state !== 1) {
-            player.playVideo();
-          }
-        }
-      }
-    };
-
-    const hostResumedListener = () => {
-      window.HarmonyNative?.getState?.();
-      if (isGlobalPlayingRef.current) {
-        const player = playerRef.current;
-        if (player && typeof player.playVideo === 'function') {
-          player.playVideo();
-        }
-      }
-    };
-
-    const pipStateListener = (event: Event) => {
-      const detail = (event as CustomEvent<{ isInPictureInPictureMode?: boolean }>).detail;
-      if (detail?.isInPictureInPictureMode && currentTrack) {
-        setGlobalIsPlaying(true);
-      }
-    };
-
-    window.addEventListener('nativePlaybackCommand', commandListener as EventListener);
-    window.addEventListener('nativePlaybackState', nativeStateListener as EventListener);
-    window.addEventListener('nativeHostResumed', hostResumedListener as EventListener);
-    window.addEventListener('nativePictureInPictureChanged', pipStateListener as EventListener);
-    window.HarmonyNative?.getState?.();
-
-    return () => {
-      window.removeEventListener('nativePlaybackCommand', commandListener as EventListener);
-      window.removeEventListener('nativePlaybackState', nativeStateListener as EventListener);
-      window.removeEventListener('nativeHostResumed', hostResumedListener as EventListener);
-      window.removeEventListener('nativePictureInPictureChanged', pipStateListener as EventListener);
-      window.__harmonyNativeApplyCommand = undefined;
-      window.__harmonyNativeManagedByApp = false;
-    };
-  }, [isAndroidAppRuntime, applyNativeCommand, currentTrack, setGlobalIsPlaying, syncNativeIndex]);
-
-  if (!currentTrack) {
-    return null;
-  }
-  
-  const isCurrentlyLiked = currentTrack ? isSongLiked(currentTrack.id) : false;
-  
-  const PipControls = () => (
-    <TooltipProvider>
-      <div className="flex items-center justify-between p-1 bg-black/50">
-        <p className="text-xs text-white truncate flex-1 ml-2">{currentTrack.title}</p>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="text-white hover:bg-white/20 h-7 w-7"
-              onClick={async () => await document.exitPictureInPicture()}
-            >
-              <Maximize2 className="h-4 w-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="top"><p>Exit Picture-in-Picture</p></TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="text-white hover:bg-white/20 h-7 w-7"
-              onClick={() => handleTrackError(currentTrack.id) }
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="top"><p>Close player</p></TooltipContent>
-        </Tooltip>
-      </div>
-    </TooltipProvider>
-  );
-
-  const getZoomTooltipText = () => {
-    if (zoomLevel === 1) return 'Zoom';
-    if (zoomLevel === 1.25) return 'Zoom Further';
-    return 'Fit to Screen';
-  };
-
-  const playerProps = {
+  // ---------------------------------------------------------------------------
+  // Shared props for both player layouts
+  // ---------------------------------------------------------------------------
+  const sharedPlayerProps = {
     currentTrack,
     progress,
     duration,
     currentTime,
     isPlaying: isGlobalPlaying,
-    isLiked: isCurrentlyLiked,
+    isLiked,
     playerMode,
     volume,
     playlists,
-    onToggleLike: handleToggleLike,
-    onTogglePlayerMode: handleTogglePlayerMode,
-    onPlayPrev: handlePlayPrev,
-    onPlayNext: handlePlayNext,
-    onTogglePlayPause: handleTogglePlayPause,
-    onVolumeChange: handleVolumeChange,
-    onSeekChange: handleSeekChange,
-    onSeekCommit: handleSeekCommit,
-    onAddToPlaylist: handleAddToPlaylist,
-    onShare: handleShare,
+    onToggleLike:              handleToggleLike,
+    onTogglePlayerMode:        handleTogglePlayerMode,
+    onPlayPrev:                handlePlayPrev,
+    onPlayNext:                handlePlayNext,
+    onTogglePlayPause:         handleTogglePlayPause,
+    onVolumeChange:            handleVolumeChange,
+    onSeekChange:              handleSeekChange,
+    onSeekCommit:              handleSeekCommit,
+    onAddToPlaylist:           handleAddToPlaylist,
+    onShare:                   handleShare,
     onOpenCreatePlaylistDialog: setIsCreatePlaylistDialogOpen,
-    isPip,
-    showControls,
-    onResetControlsTimeout: resetControlsTimeout,
-    container: container,
+    container,
   };
 
+  // ---------------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------------
   return (
     <>
+      {/* Create-playlist dialog */}
       <CreatePlaylistDialog
         open={isCreatePlaylistDialogOpen}
         onOpenChange={setIsCreatePlaylistDialogOpen}
-        container={container}
       />
-      <Sheet open={isQueueOpen} onOpenChange={setIsQueueOpen}>
-        <div 
-          ref={playerAndVideoContainerRef}
-          className={cn(
-            playerMode === 'video' ? "fixed inset-0 bg-black z-50" : "relative"
-          )}
-        >
-            <div className={cn(
-                "absolute inset-0 w-full h-full transition-all duration-300 ease-in-out pointer-events-none",
-                playerMode === 'video' ? 'opacity-100' : 'opacity-0',
-              )}
-              style={{ transform: `scale(${zoomLevel})` }}
-            >
-              <YouTube
-                  videoId={currentTrack.videoId}
-                  opts={{ playerVars: { playsinline: 1, controls: 0, modestbranding: 1, rel: 0, iv_load_policy: 3, autoplay: shouldControlIframePlayback ? 1 : 0, origin: typeof window !== 'undefined' ? window.location.origin : undefined } }}
-                  onReady={onReady}
-                  onStateChange={onStateChange}
-                  onError={onError}
-                  className="absolute top-0 left-0 w-full h-full"
-                  iframeClassName="w-full h-full"
-                />
-            </div>
-           
-           <PortraitPlayer {...playerProps} />
-           <LandscapePlayer {...playerProps} />
 
-           {playerMode === 'video' && !isPip && (
-              <>
-                <div className="absolute top-4 right-4 z-[70] hidden md:block">
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="text-white bg-black/30 hover:bg-black/50"
-                        onClick={handleToggleZoom}
-                      >
-                        {zoomLevel > 1 ? <Minimize2 className="h-5 w-5" /> : <Maximize2 className="h-5 w-5" />}
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom">
-                      <p>{getZoomTooltipText()}</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </div>
-                <div
-                    className={cn("absolute inset-0 z-[55]", showControls ? 'pointer-events-none' : 'pointer-events-auto')}
-                    onClick={showControls ? undefined : resetControlsTimeout}
-                    aria-hidden="true"
-                />
-              </>
-           )}
-       </div>
-      <SheetContent 
-        container={playerAndVideoContainerRef.current}
-        className={cn("p-4 z-[9999]", "md:w-[400px] md:sm:w-[540px]")}
-        side="right"
-      >
-        <SheetHeader className="flex flex-row justify-between items-center pr-6">
-          <div className="flex items-baseline gap-2">
-            <SheetTitle>Up Next</SheetTitle>
-            {playlist.length > 0 && (
-              <span className="text-sm text-muted-foreground tabular-nums">
-                {playlist.length} {playlist.length === 1 ? 'song' : 'songs'}
-              </span>
+      <Sheet open={isQueueOpen} onOpenChange={setIsQueueOpen}>
+        {/* ------------------------------------------------------------------ */}
+        {/* Video container – only visible in video mode                        */}
+        {/* ------------------------------------------------------------------ */}
+        {playerMode === 'video' && (
+          <div
+            ref={playerAndVideoContainerRef}
+            className="fixed inset-0 z-40 bg-black"
+            onMouseMove={resetControlsTimeout}
+            onClick={resetControlsTimeout}
+          >
+            {currentTrack && (
+              <YouTube
+                videoId={currentTrack.id}
+                opts={youtubeOpts}
+                onReady={onPlayerReady}
+                onStateChange={onPlayerStateChange}
+                onError={onPlayerError}
+                className="w-full h-full"
+                iframeClassName="w-full h-full"
+              />
             )}
           </div>
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="icon" onClick={shufflePlaylist} disabled={playlist.length <= 1}>
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-shuffle h-5 w-5"><path d="M2 18h1.4c1.3 0 2.5-.6 3.3-1.7l6.1-8.6c.7-1.1 2-1.7 3.3-1.7H22"/><path d="m18 2 4 4-4 4"/><path d="M2 6h1.9c1.5 0 2.9.9 3.6 2.2l.7 1.2c.5.9 1.4 1.5 2.5 1.5H22"/><path d="m18 22 4-4-4-4"/></svg>
-              <span className="sr-only">Shuffle</span>
-            </Button>
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="ghost" size="icon" disabled={playlist.length === 0}>
-                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-trash h-5 w-5"><path d="M5 4h14"/><path d="M5 4a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2"/><path d="M19 4v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
-                  <span className="sr-only">Clear Queue</span>
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent container={container}>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    This will clear your current playing queue. The current song will continue playing. This action cannot be undone.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleClearQueue}>Clear</AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          </div>
-        </SheetHeader>
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragEnd={handleDragEnd}
-        >
-          <SortableContext
-            items={playlist.map(s => s.id)}
-            strategy={verticalListSortingStrategy}
-          >
-            <ScrollArea className="h-[calc(100vh-5rem)] mt-4 pr-6">
-              <div className="flex flex-col gap-2">
-                {playlist.map((song) => {
-                  const isThisSongLiked = isSongLiked(song.id);
-                  const hasThisSongBeenPlayed = history.some(h => h.id === song.id);
+        )}
 
-                  return (
-                    <SortableSongItem
-                      key={song.id}
-                      song={song}
-                      isCurrent={song.id === currentTrack?.id}
-                      isPlaying={isGlobalPlaying}
-                      isLiked={isThisSongLiked}
-                      hasBeenPlayed={hasThisSongBeenPlayed}
-                      onPlay={() => handleQueueSongClick(song.id)}
-                      onRemove={() => removeSongFromQueue(song.id)}
-                    />
-                  )
-                })}
-                {playlist.length === 0 && (
-                  <p className="text-muted-foreground text-center py-8">The queue is empty.</p>
-                )}
-              </div>
-            </ScrollArea>
-          </SortableContext>
-        </DndContext>
-      </SheetContent>
-    </Sheet>
-    {isPip && (
-      <div className="fixed bottom-5 right-5 w-64 h-auto bg-black rounded-lg shadow-2xl z-[60] overflow-hidden">
-          <div className="relative aspect-video">
-                <YouTube
-                  videoId={currentTrack.videoId}
-                  opts={{ playerVars: { playsinline: 1, controls: 0, modestbranding: 1, rel: 0, iv_load_policy: 3, start: currentTime, autoplay: 1, origin: typeof window !== 'undefined' ? window.location.origin : undefined } }}
-                  onReady={(e: YouTubeEvent) => {
-                      e.target.setVolume(volume);
-                      if (isGlobalPlaying) e.target.playVideo();
-                  }}
-                  className="absolute top-0 left-0 w-full h-full"
-                  iframeClassName="w-full h-full object-cover"
-              />
+        {/* ------------------------------------------------------------------ */}
+        {/* Hidden iframe in audio mode – keeps the player instance alive       */}
+        {/* but muted/paused so ExoPlayer has exclusive audio focus.            */}
+        {/* FIX #2: display:none prevents any audio output from the iframe.    */}
+        {/* ------------------------------------------------------------------ */}
+        {playerMode === 'audio' && currentTrack && (
+          <div style={{ display: 'none' }} aria-hidden>
+            <YouTube
+              videoId={currentTrack.id}
+              opts={{
+                playerVars: {
+                  autoplay: 0,
+                  mute: 1,
+                  controls: 0,
+                },
+              }}
+              onReady={onPlayerReady}
+              onStateChange={onPlayerStateChange}
+              onError={onPlayerError}
+            />
           </div>
-          <PipControls />
-      </div>
-    )}
+        )}
+
+        {/* ------------------------------------------------------------------ */}
+        {/* Player bars                                                         */}
+        {/* ------------------------------------------------------------------ */}
+        <PortraitPlayer {...sharedPlayerProps} />
+
+        <LandscapePlayer
+          {...sharedPlayerProps}
+          isPip={isPip}
+          showControls={showControls}
+          onResetControlsTimeout={resetControlsTimeout}
+        />
+
+        {/* ------------------------------------------------------------------ */}
+        {/* Queue sheet                                                         */}
+        {/* ------------------------------------------------------------------ */}
+        <SheetContent side="right" className="w-full sm:w-[400px] flex flex-col p-0">
+          <SheetHeader className="p-4 border-b">
+            <SheetTitle>Queue ({playlist.length} tracks)</SheetTitle>
+          </SheetHeader>
+          <div className="flex items-center gap-2 px-4 py-2 border-b">
+            <Button variant="outline" size="sm" onClick={shufflePlaylist}>Shuffle</Button>
+            <Button variant="outline" size="sm" onClick={clearQueue}>Clear</Button>
+          </div>
+          <ScrollArea className="flex-1">
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
+            >
+              <SortableContext
+                items={playlist.map(s => s.id)}
+                strategy={verticalListSortingStrategy}
+              >
+                <div className="p-2 space-y-1">
+                  {playlist.map(song => {
+                    const isCurrent    = song.id === currentTrack?.id;
+                    const hasBeenPlayed = history.some(h => h.id === song.id);
+                    return (
+                      <SortableSongItem
+                        key={song.id}
+                        song={song}
+                        isCurrent={isCurrent}
+                        isPlaying={isCurrent && isGlobalPlaying}
+                        isLiked={isSongLiked(song.id)}
+                        hasBeenPlayed={hasBeenPlayed}
+                        onPlay={() => {
+                          const idx = playlist.findIndex(s => s.id === song.id);
+                          if (idx !== -1) syncNativeIndex(idx);
+                        }}
+                        onRemove={() => removeSongFromQueue(song.id)}
+                      />
+                    );
+                  })}
+                </div>
+              </SortableContext>
+            </DndContext>
+          </ScrollArea>
+        </SheetContent>
+      </Sheet>
     </>
   );
 }
