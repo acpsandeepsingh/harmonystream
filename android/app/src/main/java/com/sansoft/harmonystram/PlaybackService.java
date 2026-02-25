@@ -692,8 +692,16 @@ public class PlaybackService extends Service {
         PendingIntent contentPi = PendingIntent.getActivity(
                 this, 0, contentIntent, piFlags);
 
+        // Using android.R.drawable system icons so the build does not depend on
+        // specific project drawable names. Swap these for your own icons if desired.
+        int icSmall = android.R.drawable.ic_media_play;
+        int icPrev  = android.R.drawable.ic_media_previous;
+        int icNext  = android.R.drawable.ic_media_next;
+        int icPlay  = android.R.drawable.ic_media_play;
+        int icPause = android.R.drawable.ic_media_pause;
+
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setSmallIcon(R.drawable.ic_notification)
+                .setSmallIcon(icSmall)
                 .setContentTitle(currentTitle)
                 .setContentText(currentArtist)
                 .setContentIntent(contentPi)
@@ -702,13 +710,11 @@ public class PlaybackService extends Service {
                 .setStyle(new MediaStyle()
                         .setMediaSession(mediaSession.getSessionToken())
                         .setShowActionsInCompactView(0, 1, 2))
-                .addAction(buildAction(
-                        R.drawable.ic_skip_previous, "Previous", ACTION_PREVIOUS, 101))
+                .addAction(buildAction(icPrev, "Previous", ACTION_PREVIOUS, 101))
                 .addAction(player != null && player.isPlaying()
-                        ? buildAction(R.drawable.ic_pause, "Pause",  ACTION_PAUSE, 102)
-                        : buildAction(R.drawable.ic_play,  "Play",   ACTION_PLAY,  102))
-                .addAction(buildAction(
-                        R.drawable.ic_skip_next, "Next", ACTION_NEXT, 103));
+                        ? buildAction(icPause, "Pause", ACTION_PAUSE, 102)
+                        : buildAction(icPlay,  "Play",  ACTION_PLAY,  102))
+                .addAction(buildAction(icNext, "Next", ACTION_NEXT, 103));
 
         if (currentArtworkBitmap != null) {
             builder.setLargeIcon(currentArtworkBitmap);
