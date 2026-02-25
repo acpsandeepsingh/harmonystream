@@ -699,7 +699,7 @@ export function MusicPlayer() {
   ]);
 
   const onPlayerError = useCallback((event: YouTubeEvent) => {
-    handleTrackError(event);
+    handleTrackError(String(event?.data ?? 'unknown'));
   }, [handleTrackError]);
 
   // ---------------------------------------------------------------------------
