@@ -1,21 +1,17 @@
-E " + value);
-        });
-    }
-}
 package com.sansoft.harmonystram;
 
 import android.Manifest;
-import android.content.Context;
 import android.annotation.SuppressLint;
 import android.app.PictureInPictureParams;
+import android.content.BroadcastReceiver;
+import android.content.ComponentName;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.ServiceConnection;
+import android.content.pm.PackageManager;
 import android.content.res.AssetManager;
 import android.content.res.Configuration;
-import android.content.BroadcastReceiver;
-import android.content.Intent;
-import android.content.ComponentName;
-import android.content.ServiceConnection;
-import android.content.IntentFilter;
-import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.os.Build;
@@ -27,9 +23,8 @@ import android.util.Rational;
 import android.view.GestureDetector;
 import android.view.MotionEvent;
 import android.view.View;
-import android.view.WindowManager;
-import android.webkit.JavascriptInterface;
 import android.webkit.ConsoleMessage;
+import android.webkit.JavascriptInterface;
 import android.webkit.MimeTypeMap;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
@@ -43,53 +38,59 @@ import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
-import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
 import androidx.lifecycle.ViewModelProvider;
-import androidx.webkit.WebViewAssetLoader;
 import androidx.webkit.WebResourceErrorCompat;
+import androidx.webkit.WebViewAssetLoader;
 import androidx.webkit.WebViewClientCompat;
 
-import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 public class WebAppActivity extends AppCompatActivity {
 
     public static final String EXTRA_START_URL = "start_url";
-    private static final String BUNDLED_HOME_URL           = "https://appassets.androidplatform.net/";
-    private static final String BUNDLED_HOME_URL_BASE_PATH = "https://appassets.androidplatform.net/harmonystream/index.html";
-    private static final String FALLBACK_SHELL_URL         = "https://appassets.androidplatform.net/assets/web/offline_shell.html";
-    private static final String FALLBACK_SHELL_ASSET_PATH  = "web/offline_shell.html";
-    private static final String BUNDLED_HOME_ASSET_PATH    = "public/index.html";
-    private static final String BUNDLED_HOME_ASSET_PATH_BASE_PATH = "public/harmonystream/index.html";
+
+    private static final String BUNDLED_HOME_URL =
+            "https://appassets.androidplatform.net/";
+    private static final String BUNDLED_HOME_URL_BASE_PATH =
+            "https://appassets.androidplatform.net/harmonystream/index.html";
+    private static final String FALLBACK_SHELL_URL =
+            "https://appassets.androidplatform.net/assets/web/offline_shell.html";
+    private static final String FALLBACK_SHELL_ASSET_PATH =
+            "web/offline_shell.html";
+    private static final String BUNDLED_HOME_ASSET_PATH =
+            "public/index.html";
+    private static final String BUNDLED_HOME_ASSET_PATH_BASE_PATH =
+            "public/harmonystream/index.html";
+
     private static final String EMBEDDED_FALLBACK_HTML =
             "<!doctype html><html><head><meta charset=\"utf-8\" />"
             + "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\" />"
-            + "<title>HarmonyStream</title><style>body{font-family:sans-serif;background:#0b1220;color:#fff;display:flex;"
-            + "align-items:center;justify-content:center;height:100vh;margin:0}main{max-width:520px;padding:24px;text-align:center;"
-            + "border:1px solid #2a3550;border-radius:12px;background:#131d33}</style></head><body><main><h1>HarmonyStream</h1>"
-            + "<p>Bundled app shell is active. Build web assets into <code>android/app/src/main/assets/public</code>"
-            + " to load the full web player UI offline.</p></main></body></html>";
+            + "<title>HarmonyStream</title>"
+            + "<style>body{font-family:sans-serif;background:#0b1220;color:#fff;"
+            + "display:flex;align-items:center;justify-content:center;"
+            + "height:100vh;margin:0}"
+            + "main{max-width:520px;padding:24px;text-align:center;"
+            + "border:1px solid #2a3550;border-radius:12px;background:#131d33}"
+            + "</style></head><body><main><h1>HarmonyStream</h1>"
+            + "<p>Build web assets into <code>android/app/src/main/assets/public</code>"
+            + " to load the full UI offline.</p></main></body></html>";
 
-    private static final String TAG              = "HarmonyWebAppActivity";
-    private static final String LOGCAT_HINT_TAG  = "HarmonyContentDebug";
-    private static final String WEB_CONSOLE_TAG  = "WebConsole";
-    private static final long   MAIN_FRAME_TIMEOUT_MS  = 15000L;
+    private static final String TAG             = "HarmonyWebAppActivity";
+    private static final String LOGCAT_HINT_TAG = "HarmonyContentDebug";
+    private static final String WEB_CONSOLE_TAG = "WebConsole";
+    private static final long   MAIN_FRAME_TIMEOUT_MS = 15000L;
     private static final int    REQUEST_CODE_POST_NOTIFICATIONS = 4242;
 
+    // -------------------------------------------------------------------------
+    // Views / state
+    // -------------------------------------------------------------------------
     private WebView          webView;
     private ProgressBar      loadingIndicator;
     private TextView         seekOverlayIndicator;
@@ -105,14 +106,12 @@ public class WebAppActivity extends AppCompatActivity {
     private final Runnable   mainFrameTimeoutRunnable = this::handleMainFrameTimeout;
     private boolean          playbackActive;
 
-    // FIX #3: videoModeEnabled drives fullscreen â€“ false by default so the
-    // app starts with the status bar and nav bar visible.
-    private boolean          videoModeEnabled  = false;
-    private boolean          doubleTapHandled;
+    // FIX #3: Default false – bars visible until user enters video mode.
+    private boolean          videoModeEnabled = false;
 
-    // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------------
     // Service connection
-    // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------------
     private final ServiceConnection playbackServiceConnection = new ServiceConnection() {
         @Override
         public void onServiceConnected(ComponentName name, android.os.IBinder service) {
@@ -130,15 +129,18 @@ public class WebAppActivity extends AppCompatActivity {
         }
     };
 
-    // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------------
     // Broadcast receivers
-    // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------------
     private final BroadcastReceiver serviceStateReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
-            if (intent == null || !PlaybackService.ACTION_STATE_CHANGED.equals(intent.getAction())) return;
+            if (intent == null
+                    || !PlaybackService.ACTION_STATE_CHANGED.equals(intent.getAction())) {
+                return;
+            }
 
-            // FIX #3 â€“ track video mode from service broadcasts and update bars accordingly
+            // FIX #3: Track video mode and update system bars accordingly.
             boolean newVideoMode = intent.getBooleanExtra("video_mode", false);
             if (newVideoMode != videoModeEnabled) {
                 videoModeEnabled = newVideoMode;
@@ -156,25 +158,27 @@ public class WebAppActivity extends AppCompatActivity {
                 playbackActive = intent.getBooleanExtra("playing", false);
                 payload.put("playing",      playbackActive);
                 payload.put("isPlaying",    playbackActive);
-                long positionMs = intent.getLongExtra("position_ms", 0);
-                long durationMs = intent.getLongExtra("duration_ms", 0);
-                payload.put("position_ms",  positionMs);
-                payload.put("currentPosition", positionMs);
-                payload.put("duration_ms",  durationMs);
-                payload.put("duration",     durationMs);
-                payload.put("pending_play", intent.getBooleanExtra("pending_play", false));
+                long posMs = intent.getLongExtra("position_ms", 0);
+                long durMs = intent.getLongExtra("duration_ms", 0);
+                payload.put("position_ms",     posMs);
+                payload.put("currentPosition", posMs);
+                payload.put("duration_ms",     durMs);
+                payload.put("duration",        durMs);
+                payload.put("pending_play",    intent.getBooleanExtra("pending_play", false));
                 int queueIndex = intent.getIntExtra("queue_index", -1);
                 payload.put("queue_index",  queueIndex);
                 payload.put("currentIndex", queueIndex);
                 payload.put("queue_length", intent.getIntExtra("queue_length", 0));
-                boolean videoMode = intent.getBooleanExtra("video_mode", false);
-                payload.put("video_mode",   videoMode);
-                payload.put("videoMode",    videoMode);
+                boolean vm = intent.getBooleanExtra("video_mode", false);
+                payload.put("video_mode",   vm);
+                payload.put("videoMode",    vm);
                 payload.put("thumbnailUrl", intent.getStringExtra("thumbnailUrl"));
-                payload.put("event_ts",     intent.getLongExtra("event_ts", System.currentTimeMillis()));
+                payload.put("event_ts",     intent.getLongExtra("event_ts",
+                        System.currentTimeMillis()));
             } catch (JSONException ignored) {}
 
-            dispatchToWeb("window.dispatchEvent(new CustomEvent('nativePlaybackState', { detail: " + payload + " }));");
+            dispatchToWeb("window.dispatchEvent(new CustomEvent("
+                    + "'nativePlaybackState', { detail: " + payload + " }));");
             playbackViewModel.updateFromBroadcast(intent);
         }
     };
@@ -182,14 +186,17 @@ public class WebAppActivity extends AppCompatActivity {
     private final BroadcastReceiver mediaActionReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
-            if (intent == null || !PlaybackService.ACTION_MEDIA_CONTROL.equals(intent.getAction())) return;
+            if (intent == null
+                    || !PlaybackService.ACTION_MEDIA_CONTROL.equals(intent.getAction())) {
+                return;
+            }
             dispatchPendingMediaAction(intent.getStringExtra("action"));
         }
     };
 
-    // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------------
     // onCreate
-    // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------------
     @SuppressLint({"SetJavaScriptEnabled", "JavascriptInterface"})
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -201,11 +208,12 @@ public class WebAppActivity extends AppCompatActivity {
         seekOverlayIndicator = findViewById(R.id.seek_overlay_indicator);
         playbackViewModel    = new ViewModelProvider(this).get(PlaybackViewModel.class);
 
-        // FIX #3: Set up insets controller but DO NOT hide bars on start.
-        // Bars will only be hidden when video mode is activated.
-        insetsController = WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
+        // FIX #3: Set up insets controller, show bars normally on launch.
+        // Bars are only hidden when video mode is explicitly activated.
+        insetsController = WindowCompat.getInsetsController(
+                getWindow(), getWindow().getDecorView());
         WindowCompat.setDecorFitsSystemWindows(getWindow(), true);
-        showNormalBars(); // Explicitly show bars on launch
+        showNormalBars();
 
         configureVideoGestures();
         requestNotificationPermissionIfNeeded();
@@ -223,17 +231,22 @@ public class WebAppActivity extends AppCompatActivity {
         webView.setBackgroundColor(Color.rgb(11, 18, 32));
 
         WebViewAssetLoader assetLoader = new WebViewAssetLoader.Builder()
-                .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
-                .addPathHandler("/_next/", new MultiPathAssetsHandler(new String[]{
-                        "public/_next/", "_next/", "public/next/", "next/",
-                        "public/harmonystream/_next/", "harmonystream/_next/",
-                        "public/harmonystream/next/", "harmonystream/next/"}))
-                .addPathHandler("/harmonystream/_next/", new MultiPathAssetsHandler(new String[]{
-                        "public/_next/", "_next/", "public/next/", "next/",
-                        "public/harmonystream/_next/", "harmonystream/_next/",
-                        "public/harmonystream/next/", "harmonystream/next/"}))
-                .addPathHandler("/harmonystream/", new PublicRoutesPathHandler("harmonystream/"))
-                .addPathHandler("/", new PublicRoutesPathHandler())
+                .addPathHandler("/assets/",
+                        new WebViewAssetLoader.AssetsPathHandler(this))
+                .addPathHandler("/_next/",
+                        new MultiPathAssetsHandler(new String[]{
+                                "public/_next/", "_next/", "public/next/", "next/",
+                                "public/harmonystream/_next/", "harmonystream/_next/",
+                                "public/harmonystream/next/", "harmonystream/next/"}))
+                .addPathHandler("/harmonystream/_next/",
+                        new MultiPathAssetsHandler(new String[]{
+                                "public/_next/", "_next/", "public/next/", "next/",
+                                "public/harmonystream/_next/", "harmonystream/_next/",
+                                "public/harmonystream/next/", "harmonystream/next/"}))
+                .addPathHandler("/harmonystream/",
+                        new PublicRoutesPathHandler("harmonystream/"))
+                .addPathHandler("/",
+                        new PublicRoutesPathHandler())
                 .build();
 
         NativePlaybackBridge bridge = new NativePlaybackBridge();
@@ -243,17 +256,17 @@ public class WebAppActivity extends AppCompatActivity {
 
         webView.setWebChromeClient(new WebChromeClient() {
             @Override
-            public boolean onConsoleMessage(ConsoleMessage consoleMessage) {
-                if (consoleMessage != null) {
-                    String jsLine = "JS " + consoleMessage.messageLevel()
-                            + " " + consoleMessage.sourceId()
-                            + ":" + consoleMessage.lineNumber()
-                            + " " + consoleMessage.message();
-                    Log.d(TAG, jsLine);
-                    Log.d(WEB_CONSOLE_TAG, jsLine);
-                    logContentInfo(jsLine);
+            public boolean onConsoleMessage(ConsoleMessage msg) {
+                if (msg != null) {
+                    String line = "JS " + msg.messageLevel()
+                            + " " + msg.sourceId()
+                            + ":" + msg.lineNumber()
+                            + " " + msg.message();
+                    Log.d(TAG, line);
+                    Log.d(WEB_CONSOLE_TAG, line);
+                    logContentInfo(line);
                 }
-                return super.onConsoleMessage(consoleMessage);
+                return super.onConsoleMessage(msg);
             }
         });
         webView.setWebViewClient(new HarmonyWebViewClient(assetLoader));
@@ -265,7 +278,9 @@ public class WebAppActivity extends AppCompatActivity {
             webView.restoreState(savedInstanceState);
         } else {
             String startUrl = getIntent().getStringExtra(EXTRA_START_URL);
-            if (startUrl != null && startUrl.startsWith("https://appassets.androidplatform.net/assets/")) {
+            if (startUrl != null
+                    && startUrl.startsWith(
+                            "https://appassets.androidplatform.net/assets/")) {
                 Log.i(TAG, "Loading explicit start URL: " + startUrl);
                 logStartupLoadPlan(startUrl, startUrl);
                 webView.loadUrl(startUrl);
@@ -295,7 +310,8 @@ public class WebAppActivity extends AppCompatActivity {
             registerReceiver(mediaActionReceiver, mediaFilter);
         }
 
-        dispatchPendingMediaAction(getIntent().getStringExtra(PlaybackService.EXTRA_PENDING_MEDIA_ACTION));
+        dispatchPendingMediaAction(
+                getIntent().getStringExtra(PlaybackService.EXTRA_PENDING_MEDIA_ACTION));
         playbackActive = PlaybackService.readSnapshot(this).playing;
         playbackViewModel.setSnapshot(PlaybackService.readSnapshot(this));
 
@@ -303,43 +319,39 @@ public class WebAppActivity extends AppCompatActivity {
             if (state != null) playbackActive = state.playing;
         });
 
-        Intent bindIntent = new Intent(this, PlaybackService.class);
-        bindService(bindIntent, playbackServiceConnection, Context.BIND_AUTO_CREATE);
+        bindService(new Intent(this, PlaybackService.class),
+                playbackServiceConnection, Context.BIND_AUTO_CREATE);
     }
 
-    // -----------------------------------------------------------------------
-    // FIX #3 â€“ System bar helpers
-    // showNormalBars: always visible (audio mode / default)
-    // hideSystemBars: immersive (only called when videoModeEnabled == true)
-    // -----------------------------------------------------------------------
-
-    /**
-     * Show status bar and navigation bar. Called when not in video mode.
-     */
+    // -------------------------------------------------------------------------
+    // FIX #3: System bar helpers.
+    // showNormalBars() is the default (audio mode / app launch).
+    // hideSystemBars() is only called when videoModeEnabled == true.
+    // -------------------------------------------------------------------------
     private void showNormalBars() {
         if (insetsController == null) return;
         WindowCompat.setDecorFitsSystemWindows(getWindow(), true);
-        insetsController.show(WindowInsetsCompat.Type.statusBars()
+        insetsController.show(
+                WindowInsetsCompat.Type.statusBars()
                 | WindowInsetsCompat.Type.navigationBars());
-        insetsController.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_DEFAULT);
+        insetsController.setSystemBarsBehavior(
+                WindowInsetsControllerCompat.BEHAVIOR_DEFAULT);
     }
 
-    /**
-     * Hide status bar and navigation bar. Only called when video mode is active.
-     */
     private void hideSystemBars() {
-        if (!videoModeEnabled) return; // Safety guard â€“ never hide outside video mode
+        if (!videoModeEnabled) return; // Safety guard – never hide outside video mode
         if (insetsController == null) return;
         WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
-        insetsController.hide(WindowInsetsCompat.Type.statusBars()
+        insetsController.hide(
+                WindowInsetsCompat.Type.statusBars()
                 | WindowInsetsCompat.Type.navigationBars());
         insetsController.setSystemBarsBehavior(
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
     }
 
-    // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------------
     // PiP
-    // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------------
     @Override
     protected void onUserLeaveHint() {
         super.onUserLeaveHint();
@@ -347,7 +359,11 @@ public class WebAppActivity extends AppCompatActivity {
     }
 
     private void maybeEnterPictureInPicture() {
-        if (!playbackActive || Build.VERSION.SDK_INT < Build.VERSION_CODES.O || isInPictureInPictureMode()) return;
+        if (!playbackActive
+                || Build.VERSION.SDK_INT < Build.VERSION_CODES.O
+                || isInPictureInPictureMode()) {
+            return;
+        }
         PictureInPictureParams params = new PictureInPictureParams.Builder()
                 .setAspectRatio(new Rational(16, 9))
                 .build();
@@ -357,21 +373,23 @@ public class WebAppActivity extends AppCompatActivity {
     }
 
     @Override
-    public void onPictureInPictureModeChanged(boolean isInPictureInPictureMode, Configuration newConfig) {
-        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig);
-        dispatchToWeb("window.dispatchEvent(new CustomEvent('nativePictureInPictureChanged', { detail: { isInPictureInPictureMode: "
-                + isInPictureInPictureMode + " } }));");
+    public void onPictureInPictureModeChanged(boolean isInPiP, Configuration newConfig) {
+        super.onPictureInPictureModeChanged(isInPiP, newConfig);
+        dispatchToWeb("window.dispatchEvent(new CustomEvent("
+                + "'nativePictureInPictureChanged',"
+                + "{ detail: { isInPictureInPictureMode: " + isInPiP + " } }));");
     }
 
-    // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------------
     // Activity lifecycle
-    // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------------
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
         if (intent == null) return;
-        dispatchPendingMediaAction(intent.getStringExtra(PlaybackService.EXTRA_PENDING_MEDIA_ACTION));
+        dispatchPendingMediaAction(
+                intent.getStringExtra(PlaybackService.EXTRA_PENDING_MEDIA_ACTION));
     }
 
     @Override
@@ -390,10 +408,10 @@ public class WebAppActivity extends AppCompatActivity {
         super.onResume();
         if (webView != null) {
             webView.onResume();
-            dispatchToWeb("window.dispatchEvent(new CustomEvent('nativeHostResumed'));");
+            dispatchToWeb(
+                    "window.dispatchEvent(new CustomEvent('nativeHostResumed'));");
         }
-        // FIX #3: Only re-apply immersive mode if video mode is currently active.
-        // In audio mode we always want the bars visible.
+        // FIX #3: Only enter immersive mode on resume if video mode is active.
         if (videoModeEnabled) {
             hideSystemBars();
         } else {
@@ -404,13 +422,12 @@ public class WebAppActivity extends AppCompatActivity {
     @Override
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
-        if (hasFocus) {
-            // FIX #3: Respect video mode state when window regains focus.
-            if (videoModeEnabled) {
-                hideSystemBars();
-            } else {
-                showNormalBars();
-            }
+        if (!hasFocus) return;
+        // FIX #3: Respect video mode state when window regains focus.
+        if (videoModeEnabled) {
+            hideSystemBars();
+        } else {
+            showNormalBars();
         }
     }
 
@@ -421,7 +438,7 @@ public class WebAppActivity extends AppCompatActivity {
             serviceBound = false;
         }
         try { unregisterReceiver(serviceStateReceiver); } catch (Exception ignored) {}
-        try { unregisterReceiver(mediaActionReceiver); }  catch (Exception ignored) {}
+        try { unregisterReceiver(mediaActionReceiver);  } catch (Exception ignored) {}
         if (webView != null) {
             PlaybackService.attachWebView(null);
             webView.destroy();
@@ -435,22 +452,25 @@ public class WebAppActivity extends AppCompatActivity {
         if (webView != null) webView.saveState(outState);
     }
 
-    // -----------------------------------------------------------------------
-    // Dispatching helpers
-    // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------------
+    // Dispatch helpers
+    // -------------------------------------------------------------------------
     private void dispatchPendingMediaAction(String action) {
         if (action == null || action.isEmpty()) return;
         JSONObject payload = new JSONObject();
         try { payload.put("action", action); } catch (JSONException ignored) {}
-        dispatchToWeb("window.dispatchEvent(new CustomEvent('nativePlaybackCommand', { detail: " + payload + " }));");
-        dispatchToWeb("window.__harmonyNativeApplyCommand && window.__harmonyNativeApplyCommand(" + JSONObject.quote(action) + ");");
+        dispatchToWeb("window.dispatchEvent(new CustomEvent("
+                + "'nativePlaybackCommand', { detail: " + payload + " }));");
+        dispatchToWeb("window.__harmonyNativeApplyCommand"
+                + "&&window.__harmonyNativeApplyCommand("
+                + JSONObject.quote(action) + ");");
         clearPendingMediaAction();
     }
 
     private void clearPendingMediaAction() {
-        Intent clearIntent = new Intent(this, PlaybackService.class);
-        clearIntent.setAction(PlaybackService.ACTION_CLEAR_PENDING_MEDIA_ACTION);
-        startPlaybackService(clearIntent);
+        Intent i = new Intent(this, PlaybackService.class);
+        i.setAction(PlaybackService.ACTION_CLEAR_PENDING_MEDIA_ACTION);
+        startPlaybackService(i);
     }
 
     private void dispatchToWeb(String js) {
@@ -466,19 +486,18 @@ public class WebAppActivity extends AppCompatActivity {
         }
     }
 
-    // -----------------------------------------------------------------------
-    // Gesture support (video seek overlay)
-    // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------------
+    // Video gesture detector (double-tap to seek ±10 s in video mode)
+    // -------------------------------------------------------------------------
     private void configureVideoGestures() {
-        gestureDetector = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
+        gestureDetector = new GestureDetector(this,
+                new GestureDetector.SimpleOnGestureListener() {
             @Override
             public boolean onDoubleTap(MotionEvent e) {
                 if (!videoModeEnabled) return false;
-                float x    = e.getX();
-                float midX = webView.getWidth() / 2f;
-                long  deltaMs = (x < midX) ? -10_000L : 10_000L;
-                doubleTapHandled = true;
-
+                float x     = e.getX();
+                float midX  = webView != null ? webView.getWidth() / 2f : 0;
+                long deltaMs = (x < midX) ? -10_000L : 10_000L;
                 String label = (deltaMs < 0 ? "-" : "+") + "10s";
                 if (seekOverlayIndicator != null) {
                     seekOverlayIndicator.setText(label);
@@ -502,24 +521,24 @@ public class WebAppActivity extends AppCompatActivity {
         }
     }
 
-    // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------------
     // Notification permission (Android 13+)
-    // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------------
     private void requestNotificationPermissionIfNeeded() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+            if (ContextCompat.checkSelfPermission(this,
+                    Manifest.permission.POST_NOTIFICATIONS)
                     != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(
-                        this,
+                ActivityCompat.requestPermissions(this,
                         new String[]{Manifest.permission.POST_NOTIFICATIONS},
                         REQUEST_CODE_POST_NOTIFICATIONS);
             }
         }
     }
 
-    // -----------------------------------------------------------------------
-    // Main-frame load timeout
-    // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------------
+    // Main-frame load timeout / fallback
+    // -------------------------------------------------------------------------
     private void scheduleMainFrameTimeout() {
         mainHandler.removeCallbacks(mainFrameTimeoutRunnable);
         mainHandler.postDelayed(mainFrameTimeoutRunnable, MAIN_FRAME_TIMEOUT_MS);
@@ -531,28 +550,30 @@ public class WebAppActivity extends AppCompatActivity {
 
     private void handleMainFrameTimeout() {
         if (webView == null || !mainFrameLoading) return;
-        String currentUrl  = webView.getUrl();
-        String startedUrl  = mainFrameStartedUrl == null ? "unknown" : mainFrameStartedUrl;
-        if (currentUrl == null || currentUrl.isEmpty() || "about:blank".equals(currentUrl)) {
+        String currentUrl = webView.getUrl();
+        String startedUrl = mainFrameStartedUrl != null ? mainFrameStartedUrl : "unknown";
+        if (currentUrl == null || currentUrl.isEmpty()
+                || "about:blank".equals(currentUrl)) {
             Log.w(TAG, "Main-frame load timed out on empty URL. startedUrl=" + startedUrl);
             loadFallbackShell(webView);
             return;
         }
-        if (currentUrl.contains("appassets.androidplatform.net/assets/web/offline_shell.html")) {
-            Log.w(TAG, "Fallback shell URL timed out; rendering embedded fallback HTML");
+        if (currentUrl.contains(
+                "appassets.androidplatform.net/assets/web/offline_shell.html")) {
+            Log.w(TAG, "Fallback shell timed out; rendering embedded HTML");
             loadingFallbackShell = true;
             webView.loadDataWithBaseURL(
                     "https://appassets.androidplatform.net/assets/web/",
                     EMBEDDED_FALLBACK_HTML, "text/html", "UTF-8", null);
             return;
         }
-        Log.w(TAG, "Main-frame load timed out on URL: " + currentUrl + " startedUrl=" + startedUrl);
+        Log.w(TAG, "Main-frame timed out on: " + currentUrl
+                + " startedUrl=" + startedUrl);
         loadFallbackShell(webView);
     }
 
     private void loadFallbackShell(WebView view) {
         if (view == null) return;
-        Log.w(TAG, "Loading fallback shell. Existing URL: " + view.getUrl());
         if (loadingFallbackShell) {
             view.loadDataWithBaseURL(
                     "https://appassets.androidplatform.net/assets/web/",
@@ -563,16 +584,14 @@ public class WebAppActivity extends AppCompatActivity {
         view.loadUrl(FALLBACK_SHELL_URL);
     }
 
-    // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------------
     // Asset URL resolution
-    // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------------
     private String resolveBundledEntryUrl() {
-        if (assetExists(BUNDLED_HOME_ASSET_PATH_BASE_PATH)) {
+        if (assetExists(BUNDLED_HOME_ASSET_PATH_BASE_PATH))
             return BUNDLED_HOME_URL_BASE_PATH;
-        }
-        if (assetExists(BUNDLED_HOME_ASSET_PATH)) {
+        if (assetExists(BUNDLED_HOME_ASSET_PATH))
             return BUNDLED_HOME_URL;
-        }
         return FALLBACK_SHELL_URL;
     }
 
@@ -585,31 +604,30 @@ public class WebAppActivity extends AppCompatActivity {
         }
     }
 
-    // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------------
     // Logging helpers
-    // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------------
     private String contentLogPrefix() { return "pkg=" + getPackageName() + " "; }
-    private void logContentInfo(String msg)  { Log.i(LOGCAT_HINT_TAG, contentLogPrefix() + msg); }
-    private void logContentWarn(String msg)  { Log.w(LOGCAT_HINT_TAG, contentLogPrefix() + msg); }
-    private void logContentError(String msg) { Log.e(LOGCAT_HINT_TAG, contentLogPrefix() + msg); }
+
+    private void logContentInfo(String msg) {
+        Log.i(LOGCAT_HINT_TAG, contentLogPrefix() + msg);
+    }
 
     private void logStartupLoadPlan(String selectedUrl, String requestedStartUrl) {
         logContentInfo("STARTUP_LOAD_REPORT_BEGIN");
-        logContentInfo("startup.requestedStartUrl="        + requestedStartUrl);
-        logContentInfo("startup.selectedMainFrameUrl="     + selectedUrl);
-        logContentInfo("startup.fallbackShellUrl="         + FALLBACK_SHELL_URL);
-        logContentInfo("startup.expectedAsset[1]="         + BUNDLED_HOME_ASSET_PATH);
-        logContentInfo("startup.expectedAsset[2]="         + BUNDLED_HOME_ASSET_PATH_BASE_PATH);
-        logContentInfo("startup.expectedAsset[3]="         + FALLBACK_SHELL_ASSET_PATH);
-        logContentInfo("startup.expectedRequestPattern[1]=https://appassets.androidplatform.net/");
-        logContentInfo("startup.expectedRequestPattern[2]=https://appassets.androidplatform.net/_next/");
-        logContentInfo("startup.expectedRequestPattern[3]=https://appassets.androidplatform.net/harmonystream/");
+        logContentInfo("startup.requestedStartUrl=" + requestedStartUrl);
+        logContentInfo("startup.selectedMainFrameUrl=" + selectedUrl);
+        logContentInfo("startup.fallbackShellUrl=" + FALLBACK_SHELL_URL);
+        logContentInfo("startup.expectedAsset[1]=" + BUNDLED_HOME_ASSET_PATH);
+        logContentInfo("startup.expectedAsset[2]=" + BUNDLED_HOME_ASSET_PATH_BASE_PATH);
+        logContentInfo("startup.expectedAsset[3]=" + FALLBACK_SHELL_ASSET_PATH);
         logContentInfo("STARTUP_LOAD_REPORT_END");
     }
 
     private void logStartupDiagnostics(Intent launchIntent) {
-        String requestedStartUrl = launchIntent == null ? null : launchIntent.getStringExtra(EXTRA_START_URL);
-        logContentInfo("Startup diagnostics requestedStartUrl=" + requestedStartUrl);
+        String requestedUrl = launchIntent == null
+                ? null : launchIntent.getStringExtra(EXTRA_START_URL);
+        logContentInfo("Startup diagnostics requestedStartUrl=" + requestedUrl);
         logAssetPresence(BUNDLED_HOME_ASSET_PATH);
         logAssetPresence(BUNDLED_HOME_ASSET_PATH_BASE_PATH);
         logAssetPresence(FALLBACK_SHELL_ASSET_PATH);
@@ -624,16 +642,19 @@ public class WebAppActivity extends AppCompatActivity {
         logContentInfo("bundled.entry resolvedUrl=" + resolveBundledEntryUrl());
     }
 
-    // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------------
     // WebViewClient
-    // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------------
     private class HarmonyWebViewClient extends WebViewClientCompat {
         private final WebViewAssetLoader loader;
+
         HarmonyWebViewClient(WebViewAssetLoader loader) { this.loader = loader; }
 
         @Override
-        public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
-            WebResourceResponse response = loader.shouldInterceptRequest(request.getUrl());
+        public WebResourceResponse shouldInterceptRequest(WebView view,
+                                                          WebResourceRequest request) {
+            WebResourceResponse response =
+                    loader.shouldInterceptRequest(request.getUrl());
             if (response != null) return response;
             return super.shouldInterceptRequest(view, request);
         }
@@ -644,7 +665,8 @@ public class WebAppActivity extends AppCompatActivity {
             mainFrameLoading    = true;
             mainFrameStartedUrl = url;
             scheduleMainFrameTimeout();
-            if (loadingIndicator != null) loadingIndicator.setVisibility(View.VISIBLE);
+            if (loadingIndicator != null)
+                loadingIndicator.setVisibility(View.VISIBLE);
         }
 
         @Override
@@ -652,7 +674,8 @@ public class WebAppActivity extends AppCompatActivity {
             super.onPageFinished(view, url);
             mainFrameLoading = false;
             clearMainFrameTimeout();
-            if (loadingIndicator != null) loadingIndicator.setVisibility(View.GONE);
+            if (loadingIndicator != null)
+                loadingIndicator.setVisibility(View.GONE);
             logContentInfo("onPageFinished url=" + url);
         }
 
@@ -661,7 +684,8 @@ public class WebAppActivity extends AppCompatActivity {
                                     WebResourceErrorCompat error) {
             super.onReceivedError(view, request, error);
             if (request.isForMainFrame()) {
-                logContentError("onReceivedError mainFrame url=" + request.getUrl());
+                logContentInfo("onReceivedError mainFrame url="
+                        + request.getUrl());
                 clearMainFrameTimeout();
                 mainFrameLoading = false;
                 loadFallbackShell(view);
@@ -669,13 +693,9 @@ public class WebAppActivity extends AppCompatActivity {
         }
     }
 
-    // -----------------------------------------------------------------------
-    // Asset path helpers
-    // -----------------------------------------------------------------------
-
-    /**
-     * Serves files from multiple asset sub-directories, trying each in order.
-     */
+    // -------------------------------------------------------------------------
+    // Asset path handlers
+    // -------------------------------------------------------------------------
     private class MultiPathAssetsHandler implements WebViewAssetLoader.PathHandler {
         private final String[] prefixes;
 
@@ -685,30 +705,24 @@ public class WebAppActivity extends AppCompatActivity {
         public WebResourceResponse handle(String path) {
             AssetManager assets = getAssets();
             for (String prefix : prefixes) {
-                String assetPath = prefix + path;
                 try {
-                    InputStream is       = assets.open(assetPath);
-                    String      mimeType = guessMimeType(path);
-                    return new WebResourceResponse(mimeType, "UTF-8", is);
+                    InputStream is = assets.open(prefix + path);
+                    return new WebResourceResponse(guessMimeType(path), "UTF-8", is);
                 } catch (IOException ignored) {}
             }
             return null;
         }
     }
 
-    /**
-     * Routes top-level paths to the public/ asset directory (and optionally a sub-prefix).
-     */
     private class PublicRoutesPathHandler implements WebViewAssetLoader.PathHandler {
         private final String subPrefix;
 
-        PublicRoutesPathHandler() { this.subPrefix = ""; }
-        PublicRoutesPathHandler(String subPrefix) { this.subPrefix = subPrefix; }
+        PublicRoutesPathHandler()               { this.subPrefix = ""; }
+        PublicRoutesPathHandler(String prefix)  { this.subPrefix = prefix; }
 
         @Override
         public WebResourceResponse handle(String path) {
             AssetManager assets = getAssets();
-            // Try direct path under public/
             String[] candidates = {
                     "public/" + subPrefix + path,
                     "public/" + path,
@@ -717,9 +731,8 @@ public class WebAppActivity extends AppCompatActivity {
             };
             for (String candidate : candidates) {
                 try {
-                    InputStream is       = assets.open(candidate);
-                    String      mimeType = guessMimeType(path);
-                    return new WebResourceResponse(mimeType, "UTF-8", is);
+                    InputStream is = assets.open(candidate);
+                    return new WebResourceResponse(guessMimeType(path), "UTF-8", is);
                 } catch (IOException ignored) {}
             }
             // SPA fallback: serve index.html for navigational paths
@@ -742,32 +755,32 @@ public class WebAppActivity extends AppCompatActivity {
         if (dot < 0) return "text/html";
         String ext = path.substring(dot + 1).toLowerCase();
         switch (ext) {
-            case "js":   return "application/javascript";
-            case "css":  return "text/css";
-            case "html": return "text/html";
-            case "json": return "application/json";
-            case "png":  return "image/png";
+            case "js":    return "application/javascript";
+            case "css":   return "text/css";
+            case "html":  return "text/html";
+            case "json":  return "application/json";
+            case "png":   return "image/png";
             case "jpg":
-            case "jpeg": return "image/jpeg";
-            case "svg":  return "image/svg+xml";
-            case "webp": return "image/webp";
-            case "woff": return "font/woff";
-            case "woff2":return "font/woff2";
-            case "ttf":  return "font/ttf";
-            case "ico":  return "image/x-icon";
-            case "mp4":  return "video/mp4";
-            case "webm": return "video/webm";
-            case "mp3":  return "audio/mpeg";
-            default:     return MimeTypeMap.getSingleton()
-                                 .getMimeTypeFromExtension(ext) != null
-                         ? MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext)
-                         : "application/octet-stream";
+            case "jpeg":  return "image/jpeg";
+            case "svg":   return "image/svg+xml";
+            case "webp":  return "image/webp";
+            case "woff":  return "font/woff";
+            case "woff2": return "font/woff2";
+            case "ttf":   return "font/ttf";
+            case "ico":   return "image/x-icon";
+            case "mp4":   return "video/mp4";
+            case "webm":  return "video/webm";
+            case "mp3":   return "audio/mpeg";
+            default:
+                String fromMap = MimeTypeMap.getSingleton()
+                        .getMimeTypeFromExtension(ext);
+                return fromMap != null ? fromMap : "application/octet-stream";
         }
     }
 
-    // -----------------------------------------------------------------------
-    // JavaScript bridge (inner class, same as original)
-    // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------------
+    // JavaScript bridge
+    // -------------------------------------------------------------------------
     private class NativePlaybackBridge {
 
         @JavascriptInterface
@@ -837,7 +850,7 @@ public class WebAppActivity extends AppCompatActivity {
 
         @JavascriptInterface
         public void setVideoMode(boolean enabled) {
-            // FIX #3 + FIX #2: called from JS to switch modes
+            // FIX #3 + FIX #2: JS-triggered mode switch updates bars and notifies service.
             videoModeEnabled = enabled;
             if (enabled) {
                 hideSystemBars();
@@ -852,7 +865,8 @@ public class WebAppActivity extends AppCompatActivity {
 
         @JavascriptInterface
         public void updateState(String title, String artist, boolean playing,
-                                double positionMs, double durationMs, String thumbnailUrl) {
+                                double positionMs, double durationMs,
+                                String thumbnailUrl) {
             Intent intent = new Intent(WebAppActivity.this, PlaybackService.class);
             intent.setAction(PlaybackService.ACTION_UPDATE_STATE);
             intent.putExtra("title",        title);
