@@ -335,7 +335,7 @@ public class WebAppActivity extends AppCompatActivity {
                 WindowInsetsCompat.Type.statusBars()
                 | WindowInsetsCompat.Type.navigationBars());
         insetsController.setSystemBarsBehavior(
-                WindowInsetsControllerCompat.BEHAVIOR_DEFAULT);
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_BARS_BY_TOUCH);
     }
 
     private void hideSystemBars() {
