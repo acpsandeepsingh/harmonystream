@@ -698,8 +698,8 @@ export function MusicPlayer() {
     setGlobalIsPlaying, startProgressPolling, stopProgressPolling, globalPlayNext,
   ]);
 
-  const onPlayerError = useCallback((_event: YouTubeEvent) => {
-    handleTrackError();
+  const onPlayerError = useCallback((event: YouTubeEvent) => {
+    handleTrackError(event);
   }, [handleTrackError]);
 
   // ---------------------------------------------------------------------------
