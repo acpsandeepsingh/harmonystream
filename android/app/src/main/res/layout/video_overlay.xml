@@ -9,9 +9,4 @@
         android:layout_height="match_parent"
         android:background="@drawable/player_gradient" />
 
-    <!-- Controls -->
-    <include
-        layout="@layout/player_landscape"
-        android:layout_gravity="bottom" />
-
 </FrameLayout>
