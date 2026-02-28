@@ -88,7 +88,7 @@ public class WebAppActivity extends AppCompatActivity {
     private static final String WEB_CONSOLE_TAG = "WebConsole";
     private static final long   MAIN_FRAME_TIMEOUT_MS = 15000L;
     private static final int    REQUEST_CODE_POST_NOTIFICATIONS = 4242;
-    private static final boolean NATIVE_PLAYER_UI_PREVIEW = true;
+    private static final boolean NATIVE_PLAYER_UI_PREVIEW = false;
 
     // -------------------------------------------------------------------------
     // Views / state
@@ -501,7 +501,7 @@ public class WebAppActivity extends AppCompatActivity {
         if (seekOverlayIndicator != null) seekOverlayIndicator.setVisibility(View.GONE);
         if (webView != null) webView.setVisibility(View.GONE);
 
-        FrameLayout previewContainer = findViewById(R.id.native_player_preview_container);
+        FrameLayout previewContainer = findViewById(R.id.player_container);
         if (previewContainer == null) return;
         previewContainer.setVisibility(View.VISIBLE);
         getLayoutInflater().inflate(R.layout.player_native_preview, previewContainer, true);
