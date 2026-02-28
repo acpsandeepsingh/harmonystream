@@ -31,6 +31,7 @@ import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
+import android.widget.FrameLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 
@@ -87,6 +88,7 @@ public class WebAppActivity extends AppCompatActivity {
     private static final String WEB_CONSOLE_TAG = "WebConsole";
     private static final long   MAIN_FRAME_TIMEOUT_MS = 15000L;
     private static final int    REQUEST_CODE_POST_NOTIFICATIONS = 4242;
+    private static final boolean NATIVE_PLAYER_UI_PREVIEW = true;
 
     // -------------------------------------------------------------------------
     // Views / state
@@ -207,6 +209,11 @@ public class WebAppActivity extends AppCompatActivity {
         loadingIndicator     = findViewById(R.id.web_loading_indicator);
         seekOverlayIndicator = findViewById(R.id.seek_overlay_indicator);
         playbackViewModel    = new ViewModelProvider(this).get(PlaybackViewModel.class);
+
+        if (NATIVE_PLAYER_UI_PREVIEW) {
+            showNativePlayerPreview();
+            return;
+        }
 
         // FIX #3: Set up insets controller, show bars normally on launch.
         // Bars are only hidden when video mode is explicitly activated.
@@ -489,6 +496,17 @@ public class WebAppActivity extends AppCompatActivity {
     // -------------------------------------------------------------------------
     // Video gesture detector (double-tap to seek ±10 s in video mode)
     // -------------------------------------------------------------------------
+    private void showNativePlayerPreview() {
+        if (loadingIndicator != null) loadingIndicator.setVisibility(View.GONE);
+        if (seekOverlayIndicator != null) seekOverlayIndicator.setVisibility(View.GONE);
+        if (webView != null) webView.setVisibility(View.GONE);
+
+        FrameLayout previewContainer = findViewById(R.id.native_player_preview_container);
+        if (previewContainer == null) return;
+        previewContainer.setVisibility(View.VISIBLE);
+        getLayoutInflater().inflate(R.layout.player_native_preview, previewContainer, true);
+    }
+
     private void configureVideoGestures() {
         gestureDetector = new GestureDetector(this,
                 new GestureDetector.SimpleOnGestureListener() {
