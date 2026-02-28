@@ -3,7 +3,7 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:background="#121212"
+    android:background="@color/player_bg"
     android:padding="8dp">
 
     <!-- Seek Row -->
@@ -15,26 +15,25 @@
         <TextView
             android:id="@+id/timeCurrent"
             android:layout_width="40dp"
+            android:layout_height="wrap_content"
             android:text="0:00"
             android:textSize="12sp"
-            android:textColor="#AAAAAA"/>
+            android:textColor="@android:color/darker_gray" />
 
         <SeekBar
             android:id="@+id/seekBar"
             android:layout_width="0dp"
-            android:layout_weight="1"
             android:layout_height="wrap_content"
-            android:thumb="@drawable/seek_thumb"
-            android:progressDrawable="@drawable/seek_progress"/>
+            android:layout_weight="1" />
 
         <TextView
             android:id="@+id/timeDuration"
             android:layout_width="40dp"
+            android:layout_height="wrap_content"
             android:text="0:00"
             android:textSize="12sp"
-            android:textColor="#AAAAAA"/>
+            android:textColor="@android:color/darker_gray" />
     </LinearLayout>
-
 
     <!-- Controls Row -->
     <LinearLayout
@@ -45,112 +44,106 @@
         <!-- LEFT -->
         <LinearLayout
             android:layout_width="0dp"
-            android:layout_weight="1.5"
-            android:gravity="center_vertical"
-            android:layout_height="wrap_content">
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center_vertical">
 
             <ImageView
                 android:id="@+id/thumb"
                 android:layout_width="48dp"
-                android:layout_height="48dp"/>
+                android:layout_height="48dp"
+                android:contentDescription="@string/app_name" />
 
             <LinearLayout
-                android:layout_width="0dp"
-                android:layout_weight="1"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:paddingStart="8dp"
-                android:layout_height="wrap_content">
+                android:paddingStart="8dp">
 
                 <TextView
                     android:id="@+id/title"
-                    android:textColor="#FFFFFF"
-                    android:textStyle="bold"
-                    android:maxLines="1"/>
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Title"
+                    android:textColor="@android:color/white"
+                    android:textStyle="bold" />
 
                 <TextView
                     android:id="@+id/artist"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Artist"
                     android:textSize="12sp"
-                    android:textColor="#AAAAAA"
-                    android:maxLines="1"/>
+                    android:textColor="@android:color/darker_gray" />
             </LinearLayout>
-
-            <ImageButton
-                android:id="@+id/btnLike"
-                android:src="@drawable/ic_favorite_border"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:background="@drawable/ripple_circle"/>
-
-            <ImageButton
-                android:id="@+id/btnAdd"
-                android:src="@drawable/ic_add"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:background="@drawable/ripple_circle"/>
         </LinearLayout>
 
         <!-- CENTER -->
         <LinearLayout
             android:layout_width="wrap_content"
-            android:gravity="center"
-            android:layout_height="wrap_content">
+            android:layout_height="wrap_content"
+            android:gravity="center">
 
             <ImageButton
                 android:id="@+id/btnPrev"
                 android:src="@drawable/ic_skip_previous"
+                android:background="?attr/selectableItemBackgroundBorderless"
                 android:layout_width="48dp"
                 android:layout_height="48dp"
-                android:background="@drawable/ripple_circle"/>
+                android:contentDescription="Previous" />
 
             <ImageButton
                 android:id="@+id/btnPlay"
                 android:src="@drawable/ic_play_arrow"
+                android:background="?attr/selectableItemBackgroundBorderless"
                 android:layout_width="56dp"
                 android:layout_height="56dp"
-                android:background="@drawable/ripple_circle"/>
+                android:contentDescription="Play" />
 
             <ImageButton
                 android:id="@+id/btnNext"
                 android:src="@drawable/ic_skip_next"
+                android:background="?attr/selectableItemBackgroundBorderless"
                 android:layout_width="48dp"
                 android:layout_height="48dp"
-                android:background="@drawable/ripple_circle"/>
+                android:contentDescription="Next" />
         </LinearLayout>
 
         <!-- RIGHT -->
         <LinearLayout
             android:layout_width="0dp"
+            android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:gravity="end|center_vertical"
-            android:layout_height="wrap_content">
+            android:gravity="end|center_vertical">
 
             <ImageButton
                 android:id="@+id/btnShare"
                 android:src="@drawable/ic_share"
+                android:background="?attr/selectableItemBackgroundBorderless"
                 android:layout_width="40dp"
                 android:layout_height="40dp"
-                android:background="@drawable/ripple_circle"/>
+                android:contentDescription="Share" />
 
             <ImageButton
                 android:id="@+id/btnQueue"
                 android:src="@drawable/ic_queue_music"
+                android:background="?attr/selectableItemBackgroundBorderless"
                 android:layout_width="40dp"
                 android:layout_height="40dp"
-                android:background="@drawable/ripple_circle"/>
+                android:contentDescription="Queue" />
 
             <ImageButton
                 android:id="@+id/btnMode"
                 android:src="@drawable/ic_videocam"
+                android:background="?attr/selectableItemBackgroundBorderless"
                 android:layout_width="40dp"
                 android:layout_height="40dp"
-                android:background="@drawable/ripple_circle"/>
+                android:contentDescription="Mode" />
 
             <SeekBar
                 android:id="@+id/volumeBar"
                 android:layout_width="100dp"
-                android:layout_height="wrap_content"
-                android:thumb="@drawable/seek_thumb"
-                android:progressDrawable="@drawable/seek_progress"/>
+                android:layout_height="wrap_content" />
         </LinearLayout>
 
     </LinearLayout>
