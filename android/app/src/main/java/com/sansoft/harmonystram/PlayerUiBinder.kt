@@ -44,15 +44,12 @@ class PlayerUiBinder(
         disableOverlayAutoHide()
     }
 
-    fun bindVideo(overlayLayoutRes: Int, @LayoutRes controlsLayoutRes: Int): View {
+    fun bindVideo(overlayLayoutRes: Int, @LayoutRes controlsLayoutRes: Int): FrameLayout {
         rootContainer.removeAllViews()
         val overlay = LayoutInflater.from(rootContainer.context).inflate(overlayLayoutRes, rootContainer, false)
-        rootContainer.addView(overlay)
-
-        val overlayFrame = overlay as FrameLayout
-        if (overlayFrame.childCount > 1) {
-            overlayFrame.removeViewAt(1)
-        }
+        val overlayFrame = overlay as? FrameLayout
+            ?: error("video_overlay root must be FrameLayout")
+        rootContainer.addView(overlayFrame)
 
         val controls = LayoutInflater.from(rootContainer.context).inflate(controlsLayoutRes, overlayFrame, false)
         val params = FrameLayout.LayoutParams(

@@ -97,16 +97,11 @@ class PlayerActivity : AppCompatActivity(), PlayerUiBinder.Callback {
             else R.layout.player_portrait
 
         if (state.mode == PlayerController.Mode.VIDEO) {
-
-            val overlayView = uiBinder.bindVideo(
+            val overlayContainer = uiBinder.bindVideo(
                 R.layout.video_overlay,
                 controlsLayout
             )
-
-            val container = overlayView as? FrameLayout
-                ?: error("video_overlay root must be FrameLayout")
-
-            ensureWebViewVisibleInContainer(container)
+            ensureWebViewVisibleInContainer(overlayContainer)
 
         } else {
             uiBinder.bindAudio(controlsLayout)
