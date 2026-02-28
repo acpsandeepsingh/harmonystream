@@ -101,6 +101,13 @@ declare global {
       setIndex?:     (index: number)      => void;
       seek?:         (positionMs: number) => void;
       setQueue?:     (queueJson: string)  => void;
+      loadMedia?:    (
+        mediaUrl: string,
+        mediaType: string,
+        title?: string,
+        artist?: string,
+        thumbnailUrl?: string,
+      ) => void;
       setVideoMode?: (enabled: boolean)   => void;
       updateState?:  (
         title: string, artist: string, playing: boolean,
@@ -114,6 +121,13 @@ declare global {
       pause?:        ()                   => void;
       resume?:       ()                   => void;
       seekTo?:       (positionMs: number) => void;
+      loadMedia?:    (
+        mediaUrl: string,
+        mediaType: string,
+        title?: string,
+        artist?: string,
+        thumbnailUrl?: string,
+      ) => void;
       setVideoMode?: (enabled: boolean)   => void;
     };
     updateProgress?:              (positionMs: number, durationMs: number) => void;

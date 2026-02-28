@@ -23,6 +23,7 @@ import android.util.Rational;
 import android.view.GestureDetector;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.webkit.ConsoleMessage;
 import android.webkit.JavascriptInterface;
 import android.webkit.MimeTypeMap;
@@ -37,6 +38,7 @@ import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.constraintlayout.widget.ConstraintLayout;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import androidx.core.view.WindowCompat;
@@ -46,6 +48,8 @@ import androidx.lifecycle.ViewModelProvider;
 import androidx.webkit.WebResourceErrorCompat;
 import androidx.webkit.WebViewAssetLoader;
 import androidx.webkit.WebViewClientCompat;
+
+import com.google.android.exoplayer2.ui.PlayerView;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -96,6 +100,9 @@ public class WebAppActivity extends AppCompatActivity {
     private WebView          webView;
     private ProgressBar      loadingIndicator;
     private TextView         seekOverlayIndicator;
+    private TextView         nativePlayerTitle;
+    private FrameLayout      playerContainer;
+    private PlayerView       nativePlayerView;
     private PlaybackViewModel playbackViewModel;
     private WindowInsetsControllerCompat insetsController;
     private GestureDetector  gestureDetector;
@@ -110,6 +117,7 @@ public class WebAppActivity extends AppCompatActivity {
 
     // FIX #3: Default false – bars visible until user enters video mode.
     private boolean          videoModeEnabled = false;
+    private long             lastProgressMs;
 
     // -------------------------------------------------------------------------
     // Service connection
@@ -121,6 +129,7 @@ public class WebAppActivity extends AppCompatActivity {
                 playbackService = ((PlaybackService.LocalBinder) service).getService();
                 serviceBound    = true;
                 playbackViewModel.setSnapshot(playbackService.getCurrentSnapshot());
+                attachNativePlayer();
             }
         }
 
@@ -128,6 +137,7 @@ public class WebAppActivity extends AppCompatActivity {
         public void onServiceDisconnected(ComponentName name) {
             serviceBound    = false;
             playbackService = null;
+            if (nativePlayerView != null) nativePlayerView.setPlayer(null);
         }
     };
 
@@ -177,8 +187,13 @@ public class WebAppActivity extends AppCompatActivity {
                 payload.put("thumbnailUrl", intent.getStringExtra("thumbnailUrl"));
                 payload.put("event_ts",     intent.getLongExtra("event_ts",
                         System.currentTimeMillis()));
+
+                if (durMs > 0 && posMs >= durMs && !playbackActive) {
+                    dispatchToWeb("window.dispatchEvent(new CustomEvent('nativePlaybackCompleted'));");
+                }
             } catch (JSONException ignored) {}
 
+            updateNativePlayerUi(intent);
             dispatchToWeb("window.dispatchEvent(new CustomEvent("
                     + "'nativePlaybackState', { detail: " + payload + " }));");
             playbackViewModel.updateFromBroadcast(intent);
@@ -208,7 +223,10 @@ public class WebAppActivity extends AppCompatActivity {
         webView              = findViewById(R.id.web_app_view);
         loadingIndicator     = findViewById(R.id.web_loading_indicator);
         seekOverlayIndicator = findViewById(R.id.seek_overlay_indicator);
+        playerContainer      = findViewById(R.id.player_container);
         playbackViewModel    = new ViewModelProvider(this).get(PlaybackViewModel.class);
+
+        initNativePlayerUi();
 
         if (NATIVE_PLAYER_UI_PREVIEW) {
             showNativePlayerPreview();
@@ -441,6 +459,7 @@ public class WebAppActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         if (serviceBound) {
+            if (nativePlayerView != null) nativePlayerView.setPlayer(null);
             unbindService(playbackServiceConnection);
             serviceBound = false;
         }
@@ -491,6 +510,64 @@ public class WebAppActivity extends AppCompatActivity {
         } else {
             startService(intent);
         }
+    }
+
+    private void initNativePlayerUi() {
+        if (playerContainer == null) return;
+        playerContainer.removeAllViews();
+        getLayoutInflater().inflate(R.layout.view_native_player, playerContainer, true);
+        nativePlayerTitle = playerContainer.findViewById(R.id.native_player_title);
+        nativePlayerView  = playerContainer.findViewById(R.id.native_player_view);
+        if (nativePlayerView != null) {
+            nativePlayerView.setUseController(true);
+            nativePlayerView.setControllerAutoShow(true);
+            nativePlayerView.setControllerHideOnTouch(false);
+            nativePlayerView.setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING);
+        }
+        playerContainer.setVisibility(View.GONE);
+    }
+
+    private void attachNativePlayer() {
+        if (nativePlayerView == null || playbackService == null) return;
+        nativePlayerView.setPlayer(playbackService.getPlayer());
+    }
+
+    private void updateNativePlayerUi(Intent intent) {
+        if (playerContainer == null) return;
+        String title = intent.getStringExtra("title");
+        if (nativePlayerTitle != null && title != null && !title.trim().isEmpty()) {
+            nativePlayerTitle.setText(title);
+        }
+
+        boolean hasTrack = title != null && !title.trim().isEmpty();
+        playerContainer.setVisibility(hasTrack ? View.VISIBLE : View.GONE);
+        applyPlayerLayoutMode(intent.getBooleanExtra("video_mode", false));
+
+        long progress = intent.getLongExtra("position_ms", 0L);
+        if (progress != lastProgressMs) {
+            lastProgressMs = progress;
+            dispatchToWeb("window.dispatchEvent(new CustomEvent('nativePlaybackProgress',"
+                    + "{ detail: { position_ms: " + progress + " } }));");
+        }
+    }
+
+    private void applyPlayerLayoutMode(boolean videoMode) {
+        if (playerContainer == null || webView == null) return;
+        ViewGroup.LayoutParams currentLp = playerContainer.getLayoutParams();
+        if (!(currentLp instanceof ConstraintLayout.LayoutParams)) return;
+        ConstraintLayout.LayoutParams lp = (ConstraintLayout.LayoutParams) currentLp;
+        if (videoMode) {
+            webView.setVisibility(View.GONE);
+            lp.height = 0;
+            lp.topToTop = ConstraintLayout.LayoutParams.PARENT_ID;
+            lp.bottomToBottom = ConstraintLayout.LayoutParams.PARENT_ID;
+        } else {
+            webView.setVisibility(View.VISIBLE);
+            lp.height = ViewGroup.LayoutParams.WRAP_CONTENT;
+            lp.topToTop = ConstraintLayout.LayoutParams.UNSET;
+            lp.bottomToBottom = ConstraintLayout.LayoutParams.PARENT_ID;
+        }
+        playerContainer.setLayoutParams(lp);
     }
 
     // -------------------------------------------------------------------------
@@ -812,6 +889,22 @@ public class WebAppActivity extends AppCompatActivity {
             intent.putExtra("duration_ms",  (long) durationMs);
             intent.putExtra("thumbnailUrl", thumbnailUrl);
             startPlaybackService(intent);
+        }
+
+        @JavascriptInterface
+        public void loadMedia(String mediaUrl, String mediaType,
+                              String title, String artist, String thumbnailUrl) {
+            Intent intent = new Intent(WebAppActivity.this, PlaybackService.class);
+            intent.setAction(PlaybackService.ACTION_PLAY);
+            intent.putExtra("video_id", mediaUrl);
+            intent.putExtra("media_type", mediaType);
+            intent.putExtra("title", title);
+            intent.putExtra("artist", artist);
+            intent.putExtra("thumbnailUrl", thumbnailUrl);
+            startPlaybackService(intent);
+            if ("video".equalsIgnoreCase(mediaType)) {
+                setVideoMode(true);
+            }
         }
 
         @JavascriptInterface
