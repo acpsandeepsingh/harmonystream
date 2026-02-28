@@ -11,9 +11,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 import okhttp3.MediaType;
+import okhttp3.ConnectionSpec;
 import okhttp3.OkHttpClient;
+import okhttp3.TlsVersion;
 import okhttp3.RequestBody;
 import okhttp3.ResponseBody;
 
@@ -29,6 +32,18 @@ public class DownloaderImpl extends Downloader {
     private static final OkHttpClient HTTP_CLIENT = new OkHttpClient.Builder()
             .followRedirects(true)
             .followSslRedirects(true)
+            .retryOnConnectionFailure(true)
+            .connectTimeout(20, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .connectionSpecs(java.util.Arrays.asList(
+                    new ConnectionSpec.Builder(ConnectionSpec.MODERN_TLS)
+                            .tlsVersions(TlsVersion.TLS_1_3, TlsVersion.TLS_1_2)
+                            .build(),
+                    new ConnectionSpec.Builder(ConnectionSpec.COMPATIBLE_TLS)
+                            .tlsVersions(TlsVersion.TLS_1_2, TlsVersion.TLS_1_1, TlsVersion.TLS_1_0)
+                            .build(),
+                    ConnectionSpec.CLEARTEXT))
             .build();
 
     public static DownloaderImpl create() {

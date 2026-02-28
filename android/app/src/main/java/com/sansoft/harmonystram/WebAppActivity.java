@@ -21,6 +21,7 @@ import android.os.Looper;
 import android.util.Log;
 import android.util.Rational;
 import android.view.GestureDetector;
+import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
@@ -38,7 +39,6 @@ import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.constraintlayout.widget.ConstraintLayout;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import androidx.core.view.WindowCompat;
@@ -515,16 +515,34 @@ public class WebAppActivity extends AppCompatActivity {
     private void initNativePlayerUi() {
         if (playerContainer == null) return;
         playerContainer.removeAllViews();
-        getLayoutInflater().inflate(R.layout.view_native_player, playerContainer, true);
+
+        int controlsLayoutRes = getResources().getConfiguration().orientation
+                == Configuration.ORIENTATION_LANDSCAPE
+                ? R.layout.player_landscape
+                : R.layout.player_portrait;
+        getLayoutInflater().inflate(controlsLayoutRes, playerContainer, true);
+
         nativePlayerTitle = playerContainer.findViewById(R.id.native_player_title);
-        nativePlayerView  = playerContainer.findViewById(R.id.native_player_view);
+        if (nativePlayerTitle == null) {
+            nativePlayerTitle = playerContainer.findViewById(R.id.title);
+        }
+
+        nativePlayerView = playerContainer.findViewById(R.id.native_player_view);
         if (nativePlayerView != null) {
             nativePlayerView.setUseController(true);
             nativePlayerView.setControllerAutoShow(true);
             nativePlayerView.setControllerHideOnTouch(false);
             nativePlayerView.setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING);
         }
+
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.BOTTOM);
+        playerContainer.setLayoutParams(lp);
+        playerContainer.bringToFront();
         playerContainer.setVisibility(View.GONE);
+        refreshWebViewBottomInset();
     }
 
     private void attachNativePlayer() {
@@ -553,21 +571,41 @@ public class WebAppActivity extends AppCompatActivity {
 
     private void applyPlayerLayoutMode(boolean videoMode) {
         if (playerContainer == null || webView == null) return;
-        ViewGroup.LayoutParams currentLp = playerContainer.getLayoutParams();
-        if (!(currentLp instanceof ConstraintLayout.LayoutParams)) return;
-        ConstraintLayout.LayoutParams lp = (ConstraintLayout.LayoutParams) currentLp;
-        if (videoMode) {
-            webView.setVisibility(View.GONE);
-            lp.height = 0;
-            lp.topToTop = ConstraintLayout.LayoutParams.PARENT_ID;
-            lp.bottomToBottom = ConstraintLayout.LayoutParams.PARENT_ID;
-        } else {
-            webView.setVisibility(View.VISIBLE);
-            lp.height = ViewGroup.LayoutParams.WRAP_CONTENT;
-            lp.topToTop = ConstraintLayout.LayoutParams.UNSET;
-            lp.bottomToBottom = ConstraintLayout.LayoutParams.PARENT_ID;
+        webView.setVisibility(View.VISIBLE);
+        playerContainer.bringToFront();
+        refreshWebViewBottomInset();
+    }
+
+    private void refreshWebViewBottomInset() {
+        if (playerContainer == null || webView == null) return;
+        playerContainer.post(() -> {
+            int bottomInset = playerContainer.getVisibility() == View.VISIBLE
+                    ? playerContainer.getHeight()
+                    : 0;
+            webView.setPadding(
+                    webView.getPaddingLeft(),
+                    webView.getPaddingTop(),
+                    webView.getPaddingRight(),
+                    bottomInset);
+            webView.setClipToPadding(false);
+        });
+    }
+
+    @Override
+    public void onConfigurationChanged(@NonNull Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        CharSequence currentTitle = nativePlayerTitle != null ? nativePlayerTitle.getText() : null;
+        boolean wasVisible = playerContainer != null && playerContainer.getVisibility() == View.VISIBLE;
+        initNativePlayerUi();
+        if (nativePlayerTitle != null && currentTitle != null) {
+            nativePlayerTitle.setText(currentTitle);
         }
-        playerContainer.setLayoutParams(lp);
+        if (wasVisible && playerContainer != null) {
+            playerContainer.setVisibility(View.VISIBLE);
+            playerContainer.bringToFront();
+        }
+        attachNativePlayer();
+        refreshWebViewBottomInset();
     }
 
     // -------------------------------------------------------------------------
