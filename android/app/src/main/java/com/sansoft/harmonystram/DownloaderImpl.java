@@ -5,16 +5,31 @@ import org.schabi.newpipe.extractor.downloader.Request;
 import org.schabi.newpipe.extractor.downloader.Response;
 import org.schabi.newpipe.extractor.exceptions.ReCaptchaException;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
+import okhttp3.MediaType;
+import okhttp3.OkHttpClient;
+import okhttp3.RequestBody;
+import okhttp3.ResponseBody;
+
 public class DownloaderImpl extends Downloader {
+
+    private static final String FALLBACK_USER_AGENT =
+            "Mozilla/5.0 (Linux; Android 8.1; Mobile) AppleWebKit/537.36 "
+                    + "(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
+
+    private static final RequestBody EMPTY_BODY =
+            RequestBody.create(new byte[0], (MediaType) null);
+
+    private static final OkHttpClient HTTP_CLIENT = new OkHttpClient.Builder()
+            .followRedirects(true)
+            .followSslRedirects(true)
+            .build();
 
     public static DownloaderImpl create() {
         return new DownloaderImpl();
@@ -36,57 +51,94 @@ public class DownloaderImpl extends Downloader {
     }
 
     private Response makeRequest(Request request) throws IOException {
-        HttpURLConnection connection = (HttpURLConnection) new URL(request.url()).openConnection();
-        connection.setRequestMethod(request.httpMethod());
-        connection.setConnectTimeout(15000);
-        connection.setReadTimeout(15000);
+        okhttp3.Request.Builder builder = new okhttp3.Request.Builder()
+                .url(request.url());
 
-        // 1. Set Headers
+        // 1. Set headers from extractor request
         Map<String, List<String>> headers = request.headers();
         if (headers != null) {
             for (Map.Entry<String, List<String>> entry : headers.entrySet()) {
-                if (entry.getValue() == null) continue;
+                String key = entry.getKey();
+                if (key == null || entry.getValue() == null) continue;
                 for (String value : entry.getValue()) {
-                    connection.addRequestProperty(entry.getKey(), value);
+                    if (value != null) builder.addHeader(key, value);
                 }
             }
         }
 
-        // 2. Send POST Data (if applicable)
-        byte[] dataToSend = request.dataToSend();
-        if (dataToSend != null && dataToSend.length > 0) {
-            connection.setDoOutput(true);
-            try (OutputStream os = connection.getOutputStream()) {
-                os.write(dataToSend);
-            }
+        // 2. Add fallback UA only when caller did not provide one (case-insensitive)
+        if (!hasHeaderIgnoreCase(headers, "User-Agent")) {
+            builder.header("User-Agent", FALLBACK_USER_AGENT);
         }
 
-        connection.connect();
-        
-        // 3. Collect Response Info
-        int code = connection.getResponseCode();
-        String message = connection.getResponseMessage();
-        Map<String, List<String>> responseHeaders = connection.getHeaderFields();
-        String finalUrl = connection.getURL().toString();
-        
-        // 4. Read Body as String (Required for 0.25.2+)
-        InputStream stream = (code >= 200 && code < 400) ? connection.getInputStream() : connection.getErrorStream();
-        String body = readAllAsString(stream);
-        
-        // 5. Build Response using 5-args constructor:
-        // (int code, String message, Map headers, String body, String latestUrl)
-        return new Response(code, message, responseHeaders, body, finalUrl);
+        // 3. Attach request body if extractor supplied one
+        byte[] dataToSend = request.dataToSend();
+        RequestBody requestBody = null;
+        if (dataToSend != null && dataToSend.length > 0) {
+            requestBody = RequestBody.create(dataToSend, (MediaType) null);
+        }
+
+        String method = normalizeHttpMethod(request.httpMethod());
+        if (requiresRequestBody(method) && requestBody == null) {
+            // OkHttp requires a non-null body for methods like POST/PUT/PATCH.
+            requestBody = EMPTY_BODY;
+        }
+        if (!permitsRequestBody(method)) {
+            requestBody = null;
+        }
+        builder.method(method, requestBody);
+
+        try (okhttp3.Response response = HTTP_CLIENT.newCall(builder.build()).execute()) {
+            // 4. Collect response metadata
+            int code = response.code();
+            String message = response.message();
+            String finalUrl = response.request().url().toString();
+
+            // 5. Read response body as string (expected by extractor Response contract)
+            String body = "";
+            ResponseBody responseBody = response.body();
+            if (responseBody != null) {
+                body = responseBody.string();
+            }
+
+            // 6. Convert OkHttp headers into NewPipe-compatible map
+            Map<String, List<String>> responseHeaders = new LinkedHashMap<>();
+            for (String name : response.headers().names()) {
+                responseHeaders.put(name, new ArrayList<>(response.headers(name)));
+            }
+
+            // 7. Build Response using 5-args constructor:
+            // (int code, String message, Map headers, String body, String latestUrl)
+            return new Response(code, message, responseHeaders, body, finalUrl);
+        }
     }
 
-    private static String readAllAsString(InputStream stream) throws IOException {
-        if (stream == null) return "";
-        try (ByteArrayOutputStream result = new ByteArrayOutputStream()) {
-            byte[] buffer = new byte[8192];
-            int length;
-            while ((length = stream.read(buffer)) != -1) {
-                result.write(buffer, 0, length);
-            }
-            return result.toString("UTF-8");
+    private static String normalizeHttpMethod(String method) {
+        if (method == null || method.trim().isEmpty()) {
+            return "GET";
         }
+        return method.trim().toUpperCase(Locale.US);
+    }
+
+    private static boolean hasHeaderIgnoreCase(Map<String, List<String>> headers, String target) {
+        if (headers == null || target == null) return false;
+        for (String key : headers.keySet()) {
+            if (key != null && key.equalsIgnoreCase(target)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean permitsRequestBody(String method) {
+        return !("GET".equals(method) || "HEAD".equals(method));
+    }
+
+    private static boolean requiresRequestBody(String method) {
+        return "POST".equals(method)
+                || "PUT".equals(method)
+                || "PATCH".equals(method)
+                || "PROPPATCH".equals(method)
+                || "REPORT".equals(method);
     }
 }
