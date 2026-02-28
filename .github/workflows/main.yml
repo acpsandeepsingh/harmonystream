@@ -92,10 +92,10 @@ jobs:
         uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: 8.2
-          cache-cleanup: always
-          build-scan-publish: true
-          build-scan-terms-of-service-url: "https://gradle.com/terms-of-service"
-          build-scan-terms-of-service-agree: "yes"
+          gradle-home-cache-cleanup: true
+          build-scan-publish: false
+          build-scan-terms-of-use-url: "https://gradle.com/terms-of-service"
+          build-scan-terms-of-use-agree: "yes"
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
@@ -115,7 +115,23 @@ jobs:
           cd android
           # Removing .gradle ensures a fresh workspace assignment to avoid IdentityCache errors
           rm -rf .gradle/ build/ app/build/
-          ./gradlew assembleDebug assembleRelease --no-daemon --no-build-cache --refresh-dependencies --stacktrace
+          for attempt in 1 2 3; do
+            ./gradlew assembleDebug assembleRelease \
+              --no-daemon \
+              --no-build-cache \
+              --refresh-dependencies \
+              --stacktrace \
+              -Dorg.gradle.internal.http.connectionTimeout=120000 \
+              -Dorg.gradle.internal.http.socketTimeout=120000 && break
+
+            if [ "$attempt" -eq 3 ]; then
+              echo "Gradle build failed after 3 attempts."
+              exit 1
+            fi
+
+            echo "Gradle build failed (attempt ${attempt}/3); retrying after backoff..."
+            sleep $((attempt * 20))
+          done
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
