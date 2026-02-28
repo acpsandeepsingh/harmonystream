@@ -41,7 +41,9 @@ class PlayerActivity : AppCompatActivity(), PlayerUiBinder.Callback {
         webBridge.configureAndLoad(VIDEO_URL)
 
         root.setOnTouchListener { _, event ->
-            if (event.action == MotionEvent.ACTION_DOWN && controller.state.mode == PlayerController.Mode.VIDEO) {
+            if (event.action == MotionEvent.ACTION_DOWN &&
+                controller.state.mode == PlayerController.Mode.VIDEO
+            ) {
                 uiBinder.showOverlayTemporarily()
             }
             false
@@ -51,11 +53,11 @@ class PlayerActivity : AppCompatActivity(), PlayerUiBinder.Callback {
             bindLayoutForState(state)
             uiBinder.updateState(state)
             webBridge.setVisible(state.mode == PlayerController.Mode.VIDEO)
-            if (state.mode == PlayerController.Mode.VIDEO) {
+
+            if (state.mode == PlayerController.Mode.VIDEO)
                 uiBinder.showOverlayTemporarily()
-            } else {
+            else
                 uiBinder.disableOverlayAutoHide()
-            }
         }
 
         controller.setProgress(0, DEFAULT_DURATION_MS)
@@ -69,24 +71,15 @@ class PlayerActivity : AppCompatActivity(), PlayerUiBinder.Callback {
 
     override fun onTogglePlayPause() {
         controller.togglePlayPause()
-        if (controller.state.isPlaying) {
+        if (controller.state.isPlaying)
             webBridge.play()
-        } else {
+        else
             webBridge.pause()
-        }
     }
 
-    override fun onNext() {
-        webBridge.next()
-    }
-
-    override fun onPrevious() {
-        webBridge.previous()
-    }
-
-    override fun onToggleMode() {
-        controller.toggleMode()
-    }
+    override fun onNext() = webBridge.next()
+    override fun onPrevious() = webBridge.previous()
+    override fun onToggleMode() = controller.toggleMode()
 
     override fun onSeekTo(positionMs: Int) {
         controller.setProgress(positionMs)
@@ -94,16 +87,27 @@ class PlayerActivity : AppCompatActivity(), PlayerUiBinder.Callback {
     }
 
     override fun onOverlayTapped() {
-        if (controller.state.mode == PlayerController.Mode.VIDEO) {
+        if (controller.state.mode == PlayerController.Mode.VIDEO)
             uiBinder.showOverlayTemporarily()
-        }
     }
 
     private fun bindLayoutForState(state: PlayerController.State) {
-        val controlsLayout = if (isLandscape()) R.layout.player_landscape else R.layout.player_portrait
+        val controlsLayout =
+            if (isLandscape()) R.layout.player_landscape
+            else R.layout.player_portrait
+
         if (state.mode == PlayerController.Mode.VIDEO) {
-            val overlay = uiBinder.bindVideo(R.layout.video_overlay, controlsLayout)
-            ensureWebViewVisibleInContainer(overlay)
+
+            val overlayView = uiBinder.bindVideo(
+                R.layout.video_overlay,
+                controlsLayout
+            )
+
+            val container = overlayView as? FrameLayout
+                ?: error("video_overlay root must be FrameLayout")
+
+            ensureWebViewVisibleInContainer(container)
+
         } else {
             uiBinder.bindAudio(controlsLayout)
             ensureWebViewVisibleInContainer(root)
@@ -117,9 +121,9 @@ class PlayerActivity : AppCompatActivity(), PlayerUiBinder.Callback {
         webView.visibility = View.VISIBLE
     }
 
-    private fun isLandscape(): Boolean {
-        return resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-    }
+    private fun isLandscape(): Boolean =
+        resources.configuration.orientation ==
+                Configuration.ORIENTATION_LANDSCAPE
 
     companion object {
         private const val VIDEO_URL = "https://example.com/player"
