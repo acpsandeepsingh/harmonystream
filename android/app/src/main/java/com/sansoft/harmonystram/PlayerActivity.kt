@@ -97,22 +97,25 @@ class PlayerActivity : AppCompatActivity(), PlayerUiBinder.Callback {
             else R.layout.player_portrait
 
         if (state.mode == PlayerController.Mode.VIDEO) {
+            ensureWebViewInRoot()
+            webView.visibility = View.VISIBLE
+
             val overlayContainer = uiBinder.bindVideo(
                 R.layout.video_overlay,
                 controlsLayout
             )
-            ensureWebViewVisibleInContainer(overlayContainer)
+            overlayContainer.bringToFront()
 
         } else {
             uiBinder.bindAudio(controlsLayout)
-            ensureWebViewVisibleInContainer(root)
+            ensureWebViewInRoot()
             webView.visibility = View.GONE
         }
     }
 
-    private fun ensureWebViewVisibleInContainer(container: FrameLayout) {
+    private fun ensureWebViewInRoot() {
         (webView.parent as? FrameLayout)?.removeView(webView)
-        container.addView(webView, 0)
+        root.addView(webView, 0)
         webView.visibility = View.VISIBLE
     }
 
