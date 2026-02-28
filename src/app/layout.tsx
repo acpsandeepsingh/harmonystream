@@ -3,6 +3,7 @@ import { Providers } from '@/components/providers';
 import { Toaster } from '@/components/ui/toaster';
 import './globals.css';
 import dynamic from 'next/dynamic';
+import Script from 'next/script';
 
 const FirebaseClientProvider = dynamic(
   () => import('@/firebase/client-provider').then((mod) => mod.FirebaseClientProvider),
@@ -25,6 +26,7 @@ export default function RootLayout({
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
       </head>
       <body className="font-body antialiased">
+        <Script src="/polyfills/webview-legacy.js" strategy="beforeInteractive" />
         <FirebaseClientProvider>
           <Providers>
               {children}

@@ -34,7 +34,9 @@ import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.widget.FrameLayout;
+import android.widget.ImageButton;
 import android.widget.ProgressBar;
+import android.widget.SeekBar;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
@@ -101,8 +103,17 @@ public class WebAppActivity extends AppCompatActivity {
     private ProgressBar      loadingIndicator;
     private TextView         seekOverlayIndicator;
     private TextView         nativePlayerTitle;
+    private TextView         nativePlayerArtist;
+    private TextView         nativePlayerTimeCurrent;
+    private TextView         nativePlayerTimeDuration;
     private FrameLayout      playerContainer;
     private PlayerView       nativePlayerView;
+    private ImageButton      btnPlay;
+    private ImageButton      btnNext;
+    private ImageButton      btnPrev;
+    private ImageButton      btnMode;
+    private SeekBar          seekBar;
+    private boolean          isSeeking;
     private PlaybackViewModel playbackViewModel;
     private WindowInsetsControllerCompat insetsController;
     private GestureDetector  gestureDetector;
@@ -114,6 +125,7 @@ public class WebAppActivity extends AppCompatActivity {
     private final Handler    mainHandler = new Handler(Looper.getMainLooper());
     private final Runnable   mainFrameTimeoutRunnable = this::handleMainFrameTimeout;
     private boolean          playbackActive;
+    private boolean          lastKnownVideoMode;
 
     // FIX #3: Default false – bars visible until user enters video mode.
     private boolean          videoModeEnabled = false;
@@ -535,13 +547,74 @@ public class WebAppActivity extends AppCompatActivity {
             nativePlayerView.setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING);
         }
 
+        btnPlay = playerContainer.findViewById(R.id.btnPlay);
+        btnNext = playerContainer.findViewById(R.id.btnNext);
+        btnPrev = playerContainer.findViewById(R.id.btnPrev);
+        btnMode = playerContainer.findViewById(R.id.btnMode);
+        seekBar = playerContainer.findViewById(R.id.seekBar);
+        nativePlayerArtist = playerContainer.findViewById(R.id.artist);
+        nativePlayerTimeCurrent = playerContainer.findViewById(R.id.timeCurrent);
+        nativePlayerTimeDuration = playerContainer.findViewById(R.id.timeDuration);
+
+        if (btnPlay != null) {
+            btnPlay.setOnClickListener(v -> {
+                Intent i = new Intent(WebAppActivity.this, PlaybackService.class);
+                i.setAction(PlaybackService.ACTION_PLAY_PAUSE);
+                startPlaybackService(i);
+            });
+        }
+        if (btnNext != null) {
+            btnNext.setOnClickListener(v -> {
+                Intent i = new Intent(WebAppActivity.this, PlaybackService.class);
+                i.setAction(PlaybackService.ACTION_NEXT);
+                startPlaybackService(i);
+            });
+        }
+        if (btnPrev != null) {
+            btnPrev.setOnClickListener(v -> {
+                Intent i = new Intent(WebAppActivity.this, PlaybackService.class);
+                i.setAction(PlaybackService.ACTION_PREVIOUS);
+                startPlaybackService(i);
+            });
+        }
+        if (btnMode != null) {
+            btnMode.setOnClickListener(v -> setVideoMode(!lastKnownVideoMode));
+        }
+        if (seekBar != null) {
+            seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+                @Override
+                public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) {
+                    if (fromUser && nativePlayerTimeCurrent != null) {
+                        nativePlayerTimeCurrent.setText(formatTime(progress));
+                    }
+                }
+
+                @Override
+                public void onStartTrackingTouch(SeekBar bar) {
+                    isSeeking = true;
+                }
+
+                @Override
+                public void onStopTrackingTouch(SeekBar bar) {
+                    isSeeking = false;
+                    Intent i = new Intent(WebAppActivity.this, PlaybackService.class);
+                    i.setAction(PlaybackService.ACTION_SEEK);
+                    i.putExtra("position_ms", (long) bar.getProgress());
+                    startPlaybackService(i);
+                }
+            });
+        }
+
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 Gravity.BOTTOM);
         playerContainer.setLayoutParams(lp);
+        playerContainer.setTranslationZ(100f);
+        webView.setTranslationZ(0f);
         playerContainer.bringToFront();
         playerContainer.setVisibility(View.GONE);
+        playerContainer.requestLayout();
         refreshWebViewBottomInset();
     }
 
@@ -553,15 +626,39 @@ public class WebAppActivity extends AppCompatActivity {
     private void updateNativePlayerUi(Intent intent) {
         if (playerContainer == null) return;
         String title = intent.getStringExtra("title");
+        String artist = intent.getStringExtra("artist");
         if (nativePlayerTitle != null && title != null && !title.trim().isEmpty()) {
             nativePlayerTitle.setText(title);
+        }
+        if (nativePlayerArtist != null) {
+            nativePlayerArtist.setText(artist != null ? artist : "");
+        }
+
+        boolean isPlaying = intent.getBooleanExtra("playing", false);
+        if (btnPlay != null) {
+            btnPlay.setImageResource(isPlaying ? R.drawable.ic_pause : R.drawable.ic_play_arrow);
         }
 
         boolean hasTrack = title != null && !title.trim().isEmpty();
         playerContainer.setVisibility(hasTrack ? View.VISIBLE : View.GONE);
-        applyPlayerLayoutMode(intent.getBooleanExtra("video_mode", false));
+        boolean videoMode = intent.getBooleanExtra("video_mode", false);
+        lastKnownVideoMode = videoMode;
+        applyPlayerLayoutMode(videoMode);
 
         long progress = intent.getLongExtra("position_ms", 0L);
+        long duration = Math.max(1L, intent.getLongExtra("duration_ms", 0L));
+        if (seekBar != null) {
+            seekBar.setMax((int) Math.min(Integer.MAX_VALUE, duration));
+            if (!isSeeking) {
+                seekBar.setProgress((int) Math.min(Integer.MAX_VALUE, progress));
+            }
+        }
+        if (!isSeeking && nativePlayerTimeCurrent != null) {
+            nativePlayerTimeCurrent.setText(formatTime(progress));
+        }
+        if (nativePlayerTimeDuration != null) {
+            nativePlayerTimeDuration.setText(formatTime(duration));
+        }
         if (progress != lastProgressMs) {
             lastProgressMs = progress;
             dispatchToWeb("window.dispatchEvent(new CustomEvent('nativePlaybackProgress',"
@@ -572,8 +669,76 @@ public class WebAppActivity extends AppCompatActivity {
     private void applyPlayerLayoutMode(boolean videoMode) {
         if (playerContainer == null || webView == null) return;
         webView.setVisibility(View.VISIBLE);
+        webView.setTranslationZ(0f);
+        webView.bringToFront();
         playerContainer.bringToFront();
+        playerContainer.setTranslationZ(100f);
         refreshWebViewBottomInset();
+    }
+
+    private String formatTime(long ms) {
+        long totalSeconds = Math.max(0L, ms / 1000L);
+        long minutes = totalSeconds / 60L;
+        long seconds = totalSeconds % 60L;
+        return String.format("%d:%02d", minutes, seconds);
+    }
+
+    private void injectBackgroundSyncScript(WebView view) {
+        if (view == null) return;
+        String js = "(function(){"
+                + "if(window.__harmonyBgSyncInstalled){return;}"
+                + "window.__harmonyBgSyncInstalled=true;"
+                + "function sendBg(){"
+                + "var body=window.getComputedStyle(document.body).backgroundColor;"
+                + "var html=window.getComputedStyle(document.documentElement).backgroundColor;"
+                + "var c=(body&&body!=='rgba(0, 0, 0, 0)'&&body!=='transparent')?body:html;"
+                + "if(window.HarmonyNative&&window.HarmonyNative.setPlayerBackgroundColor){"
+                + "window.HarmonyNative.setPlayerBackgroundColor(c||'#111827');}"
+                + "}"
+                + "sendBg();"
+                + "var mo=new MutationObserver(sendBg);"
+                + "mo.observe(document.documentElement,{attributes:true,attributeFilter:['class','style','data-theme']});"
+                + "window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').addEventListener&&"
+                + "window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',sendBg);"
+                + "setInterval(sendBg,1500);"
+                + "})();";
+        view.evaluateJavascript(js, null);
+    }
+
+    private int parseCssColor(String color) {
+        if (color == null) return Color.rgb(17, 24, 39);
+        String trimmed = color.trim();
+        try {
+            if (trimmed.startsWith("rgb")) {
+                String raw = trimmed.replace("rgba(", "")
+                        .replace("rgb(", "")
+                        .replace(")", "");
+                String[] parts = raw.split(",");
+                if (parts.length >= 3) {
+                    int r = Integer.parseInt(parts[0].trim());
+                    int g = Integer.parseInt(parts[1].trim());
+                    int b = Integer.parseInt(parts[2].trim());
+                    return Color.rgb(r, g, b);
+                }
+            }
+            return Color.parseColor(trimmed);
+        } catch (IllegalArgumentException ignored) {
+            return Color.rgb(17, 24, 39);
+        }
+    }
+
+    private void setVideoMode(boolean enabled) {
+        videoModeEnabled = enabled;
+        lastKnownVideoMode = enabled;
+        if (enabled) {
+            hideSystemBars();
+        } else {
+            showNormalBars();
+        }
+        Intent intent = new Intent(WebAppActivity.this, PlaybackService.class);
+        intent.setAction(PlaybackService.ACTION_SET_MODE);
+        intent.putExtra("video_mode", enabled);
+        startPlaybackService(intent);
     }
 
     private void refreshWebViewBottomInset() {
@@ -809,6 +974,8 @@ public class WebAppActivity extends AppCompatActivity {
             clearMainFrameTimeout();
             if (loadingIndicator != null)
                 loadingIndicator.setVisibility(View.GONE);
+            injectBackgroundSyncScript(view);
+            applyPlayerLayoutMode(lastKnownVideoMode);
             logContentInfo("onPageFinished url=" + url);
         }
 
@@ -1000,16 +1167,17 @@ public class WebAppActivity extends AppCompatActivity {
         @JavascriptInterface
         public void setVideoMode(boolean enabled) {
             // FIX #3 + FIX #2: JS-triggered mode switch updates bars and notifies service.
-            videoModeEnabled = enabled;
-            if (enabled) {
-                hideSystemBars();
-            } else {
-                showNormalBars();
-            }
-            Intent intent = new Intent(WebAppActivity.this, PlaybackService.class);
-            intent.setAction(PlaybackService.ACTION_SET_MODE);
-            intent.putExtra("video_mode", enabled);
-            startPlaybackService(intent);
+            WebAppActivity.this.setVideoMode(enabled);
+        }
+
+        @JavascriptInterface
+        public void setPlayerBackgroundColor(String cssColor) {
+            int parsed = parseCssColor(cssColor);
+            runOnUiThread(() -> {
+                if (playerContainer != null) {
+                    playerContainer.setBackgroundColor(parsed);
+                }
+            });
         }
 
         @JavascriptInterface

@@ -206,6 +206,7 @@ dependencies {
     implementation 'androidx.lifecycle:lifecycle-viewmodel:2.7.0'
     implementation 'com.github.teamnewpipe:NewPipeExtractor:dev-SNAPSHOT'
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+    implementation 'com.google.android.gms:play-services-base:18.5.0'
 
     // NewPipeExtractor pulls jsoup; jsoup's Re2jRegex implementation references
     // com.google.re2j classes which must be present in release shrinking.
