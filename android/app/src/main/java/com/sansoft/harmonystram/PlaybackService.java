@@ -26,6 +26,10 @@ import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
 import androidx.media.app.NotificationCompat.MediaStyle;
 
+import com.google.android.gms.common.GooglePlayServicesNotAvailableException;
+import com.google.android.gms.common.GooglePlayServicesRepairableException;
+import com.google.android.gms.security.ProviderInstaller;
+
 import android.support.v4.media.MediaDescriptionCompat;
 import android.support.v4.media.MediaMetadataCompat;
 import android.support.v4.media.session.MediaSessionCompat;
@@ -224,9 +228,21 @@ public class PlaybackService extends Service {
         restoreState();
         refreshArtworkAsync(currentThumbnailUrl);
         initWakeLock();
+        ensureTlsProvider();
         initExtractor();
         initMediaSession();
         initPlayer();
+    }
+
+
+    private void ensureTlsProvider() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) return;
+        try {
+            ProviderInstaller.installIfNeeded(getApplicationContext());
+            Log.i(TAG, "Installed updated security provider for legacy Android");
+        } catch (GooglePlayServicesRepairableException | GooglePlayServicesNotAvailableException e) {
+            Log.w(TAG, "Could not install updated security provider", e);
+        }
     }
 
     private void initExtractor() {

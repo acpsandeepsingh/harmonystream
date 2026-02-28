@@ -75,5 +75,15 @@
     "react-dom": "18.3.1",
     "@types/react": "18.3.3",
     "@types/react-dom": "18.3.0"
+  },
+  "browserslist": {
+    "production": [
+      "Chrome >= 61",
+      "Android >= 8",
+      "not dead"
+    ],
+    "development": [
+      "last 1 chrome version"
+    ]
   }
 }
