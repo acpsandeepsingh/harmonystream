@@ -3,4 +3,5 @@
     <color name="colorPrimary">#121212</color>
     <color name="colorPrimaryDark">#000000</color>
     <color name="colorAccent">#26A69A</color>
+    <color name="player_bg">#121212</color>
 </resources>
