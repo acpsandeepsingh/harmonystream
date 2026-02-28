@@ -1002,7 +1002,17 @@ export function MusicPlayer() {
     onOpenCreatePlaylistDialog: setIsCreatePlaylistDialogOpen,
   };
 
+  const nativeLayoutQaMode = true;
+
   // ── Render ─────────────────────────────────────────────────────────────────
+  if (nativeLayoutQaMode) {
+    return (
+      <div className="fixed bottom-0 left-0 right-0 z-50 border-t bg-background/95 p-3 text-center text-sm font-semibold">
+        TESTING PLAYER UI (ANDROID NATIVE LAYOUT PREVIEW)
+      </div>
+    );
+  }
+
   return (
     <>
       <CreatePlaylistDialog
