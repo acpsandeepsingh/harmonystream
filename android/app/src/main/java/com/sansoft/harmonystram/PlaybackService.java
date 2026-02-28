@@ -431,32 +431,18 @@ public class PlaybackService extends Service {
     }
 
     // -------------------------------------------------------------------------
-    // FIX #2: switchMode stops ExoPlayer fully when entering video mode so
-    // the YouTube iframe has exclusive audio focus (prevents double audio and
-    // random pause/resume fighting).
+    // Switch playback renderer between mini audio mode and fullscreen video mode.
     // -------------------------------------------------------------------------
     private void switchMode(boolean enableVideo) {
         if (videoMode == enableVideo) return;
         videoMode = enableVideo;
 
-        if (enableVideo) {
-            if (player != null) {
-                player.stop();
-                player.clearMediaItems();
-            }
-            stopProgressUpdates();
-            dispatchToLinkedWebView(
-                "window.dispatchEvent(new CustomEvent('nativeSetVideoMode',"
-                + "{ detail: { enabled: true } }));");
-            Log.d(TAG, "Switched to VIDEO mode - ExoPlayer stopped");
-        } else {
-            dispatchToLinkedWebView(
-                "window.dispatchEvent(new CustomEvent('nativeSetVideoMode',"
-                + "{ detail: { enabled: false } }));");
-            if (currentVideoId != null && !currentVideoId.isEmpty()) {
-                resolveAndPlay(currentVideoId, currentPositionMs);
-            }
-            Log.d(TAG, "Switched to AUDIO mode - ExoPlayer resuming");
+        dispatchToLinkedWebView(
+            "window.dispatchEvent(new CustomEvent('nativeSetVideoMode',"
+            + "{ detail: { enabled: " + enableVideo + " } }));");
+
+        if (currentVideoId != null && !currentVideoId.isEmpty()) {
+            resolveAndPlay(currentVideoId, currentPositionMs);
         }
 
         broadcastState();
@@ -516,13 +502,9 @@ public class PlaybackService extends Service {
     }
 
     // -------------------------------------------------------------------------
-    // FIX #2: Guard resolveAndPlay so ExoPlayer never starts in video mode.
+    // Resolve and play selected stream URL in audio or video mode.
     // -------------------------------------------------------------------------
     private void resolveAndPlay(final String videoId, final long seekMs) {
-        if (videoMode) {
-            Log.d(TAG, "resolveAndPlay skipped - video mode active for: " + videoId);
-            return;
-        }
         resolverExecutor.execute(() -> {
             try {
                 StreamingService yt = ServiceList.YouTube;
@@ -536,18 +518,15 @@ public class PlaybackService extends Service {
                     videoStreamUrl = videoStreams.get(0).getContent();
                 }
 
-                if (videoMode) {
-                    Log.d(TAG, "Video mode enabled during resolve - aborting");
-                    return;
-                }
-
-                final String selected = audioStreamUrl;
+                final String selected = videoMode
+                        ? pickPlayableVideo(videoStreams)
+                        : audioStreamUrl;
                 if (selected == null || !selected.contains("googlevideo.com")) {
                     throw new IllegalStateException("No playable googlevideo stream found");
                 }
 
                 mainHandler.post(() -> {
-                    if (player == null || videoMode) return;
+                    if (player == null) return;
                     player.setMediaItem(MediaItem.fromUri(selected));
                     player.prepare();
                     if (seekMs > 0) player.seekTo(seekMs);
@@ -583,6 +562,17 @@ public class PlaybackService extends Service {
         return "https://www.youtube.com/watch?v=" + t;
     }
 
+
+    private String pickPlayableVideo(List<VideoStream> videoStreams) {
+        if (videoStreams == null || videoStreams.isEmpty()) return null;
+        for (VideoStream stream : videoStreams) {
+            if (stream == null || stream.getContent() == null) continue;
+            if (stream.getContent().contains("googlevideo.com")) {
+                return stream.getContent();
+            }
+        }
+        return null;
+    }
     // -------------------------------------------------------------------------
     // Queue management
     // -------------------------------------------------------------------------
@@ -996,6 +986,8 @@ public class PlaybackService extends Service {
                 ? Math.max(0, player.getDuration()) : currentDurationMs;
         return new PlaybackSnapshot(currentTitle, currentArtist, playing, pos, dur);
     }
+
+    public ExoPlayer getPlayer() { return player; }
 
     // -------------------------------------------------------------------------
     // Service lifecycle

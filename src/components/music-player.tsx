@@ -1,8 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useRef } from 'react';
-import YouTube from 'react-youtube';
-import type { YouTubeEvent, YouTubePlayer, YouTubeProps } from 'react-youtube';
+import React, { useEffect, useMemo } from 'react';
 import { usePlayer } from '@/contexts/player-context';
 import { WebMusicPlayer } from './music-player-web';
 
@@ -23,10 +21,7 @@ function AndroidBridgePlayer() {
     setPlayerMode,
     setIsPlaying,
     syncNativeIndex,
-    handleTrackError,
   } = usePlayer();
-
-  const playerRef = useRef<YouTubePlayer | null>(null);
 
   useEffect(() => {
     const handler = (event: Event) => {
@@ -62,52 +57,26 @@ function AndroidBridgePlayer() {
     window.AndroidNative?.setVideoMode?.(isVideo);
   }, [playerMode]);
 
-  const onPlayerReady = useCallback((event: YouTubeEvent) => {
-    playerRef.current = event.target;
-    event.target.playVideo();
-  }, []);
+  useEffect(() => {
+    if (!currentTrack) return;
+    const mediaType = playerMode === 'video' ? 'video' : 'audio';
+    window.HarmonyNative?.loadMedia?.(
+      currentTrack.videoId,
+      mediaType,
+      currentTrack.title,
+      currentTrack.artist,
+      currentTrack.thumbnailUrl,
+    );
+    window.AndroidNative?.loadMedia?.(
+      currentTrack.videoId,
+      mediaType,
+      currentTrack.title,
+      currentTrack.artist,
+      currentTrack.thumbnailUrl,
+    );
+  }, [currentTrack, playerMode]);
 
-  const onPlayerStateChange = useCallback((event: YouTubeEvent) => {
-    if (event.data === 1) setIsPlaying(true);
-    if (event.data === 2 || event.data === 0) setIsPlaying(false);
-    if (event.data === 0 && currentTrack) handleTrackError(currentTrack.id);
-  }, [currentTrack, handleTrackError, setIsPlaying]);
-
-  const onPlayerError = useCallback(() => {
-    if (currentTrack) handleTrackError(currentTrack.id);
-  }, [currentTrack, handleTrackError]);
-
-  const youtubeOpts: YouTubeProps['opts'] = useMemo(() => ({
-    width: '100%',
-    height: '100%',
-    playerVars: {
-      autoplay: 1,
-      controls: 0,
-      modestbranding: 1,
-      rel: 0,
-      iv_load_policy: 3,
-      fs: 1,
-    },
-  }), []);
-
-  if (!currentTrack) return null;
-
-  if (playerMode !== 'video') return null;
-
-  return (
-    <div className="fixed inset-0 z-[60] bg-black">
-      <YouTube
-        key={currentTrack.id}
-        videoId={currentTrack.id}
-        opts={youtubeOpts}
-        onReady={onPlayerReady}
-        onStateChange={onPlayerStateChange}
-        onError={onPlayerError}
-        className="h-full w-full"
-        iframeClassName="h-full w-full"
-      />
-    </div>
-  );
+  return null;
 }
 
 export function MusicPlayer() {
