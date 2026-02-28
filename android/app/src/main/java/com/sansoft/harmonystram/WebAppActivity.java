@@ -38,6 +38,7 @@ import android.widget.ImageButton;
 import android.widget.ProgressBar;
 import android.widget.SeekBar;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
@@ -92,6 +93,7 @@ public class WebAppActivity extends AppCompatActivity {
     private static final String TAG             = "HarmonyWebAppActivity";
     private static final String LOGCAT_HINT_TAG = "HarmonyContentDebug";
     private static final String WEB_CONSOLE_TAG = "WebConsole";
+    private static final String PLAYER_DEBUG_TAG = "PLAYER_DEBUG";
     private static final long   MAIN_FRAME_TIMEOUT_MS = 15000L;
     private static final int    REQUEST_CODE_POST_NOTIFICATIONS = 4242;
     private static final boolean NATIVE_PLAYER_UI_PREVIEW = false;
@@ -231,6 +233,7 @@ public class WebAppActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_web_app);
+        debugToast("Android version: " + Build.VERSION.SDK_INT);
 
         webView              = findViewById(R.id.web_app_view);
         loadingIndicator     = findViewById(R.id.web_loading_indicator);
@@ -301,6 +304,9 @@ public class WebAppActivity extends AppCompatActivity {
                             + " " + msg.message();
                     Log.d(TAG, line);
                     Log.d(WEB_CONSOLE_TAG, line);
+                    if (msg.messageLevel() == ConsoleMessage.MessageLevel.ERROR) {
+                        Log.e(PLAYER_DEBUG_TAG, "JS ERROR: " + line);
+                    }
                     logContentInfo(line);
                 }
                 return super.onConsoleMessage(msg);
@@ -533,6 +539,7 @@ public class WebAppActivity extends AppCompatActivity {
                 ? R.layout.player_landscape
                 : R.layout.player_portrait;
         getLayoutInflater().inflate(controlsLayoutRes, playerContainer, true);
+        debugToast("Player layout inflated");
 
         nativePlayerTitle = playerContainer.findViewById(R.id.native_player_title);
         if (nativePlayerTitle == null) {
@@ -610,11 +617,22 @@ public class WebAppActivity extends AppCompatActivity {
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 Gravity.BOTTOM);
         playerContainer.setLayoutParams(lp);
+        debugToast("Player container attached");
         playerContainer.setTranslationZ(100f);
         webView.setTranslationZ(0f);
+        debugToast("Player brought to front");
         playerContainer.bringToFront();
+        debugVisibilityState();
         playerContainer.setVisibility(View.GONE);
         playerContainer.requestLayout();
+        webView.post(() -> debugToast("WebView height: " + webView.getHeight()));
+        playerContainer.post(() -> {
+            int height = playerContainer.getHeight();
+            debugToast("Player height: " + height);
+            if (height == 0) {
+                debugToast("Player height ZERO");
+            }
+        });
         refreshWebViewBottomInset();
     }
 
@@ -671,9 +689,26 @@ public class WebAppActivity extends AppCompatActivity {
         webView.setVisibility(View.VISIBLE);
         webView.setTranslationZ(0f);
         webView.bringToFront();
+        debugToast("Player brought to front");
         playerContainer.bringToFront();
         playerContainer.setTranslationZ(100f);
+        debugVisibilityState();
         refreshWebViewBottomInset();
+    }
+
+    private void debugVisibilityState() {
+        if (playerContainer == null || webView == null) return;
+        debugToast("playerContainer.visibility=" + playerContainer.getVisibility());
+        debugToast("webView.visibility=" + webView.getVisibility());
+        debugToast("playerContainer.z=" + playerContainer.getZ());
+        debugToast("webView.z=" + webView.getZ());
+    }
+
+    private void debugToast(String msg) {
+        runOnUiThread(() -> {
+            Log.d(PLAYER_DEBUG_TAG, msg);
+            Toast.makeText(WebAppActivity.this, msg, Toast.LENGTH_SHORT).show();
+        });
     }
 
     private String formatTime(long ms) {
@@ -976,6 +1011,7 @@ public class WebAppActivity extends AppCompatActivity {
                 loadingIndicator.setVisibility(View.GONE);
             injectBackgroundSyncScript(view);
             applyPlayerLayoutMode(lastKnownVideoMode);
+            debugToast("WebView page loaded");
             logContentInfo("onPageFinished url=" + url);
         }
 
@@ -984,6 +1020,7 @@ public class WebAppActivity extends AppCompatActivity {
                                     WebResourceErrorCompat error) {
             super.onReceivedError(view, request, error);
             if (request.isForMainFrame()) {
+                debugToast("onReceivedError");
                 logContentInfo("onReceivedError mainFrame url="
                         + request.getUrl());
                 clearMainFrameTimeout();
@@ -1086,6 +1123,7 @@ public class WebAppActivity extends AppCompatActivity {
         @JavascriptInterface
         public void play(String videoId, String title, String artist,
                          double durationMs, String thumbnailUrl) {
+            debugToast("Song clicked");
             Intent intent = new Intent(WebAppActivity.this, PlaybackService.class);
             intent.setAction(PlaybackService.ACTION_PLAY);
             intent.putExtra("video_id",     videoId);
@@ -1099,6 +1137,7 @@ public class WebAppActivity extends AppCompatActivity {
         @JavascriptInterface
         public void loadMedia(String mediaUrl, String mediaType,
                               String title, String artist, String thumbnailUrl) {
+            debugToast("Song clicked");
             Intent intent = new Intent(WebAppActivity.this, PlaybackService.class);
             intent.setAction(PlaybackService.ACTION_PLAY);
             intent.putExtra("video_id", mediaUrl);

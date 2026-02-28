@@ -20,6 +20,7 @@ import android.os.Looper;
 import android.os.PowerManager;
 import android.util.Log;
 import android.webkit.WebView;
+import android.widget.Toast;
 
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
@@ -65,6 +66,7 @@ import java.util.concurrent.Executors;
 public class PlaybackService extends Service {
 
     private static final String TAG = "PlaybackService";
+    private static final String PLAYER_DEBUG_TAG = "PLAYER_DEBUG";
     public static final String CHANNEL_ID = "harmonystream_playback";
     public static final int NOTIFICATION_ID = 1001;
 
@@ -348,6 +350,9 @@ public class PlaybackService extends Service {
                 if (state == Player.STATE_READY || state == Player.STATE_BUFFERING) {
                     currentDurationMs = Math.max(0, player.getDuration());
                 }
+                if (state == Player.STATE_READY) {
+                    debugToast("Player ready");
+                }
                 if (state == Player.STATE_ENDED) {
                     handleSkip(+1);
                     dispatchActionToUi(ACTION_NEXT);
@@ -388,16 +393,21 @@ public class PlaybackService extends Service {
                 handleUpdateState(intent);
                 break;
             case ACTION_PAUSE:
+                debugToast("Pause pressed");
                 if (player != null) player.pause();
                 broadcastState();
                 break;
             case ACTION_PLAY_PAUSE:
+                debugToast((player != null && player.isPlaying())
+                        ? "Pause pressed"
+                        : "Play pressed");
                 if (player != null) {
                     if (player.isPlaying()) player.pause(); else player.play();
                 }
                 broadcastState();
                 break;
             case ACTION_SEEK:
+                debugToast("Seek to " + intent.getLongExtra("position_ms", 0L));
                 if (player != null)
                     player.seekTo(Math.max(0L, intent.getLongExtra("position_ms", 0L)));
                 break;
@@ -411,6 +421,7 @@ public class PlaybackService extends Service {
                 }
                 break;
             case ACTION_SET_MODE:
+                debugToast("Switching mode");
                 switchMode(intent.getBooleanExtra("video_mode", false));
                 break;
             case ACTION_NEXT:
@@ -473,6 +484,7 @@ public class PlaybackService extends Service {
         String videoId = intent.getStringExtra("video_id");
         if (videoId == null || videoId.isEmpty()) {
             if (player != null) {
+                debugToast("Play pressed");
                 player.play();
             } else if (currentVideoId != null && !currentVideoId.isEmpty()) {
                 resolveAndPlay(currentVideoId, Math.max(0L, currentPositionMs));
@@ -523,8 +535,10 @@ public class PlaybackService extends Service {
     private void resolveAndPlay(final String videoId, final long seekMs) {
         resolverExecutor.execute(() -> {
             try {
+                debugToast("Starting extraction");
                 StreamingService yt = ServiceList.YouTube;
                 StreamInfo info     = resolveStreamInfo(yt, videoId);
+                debugToast("Extraction success");
 
                 List<AudioStream> audioStreams = info.getAudioStreams();
                 List<VideoStream> videoStreams = info.getVideoStreams();
@@ -537,12 +551,14 @@ public class PlaybackService extends Service {
                 final String selected = videoMode
                         ? pickPlayableVideo(videoStreams)
                         : audioStreamUrl;
+                debugToast("Stream URL received");
                 if (selected == null || !selected.contains("googlevideo.com")) {
                     throw new IllegalStateException("No playable googlevideo stream found");
                 }
 
                 mainHandler.post(() -> {
                     if (player == null) return;
+                    debugToast("Preparing player");
                     player.setMediaItem(MediaItem.fromUri(selected));
                     player.prepare();
                     if (seekMs > 0) player.seekTo(seekMs);
@@ -554,8 +570,16 @@ public class PlaybackService extends Service {
                 });
             } catch (Throwable t) {
                 pendingPlayRequestedAtMs = 0L;
+                debugToast("Extraction failed");
                 Log.e(TAG, "Unable to resolve stream URL", t);
             }
+        });
+    }
+
+    private void debugToast(String msg) {
+        mainHandler.post(() -> {
+            Log.d(PLAYER_DEBUG_TAG, msg);
+            Toast.makeText(getApplicationContext(), msg, Toast.LENGTH_SHORT).show();
         });
     }
 
