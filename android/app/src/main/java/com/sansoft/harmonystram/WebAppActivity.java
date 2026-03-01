@@ -63,7 +63,7 @@ import java.io.IOException;
 import java.io.InputStream;
 
 public class WebAppActivity extends AppCompatActivity {
-
+private PlaybackViewModel playbackViewModel;
     public static final String EXTRA_START_URL = "start_url";
 
     private static final String BUNDLED_HOME_URL =
@@ -242,6 +242,20 @@ public class WebAppActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        playbackViewModel = new ViewModelProvider(this).get(PlaybackViewModel.class);
+
+playbackViewModel.getPlaybackState().observe(this, state -> {
+
+    if (state == null) return;
+
+    updateNativePlayerUi(
+            state.getTitle(),
+            state.getArtist(),
+            state.getPosition(),
+            state.getDuration(),
+            state.isPlaying()
+    );
+});
         setContentView(R.layout.activity_web_app);
         debugToast("Android version: " + Build.VERSION.SDK_INT);
 
@@ -1496,5 +1510,47 @@ private void attachNativePlayer() {
             intent.setAction(PlaybackService.ACTION_GET_STATE);
             startPlaybackService(intent);
         }
+    }
+
+    private void updateNativePlayerUi(
+        String title,
+        String artist,
+        int position,
+        int duration,
+        boolean isPlaying
+) {
+
+    TextView titleView = findViewById(R.id.title);
+    TextView artistView = findViewById(R.id.artist);
+    TextView timeCurrent = findViewById(R.id.timeCurrent);
+    TextView timeDuration = findViewById(R.id.timeDuration);
+    SeekBar seekBar = findViewById(R.id.seekBar);
+    ImageButton playButton = findViewById(R.id.btnPlay);
+
+    if (titleView != null) titleView.setText(title != null ? title : "");
+    if (artistView != null) artistView.setText(artist != null ? artist : "");
+
+    if (timeCurrent != null)
+        timeCurrent.setText(formatTime(position));
+
+    if (timeDuration != null)
+        timeDuration.setText(formatTime(duration));
+
+    if (seekBar != null) {
+        seekBar.setMax(duration);
+        seekBar.setProgress(position);
+    }
+
+    if (playButton != null) {
+        playButton.setImageResource(
+                isPlaying ? R.drawable.ic_pause : R.drawable.ic_play_arrow
+        );
+    }
+    }
+    private String formatTime(int ms) {
+    int totalSeconds = ms / 1000;
+    int minutes = totalSeconds / 60;
+    int seconds = totalSeconds % 60;
+    return String.format("%d:%02d", minutes, seconds);
     }
 }
