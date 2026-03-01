@@ -21,7 +21,6 @@ import android.os.Looper;
 import android.util.Log;
 import android.util.Rational;
 import android.view.GestureDetector;
-import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
@@ -35,6 +34,7 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.widget.FrameLayout;
 import android.widget.ImageButton;
+import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.SeekBar;
 import android.widget.TextView;
@@ -532,13 +532,11 @@ public class WebAppActivity extends AppCompatActivity {
 
     private void initNativePlayerUi() {
         if (playerContainer == null) return;
+        View playerLayout = getLayoutInflater()
+                .inflate(R.layout.view_native_player, playerContainer, false);
         playerContainer.removeAllViews();
-
-        int controlsLayoutRes = getResources().getConfiguration().orientation
-                == Configuration.ORIENTATION_LANDSCAPE
-                ? R.layout.player_landscape
-                : R.layout.player_portrait;
-        getLayoutInflater().inflate(controlsLayoutRes, playerContainer, true);
+        playerContainer.addView(playerLayout);
+        playerContainer.setVisibility(View.VISIBLE);
         debugToast("Player layout inflated");
 
         nativePlayerTitle = playerContainer.findViewById(R.id.native_player_title);
@@ -612,16 +610,7 @@ public class WebAppActivity extends AppCompatActivity {
             });
         }
 
-        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                Gravity.BOTTOM);
-        playerContainer.setLayoutParams(lp);
         debugToast("Player container attached");
-        playerContainer.setTranslationZ(100f);
-        webView.setTranslationZ(0f);
-        debugToast("Player brought to front");
-        playerContainer.bringToFront();
         debugVisibilityState();
         playerContainer.setVisibility(View.GONE);
         playerContainer.requestLayout();
@@ -633,7 +622,6 @@ public class WebAppActivity extends AppCompatActivity {
                 debugToast("Player height ZERO");
             }
         });
-        refreshWebViewBottomInset();
     }
 
     private void attachNativePlayer() {
@@ -686,22 +674,28 @@ public class WebAppActivity extends AppCompatActivity {
 
     private void applyPlayerLayoutMode(boolean videoMode) {
         if (playerContainer == null || webView == null) return;
-        webView.setVisibility(View.VISIBLE);
-        webView.setTranslationZ(0f);
-        webView.bringToFront();
-        debugToast("Player brought to front");
-        playerContainer.bringToFront();
-        playerContainer.setTranslationZ(100f);
+        ViewGroup.LayoutParams layoutParams = playerContainer.getLayoutParams();
+        if (!(layoutParams instanceof LinearLayout.LayoutParams)) return;
+
+        LinearLayout.LayoutParams playerLayoutParams = (LinearLayout.LayoutParams) layoutParams;
+        if (videoMode) {
+            webView.setVisibility(View.GONE);
+            playerLayoutParams.height = ViewGroup.LayoutParams.MATCH_PARENT;
+            playerLayoutParams.weight = 0f;
+            playerContainer.setVisibility(View.VISIBLE);
+        } else {
+            webView.setVisibility(View.VISIBLE);
+            playerLayoutParams.height = ViewGroup.LayoutParams.WRAP_CONTENT;
+            playerLayoutParams.weight = 0f;
+        }
+        playerContainer.setLayoutParams(playerLayoutParams);
         debugVisibilityState();
-        refreshWebViewBottomInset();
     }
 
     private void debugVisibilityState() {
         if (playerContainer == null || webView == null) return;
         debugToast("playerContainer.visibility=" + playerContainer.getVisibility());
         debugToast("webView.visibility=" + webView.getVisibility());
-        debugToast("playerContainer.z=" + playerContainer.getZ());
-        debugToast("webView.z=" + webView.getZ());
     }
 
     private void debugToast(String msg) {
@@ -765,6 +759,7 @@ public class WebAppActivity extends AppCompatActivity {
     private void setVideoMode(boolean enabled) {
         videoModeEnabled = enabled;
         lastKnownVideoMode = enabled;
+        applyPlayerLayoutMode(enabled);
         if (enabled) {
             hideSystemBars();
         } else {
@@ -774,21 +769,6 @@ public class WebAppActivity extends AppCompatActivity {
         intent.setAction(PlaybackService.ACTION_SET_MODE);
         intent.putExtra("video_mode", enabled);
         startPlaybackService(intent);
-    }
-
-    private void refreshWebViewBottomInset() {
-        if (playerContainer == null || webView == null) return;
-        playerContainer.post(() -> {
-            int bottomInset = playerContainer.getVisibility() == View.VISIBLE
-                    ? playerContainer.getHeight()
-                    : 0;
-            webView.setPadding(
-                    webView.getPaddingLeft(),
-                    webView.getPaddingTop(),
-                    webView.getPaddingRight(),
-                    bottomInset);
-            webView.setClipToPadding(false);
-        });
     }
 
     @Override
@@ -802,10 +782,9 @@ public class WebAppActivity extends AppCompatActivity {
         }
         if (wasVisible && playerContainer != null) {
             playerContainer.setVisibility(View.VISIBLE);
-            playerContainer.bringToFront();
         }
         attachNativePlayer();
-        refreshWebViewBottomInset();
+        applyPlayerLayoutMode(videoModeEnabled);
     }
 
     // -------------------------------------------------------------------------
