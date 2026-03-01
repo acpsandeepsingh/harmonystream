@@ -87,12 +87,14 @@ public class PlaybackService extends Service {
     public static final String ACTION_SEEK                       = "com.sansoft.harmonystram.SEEK";
     public static final String ACTION_SET_QUEUE                  = "com.sansoft.harmonystram.SET_QUEUE";
     public static final String ACTION_SET_INDEX                  = "com.sansoft.harmonystram.SET_INDEX";
+    public static final String ACTION_ADD_TO_QUEUE               = "com.sansoft.harmonystram.ADD_TO_QUEUE";
     public static final String ACTION_MEDIA_CONTROL              = "com.sansoft.harmonystram.MEDIA_CONTROL";
     public static final String ACTION_GET_STATE                  = "com.sansoft.harmonystram.GET_STATE";
     public static final String ACTION_STATE_CHANGED              = "com.sansoft.harmonystram.STATE_CHANGED";
     public static final String ACTION_CLEAR_PENDING_MEDIA_ACTION = "com.sansoft.harmonystram.CLEAR_PENDING_MEDIA_ACTION";
     public static final String ACTION_SET_MODE                   = "com.sansoft.harmonystram.SET_MODE";
     public static final String ACTION_SEEK_RELATIVE              = "com.sansoft.harmonystram.SEEK_RELATIVE";
+    public static final String ACTION_SET_VOLUME                 = "com.sansoft.harmonystram.SET_VOLUME";
     public static final String EXTRA_PENDING_MEDIA_ACTION        = "pending_media_action";
 
     private static final String PREFS_NAME        = "playback_service_state";
@@ -293,6 +295,7 @@ public class PlaybackService extends Service {
         try {
             player = new ExoPlayer.Builder(this).build();
             player.setAudioAttributes(audioAttrs, true);
+            player.setVolume(1.0f);
             debugToast("ExoPlayer initialization success");
         } catch (Throwable initError) {
             debugToast("ExoPlayer initialization failure: " + initError.getMessage());
@@ -435,6 +438,12 @@ public class PlaybackService extends Service {
                 debugToast("Switching mode");
                 switchMode(intent.getBooleanExtra("video_mode", false));
                 break;
+            case ACTION_SET_VOLUME:
+                if (player != null) {
+                    float volume = intent.getFloatExtra("volume", 1.0f);
+                    player.setVolume(Math.max(0f, Math.min(1.0f, volume)));
+                }
+                break;
             case ACTION_NEXT:
                 handleSkip(+1);
                 broadcastState();
@@ -452,6 +461,10 @@ public class PlaybackService extends Service {
             case ACTION_SET_INDEX:
                 handleSetIndex(intent);
                 dispatchActionToUi(ACTION_SET_INDEX);
+                break;
+            case ACTION_ADD_TO_QUEUE:
+                handleAddToQueue(intent);
+                dispatchActionToUi(ACTION_ADD_TO_QUEUE);
                 break;
             case ACTION_GET_STATE:
                 broadcastState();
@@ -478,11 +491,6 @@ public class PlaybackService extends Service {
         dispatchToLinkedWebView(
             "window.dispatchEvent(new CustomEvent('nativeSetVideoMode',"
             + "{ detail: { enabled: " + enableVideo + " } }));");
-
-        if (currentVideoId != null && !currentVideoId.isEmpty()) {
-            currentResolvedStreamUrl = null;
-            resolveAndPlay(currentVideoId, currentPositionMs);
-        }
 
         broadcastState();
         updateNotification();
@@ -700,6 +708,33 @@ public class PlaybackService extends Service {
         ensureForegroundWithCurrentState();
         broadcastState();
         resolveAndPlay(item.videoId, 0L);
+    }
+
+    private void handleAddToQueue(Intent intent) {
+        if (intent == null) return;
+        String queueJson = intent.getStringExtra("queue_json");
+        if (queueJson == null || queueJson.trim().isEmpty()) return;
+        try {
+            JSONArray arr = new JSONArray(queueJson);
+            int insertIndex = Math.max(0, Math.min(playbackQueue.size(), currentQueueIndex + 1));
+            for (int i = 0; i < arr.length(); i++) {
+                JSONObject obj = arr.getJSONObject(i);
+                QueueItem item = new QueueItem(
+                        obj.optString("id"),
+                        obj.optString("title"),
+                        obj.optString("artist"),
+                        obj.optString("videoId"),
+                        obj.optString("thumbnailUrl")
+                );
+                playbackQueue.add(insertIndex + i, item);
+            }
+            if (currentQueueIndex < 0 && !playbackQueue.isEmpty()) {
+                currentQueueIndex = 0;
+            }
+            broadcastState();
+        } catch (JSONException e) {
+            Log.e(TAG, "Failed to parse add-to-queue JSON", e);
+        }
     }
 
     private void syncQueueIndexForVideo(String videoId) {
