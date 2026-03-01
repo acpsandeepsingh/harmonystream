@@ -1152,7 +1152,19 @@ public class WebAppActivity extends AppCompatActivity {
         lastBridgePlayRequestedAtMs = now;
         return false;
     }
+private void attachNativePlayer() {
 
+    if (!serviceBound || playbackService == null) {
+        Log.w(PLAYER_DEBUG_TAG, "attachNativePlayer skipped: service not bound");
+        return;
+    }
+
+    debugToast("attachNativePlayer called");
+
+    // If later you re-add PlayerView support, you can attach player here.
+    // For now, nothing is required since UI is custom buttons.
+
+}
     // -------------------------------------------------------------------------
     // JavaScript bridge
     // -------------------------------------------------------------------------
