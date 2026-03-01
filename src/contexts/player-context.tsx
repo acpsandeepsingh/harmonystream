@@ -5,6 +5,12 @@ import { createContext, useContext, useState, type ReactNode, useCallback, useEf
 import { useToast } from '@/hooks/use-toast';
 import { getSongByVideoId } from '@/lib/youtube';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import {
+  clearPlayerPersistence,
+  removeVersionedStorage,
+  safeReadVersionedStorage,
+  writeVersionedStorage,
+} from '@/lib/persisted-state';
 
 interface PlayerContextType {
   currentTrack: Song | null;
@@ -93,18 +99,40 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [initialLoadIsVideoShare, setInitialLoadIsVideoShare] = useState(false);
   const { toast } = useToast();
 
+  const isSong = (value: unknown): value is Song => {
+    if (!value || typeof value !== 'object') return false;
+    const candidate = value as Song;
+    return typeof candidate.id === 'string' && typeof candidate.title === 'string';
+  };
+
+  const isSongArray = (value: unknown): value is Song[] =>
+    Array.isArray(value) && value.every(isSong);
+
   useEffect(() => {
     setIsMounted(true);
     try {
-      const lastPlayedTrack = localStorage.getItem('harmony-last-played');
-      const lastPlaylist = localStorage.getItem('harmony-last-playlist');
-      const storedHistory = localStorage.getItem('harmony-history');
-      
-      if (lastPlayedTrack) setCurrentTrack(JSON.parse(lastPlayedTrack));
-      if (lastPlaylist) setPlaylist(JSON.parse(lastPlaylist));
-      if (storedHistory) setHistory(JSON.parse(storedHistory));
+      const nextTrack = safeReadVersionedStorage<Song | null>(
+        'last-played',
+        null,
+        (value): value is Song | null => value === null || isSong(value)
+      );
+      const nextPlaylist = safeReadVersionedStorage<Song[]>(
+        'last-playlist',
+        [],
+        isSongArray
+      );
+      const nextHistory = safeReadVersionedStorage<Song[]>(
+        'history',
+        [],
+        isSongArray
+      );
+
+      setCurrentTrack(nextTrack);
+      setPlaylist(nextPlaylist);
+      setHistory(nextHistory);
     } catch (error) {
       console.error('Failed to load player state from localStorage', error);
+      clearPlayerPersistence(['last-played', 'last-playlist', 'history']);
     }
   }, []);
 
@@ -112,12 +140,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (!isMounted) return;
     try {
       if (currentTrack) {
-        localStorage.setItem('harmony-last-played', JSON.stringify(currentTrack));
+        writeVersionedStorage('last-played', currentTrack);
       } else {
-        localStorage.removeItem('harmony-last-played');
+        removeVersionedStorage('last-played');
       }
-      localStorage.setItem('harmony-last-playlist', JSON.stringify(playlist));
-      localStorage.setItem('harmony-history', JSON.stringify(history));
+      writeVersionedStorage('last-playlist', playlist);
+      writeVersionedStorage('history', history);
     } catch (error) {
       console.error('Failed to save player state to localStorage', error);
     }

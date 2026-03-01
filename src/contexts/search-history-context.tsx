@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, type ReactNode, useCallback, useEffect } from 'react';
+import { safeReadVersionedStorage, writeVersionedStorage } from '@/lib/persisted-state';
 
 interface SearchHistoryContextType {
   searchHistory: string[];
@@ -11,7 +12,7 @@ interface SearchHistoryContextType {
 
 const SearchHistoryContext = createContext<SearchHistoryContextType | undefined>(undefined);
 
-const LOCAL_STORAGE_KEY = 'harmony-search-history';
+const LOCAL_STORAGE_KEY = 'search-history';
 
 export function SearchHistoryProvider({ children }: { children: ReactNode }) {
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
@@ -20,10 +21,12 @@ export function SearchHistoryProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     setIsMounted(true);
     try {
-      const storedHistory = localStorage.getItem(LOCAL_STORAGE_KEY);
-      if (storedHistory) {
-        setSearchHistory(JSON.parse(storedHistory));
-      }
+      const storedHistory = safeReadVersionedStorage<string[]>(
+        LOCAL_STORAGE_KEY,
+        [],
+        (value): value is string[] => Array.isArray(value) && value.every(item => typeof item === 'string')
+      );
+      setSearchHistory(storedHistory);
     } catch (error) {
       console.error('Failed to load search history from localStorage', error);
     }
@@ -32,7 +35,7 @@ export function SearchHistoryProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!isMounted) return;
     try {
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(searchHistory));
+      writeVersionedStorage(LOCAL_STORAGE_KEY, searchHistory);
     } catch (error) {
       console.error('Failed to save search history to localStorage', error);
     }
