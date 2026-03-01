@@ -546,10 +546,9 @@ public class WebAppActivity extends AppCompatActivity {
 
     try {
 
-        // Clear container first
         playerContainer.removeAllViews();
 
-        // IMPORTANT: attachToRoot = true
+        // Correct inflation (attachToRoot = true)
         getLayoutInflater().inflate(
                 R.layout.view_native_player,
                 playerContainer,
@@ -561,23 +560,14 @@ public class WebAppActivity extends AppCompatActivity {
 
         debugToast("Player layout inflation success");
 
-        // Force layout pass
-        playerContainer.requestLayout();
-
         playerContainer.post(() -> {
             int height = playerContainer.getHeight();
             debugToast("Player height: " + height);
-
-            if (height <= 0) {
-                Log.e(PLAYER_DEBUG_TAG, "Player height is ZERO");
-            } else {
-                Log.d(PLAYER_DEBUG_TAG, "Player height OK: " + height);
-            }
+            Log.d(PLAYER_DEBUG_TAG, "Player height = " + height);
         });
 
-        // Bind views
-        nativePlayerView = playerContainer.findViewById(R.id.native_player_view);
-        nativePlayerTitle = playerContainer.findViewById(R.id.native_player_title);
+        // ✅ Bind REAL IDs from player_portrait.xml
+        nativePlayerTitle = playerContainer.findViewById(R.id.title);
         nativePlayerArtist = playerContainer.findViewById(R.id.artist);
         nativePlayerTimeCurrent = playerContainer.findViewById(R.id.timeCurrent);
         nativePlayerTimeDuration = playerContainer.findViewById(R.id.timeDuration);
@@ -595,22 +585,31 @@ public class WebAppActivity extends AppCompatActivity {
         if (nativePlayerArtist != null)
             nativePlayerArtist.setText("-");
 
-        if (btnPlay != null) btnPlay.setEnabled(false);
-        if (btnNext != null) btnNext.setEnabled(false);
-        if (btnPrev != null) btnPrev.setEnabled(false);
-        if (seekBar != null) seekBar.setEnabled(false);
+        if (btnPlay != null) {
+            btnPlay.setEnabled(false);
+            btnPlay.setAlpha(0.5f);
+        }
 
-        debugToast("Player UI initialized");
+        if (btnNext != null) {
+            btnNext.setEnabled(false);
+            btnNext.setAlpha(0.5f);
+        }
+
+        if (btnPrev != null) {
+            btnPrev.setEnabled(false);
+            btnPrev.setAlpha(0.5f);
+        }
+
+        if (seekBar != null) {
+            seekBar.setEnabled(false);
+        }
+
+        debugToast("Player UI initialized successfully");
 
     } catch (Throwable t) {
         debugToast("Player layout inflation failure: " + t.getMessage());
         Log.e(PLAYER_DEBUG_TAG, "Failed to initialize native player UI", t);
     }
-    }
-
-    private void attachNativePlayer() {
-        if (nativePlayerView == null || playbackService == null) return;
-        nativePlayerView.setPlayer(playbackService.getPlayer());
     }
 
     private void updateNativePlayerUi(Intent intent) {
