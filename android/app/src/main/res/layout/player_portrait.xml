@@ -9,6 +9,7 @@
     android:paddingEnd="12dp"
     android:paddingBottom="12dp">
 
+    <!-- SEEK BAR ROW -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="48dp"
@@ -22,7 +23,7 @@
             android:gravity="end"
             android:text="0:00"
             android:textSize="12sp"
-            android:textStyle="500"
+            android:textStyle="normal"
             android:textColor="#B0B7C8" />
 
         <SeekBar
@@ -39,10 +40,12 @@
             android:layout_height="wrap_content"
             android:text="0:00"
             android:textSize="12sp"
-            android:textStyle="500"
+            android:textStyle="normal"
             android:textColor="#B0B7C8" />
     </LinearLayout>
 
+
+    <!-- TRACK INFO ROW -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -112,6 +115,8 @@
             android:contentDescription="Add" />
     </LinearLayout>
 
+
+    <!-- CONTROLS ROW -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
