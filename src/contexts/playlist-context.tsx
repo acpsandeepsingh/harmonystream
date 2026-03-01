@@ -16,6 +16,7 @@ import {
   arrayRemove,
 } from 'firebase/firestore';
 import { LIKED_SONGS_PLAYLIST_ID } from '@/lib/constants';
+import { safeReadVersionedStorage, writeVersionedStorage } from '@/lib/persisted-state';
 
 interface PlaylistContextType {
   playlists: Playlist[];
@@ -51,8 +52,11 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!user) {
       try {
-        const storedPlaylists = localStorage.getItem('harmony-playlists');
-        const parsedPlaylists = storedPlaylists ? JSON.parse(storedPlaylists) : [];
+        const parsedPlaylists = safeReadVersionedStorage<Playlist[]>(
+          'playlists',
+          [],
+          (value): value is Playlist[] => Array.isArray(value)
+        );
         if (!parsedPlaylists.some((p: Playlist) => p.id === LIKED_SONGS_PLAYLIST_ID)) {
           parsedPlaylists.unshift({ id: LIKED_SONGS_PLAYLIST_ID, name: 'Liked Songs', description: 'Your favorite tracks.', songs: [] });
         }
@@ -72,7 +76,7 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!user) {
       try {
-        localStorage.setItem('harmony-playlists', JSON.stringify(localPlaylists));
+        writeVersionedStorage('playlists', localPlaylists);
       } catch (error) {
         console.error('Failed to save playlists to localStorage', error);
       }

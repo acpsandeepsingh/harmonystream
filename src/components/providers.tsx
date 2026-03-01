@@ -8,6 +8,7 @@ import { SearchHistoryProvider } from '@/contexts/search-history-context';
 import { AppLayout } from '@/components/layout/app-layout';
 import { usePathname } from 'next/navigation';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { AppErrorBoundary } from '@/components/app-error-boundary';
 
 const AUTH_ROUTES = ['/login', '/signup'];
 
@@ -16,27 +17,29 @@ export function Providers({ children }: { children: ReactNode }) {
   const isAuthRoute = AUTH_ROUTES.includes(pathname);
 
   return (
-    <ThemeProvider
-      attribute="class"
-      defaultTheme="system"
-      enableSystem
-      disableTransitionOnChange
-    >
-      <TooltipProvider>
-        <SearchHistoryProvider>
-          <PlaylistProvider>
-            <PlayerProvider>
-              {isAuthRoute ? (
-                <main className="bg-background min-h-screen">{children}</main>
-              ) : (
-                <AppLayout>
-                  {children}
-                </AppLayout>
-              )}
-            </PlayerProvider>
-          </PlaylistProvider>
-        </SearchHistoryProvider>
-      </TooltipProvider>
-    </ThemeProvider>
+    <AppErrorBoundary>
+      <ThemeProvider
+        attribute="class"
+        defaultTheme="system"
+        enableSystem
+        disableTransitionOnChange
+      >
+        <TooltipProvider>
+          <SearchHistoryProvider>
+            <PlaylistProvider>
+              <PlayerProvider>
+                {isAuthRoute ? (
+                  <main className="bg-background min-h-screen">{children}</main>
+                ) : (
+                  <AppLayout>
+                    {children}
+                  </AppLayout>
+                )}
+              </PlayerProvider>
+            </PlaylistProvider>
+          </SearchHistoryProvider>
+        </TooltipProvider>
+      </ThemeProvider>
+    </AppErrorBoundary>
   );
 }

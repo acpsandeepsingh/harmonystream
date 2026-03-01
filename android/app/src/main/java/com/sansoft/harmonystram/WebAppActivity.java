@@ -97,6 +97,7 @@ public class WebAppActivity extends AppCompatActivity {
     private static final String PLAYER_DEBUG_TAG = "PLAYER_DEBUG";
     private static final long   MAIN_FRAME_TIMEOUT_MS = 15000L;
     private static final int    REQUEST_CODE_POST_NOTIFICATIONS = 4242;
+    private static final int    REQUEST_CODE_READ_EXTERNAL_STORAGE = 4243;
     private static final boolean NATIVE_PLAYER_UI_PREVIEW = false;
 
     // -------------------------------------------------------------------------
@@ -260,6 +261,7 @@ public class WebAppActivity extends AppCompatActivity {
 
         configureVideoGestures();
         requestNotificationPermissionIfNeeded();
+        requestLegacyStoragePermissionIfNeeded();
 
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
@@ -659,8 +661,7 @@ public class WebAppActivity extends AppCompatActivity {
             btnPlay.setImageResource(isPlaying ? R.drawable.ic_pause : R.drawable.ic_play_arrow);
         }
 
-        boolean hasTrack = title != null && !title.trim().isEmpty();
-        playerContainer.setVisibility(hasTrack ? View.VISIBLE : View.GONE);
+        playerContainer.setVisibility(View.VISIBLE);
         boolean videoMode = intent.getBooleanExtra("video_mode", false);
         lastKnownVideoMode = videoMode;
         applyPlayerLayoutMode(videoMode);
@@ -874,6 +875,20 @@ public class WebAppActivity extends AppCompatActivity {
                         new String[]{Manifest.permission.POST_NOTIFICATIONS},
                         REQUEST_CODE_POST_NOTIFICATIONS);
             }
+        }
+    }
+
+    private void requestLegacyStoragePermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M
+                || Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            return;
+        }
+        if (ContextCompat.checkSelfPermission(this,
+                Manifest.permission.READ_EXTERNAL_STORAGE)
+                != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this,
+                    new String[]{Manifest.permission.READ_EXTERNAL_STORAGE},
+                    REQUEST_CODE_READ_EXTERNAL_STORAGE);
         }
     }
 
