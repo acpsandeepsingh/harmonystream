@@ -946,7 +946,7 @@ public class WebAppActivity extends AppCompatActivity {
 
         dispatchToWeb("window.dispatchEvent(new Event('nativeAudioMode'))");
     }
-    }
+    
         Intent intent = new Intent(WebAppActivity.this, PlaybackService.class);
         intent.setAction(PlaybackService.ACTION_SET_MODE);
         intent.putExtra("video_mode", enabled);
