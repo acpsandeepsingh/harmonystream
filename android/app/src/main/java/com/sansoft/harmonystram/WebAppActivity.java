@@ -535,33 +535,34 @@ public class WebAppActivity extends AppCompatActivity {
 
     private void initNativePlayerUi() {
         if (playerContainer == null) return;
-        View playerLayout = getLayoutInflater()
-                .inflate(R.layout.view_native_player, playerContainer, false);
-        playerContainer.removeAllViews();
-        playerContainer.addView(playerLayout);
-        playerContainer.setVisibility(View.VISIBLE);
-        debugToast("Player layout inflated");
+        try {
+            View playerLayout = getLayoutInflater()
+                    .inflate(R.layout.view_native_player, playerContainer, false);
+            playerContainer.removeAllViews();
+            playerContainer.addView(playerLayout);
+            playerContainer.setVisibility(View.VISIBLE);
+            debugToast("Player layout inflated");
 
-        int nativePlayerTitleId = getResources()
-                .getIdentifier("native_player_title", "id", getPackageName());
-        nativePlayerTitle = nativePlayerTitleId != 0
-                ? playerContainer.findViewById(nativePlayerTitleId)
-                : null;
-        if (nativePlayerTitle == null) {
-            nativePlayerTitle = playerContainer.findViewById(R.id.title);
-        }
+            int nativePlayerTitleId = getResources()
+                    .getIdentifier("native_player_title", "id", getPackageName());
+            nativePlayerTitle = nativePlayerTitleId != 0
+                    ? playerContainer.findViewById(nativePlayerTitleId)
+                    : null;
+            if (nativePlayerTitle == null) {
+                nativePlayerTitle = playerContainer.findViewById(R.id.title);
+            }
 
-        int nativePlayerViewId = getResources()
-                .getIdentifier("native_player_view", "id", getPackageName());
-        nativePlayerView = nativePlayerViewId != 0
-                ? playerContainer.findViewById(nativePlayerViewId)
-                : null;
-        if (nativePlayerView != null) {
-            nativePlayerView.setUseController(true);
-            nativePlayerView.setControllerAutoShow(true);
-            nativePlayerView.setControllerHideOnTouch(false);
-            nativePlayerView.setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING);
-        }
+            int nativePlayerViewId = getResources()
+                    .getIdentifier("native_player_view", "id", getPackageName());
+            nativePlayerView = nativePlayerViewId != 0
+                    ? playerContainer.findViewById(nativePlayerViewId)
+                    : null;
+            if (nativePlayerView != null) {
+                nativePlayerView.setUseController(true);
+                nativePlayerView.setControllerAutoShow(true);
+                nativePlayerView.setControllerHideOnTouch(false);
+                nativePlayerView.setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING);
+            }
 
             btnPlay = playerLayout.findViewById(R.id.btnPlay);
             btnNext = playerLayout.findViewById(R.id.btnNext);
