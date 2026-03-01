@@ -284,13 +284,21 @@ public class PlaybackService extends Service {
     }
 
     private void initPlayer() {
+        debugToast("ExoPlayer initialization start");
         AudioAttributes audioAttrs = new AudioAttributes.Builder()
                 .setUsage(C.USAGE_MEDIA)
                 .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
                 .build();
 
-        player = new ExoPlayer.Builder(this).build();
-        player.setAudioAttributes(audioAttrs, true);
+        try {
+            player = new ExoPlayer.Builder(this).build();
+            player.setAudioAttributes(audioAttrs, true);
+            debugToast("ExoPlayer initialization success");
+        } catch (Throwable initError) {
+            debugToast("ExoPlayer initialization failure: " + initError.getMessage());
+            Log.e(TAG, "ExoPlayer initialization failed", initError);
+            throw initError;
+        }
 
         mediaSessionConnector = new MediaSessionConnector(mediaSession);
         mediaSessionConnector.setPlayer(player);
@@ -374,6 +382,7 @@ public class PlaybackService extends Service {
 
             @Override
             public void onPlayerError(PlaybackException error) {
+                debugToast("Player error: " + error.getMessage());
                 Log.e(TAG, "Playback error", error);
             }
         });
