@@ -101,6 +101,8 @@ declare global {
       setIndex?:     (index: number)      => void;
       seek?:         (positionMs: number) => void;
       setQueue?:     (queueJson: string)  => void;
+      addToQueue?:   (queueJson: string)  => void;
+      addToPlaylist?:(songJson: string)   => void;
       loadMedia?:    (
         mediaUrl: string,
         mediaType: string,
@@ -109,6 +111,7 @@ declare global {
         thumbnailUrl?: string,
       ) => void;
       setVideoMode?: (enabled: boolean)   => void;
+      setVolume?:    (volume: number)     => void;
       updateState?:  (
         title: string, artist: string, playing: boolean,
         positionMs: number, durationMs: number, thumbnailUrl: string,
@@ -129,6 +132,7 @@ declare global {
         thumbnailUrl?: string,
       ) => void;
       setVideoMode?: (enabled: boolean)   => void;
+      setVolume?:    (volume: number)     => void;
     };
     updateProgress?:              (positionMs: number, durationMs: number) => void;
     __harmonyNativeApplyCommand?: (action: string) => void;
@@ -711,6 +715,17 @@ export function WebMusicPlayer() {
     return () => window.removeEventListener('nativePlaybackCommand', handler);
   }, [applyNativeCommand]);
 
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const vol = (e as CustomEvent<{ volume: number }>).detail?.volume;
+      if (typeof vol === 'number' && Number.isFinite(vol)) {
+        setVolume(Math.max(0, Math.min(100, vol)));
+      }
+    };
+    window.addEventListener('nativeVolumeChanged', handler);
+    return () => window.removeEventListener('nativeVolumeChanged', handler);
+  }, []);
+
   // ── SYNC: PiP ─────────────────────────────────────────────────────────────
   useEffect(() => {
     const handler = (e: Event) => {
@@ -907,7 +922,10 @@ export function WebMusicPlayer() {
     if (playerRef.current) {
       try { playerRef.current.setVolume(value); } catch { /* ignore */ }
     }
-  }, []);
+    if (isAndroidAppRuntime) {
+      window.HarmonyNative?.setVolume?.(value);
+    }
+  }, [isAndroidAppRuntime]);
 
   // ── Mode toggle ────────────────────────────────────────────────────────────
   const handleTogglePlayerMode = useCallback(() => {
@@ -952,6 +970,21 @@ export function WebMusicPlayer() {
         toast({ title: 'Link copied to clipboard' }));
     }
   }, [currentTrack, toast]);
+
+  useEffect(() => {
+    const handleNativeAddToPlaylist = () => {
+      if (!currentTrack || playlists.length === 0) return;
+      addSongToPlaylist(playlists[0].id, currentTrack);
+    };
+    const handleNativeOpenQueue = () => setIsQueueOpen(true);
+
+    window.addEventListener('nativeAddToPlaylist', handleNativeAddToPlaylist);
+    window.addEventListener('nativeOpenQueue', handleNativeOpenQueue);
+    return () => {
+      window.removeEventListener('nativeAddToPlaylist', handleNativeAddToPlaylist);
+      window.removeEventListener('nativeOpenQueue', handleNativeOpenQueue);
+    };
+  }, [currentTrack, playlists, addSongToPlaylist]);
 
   // ── Queue DnD ──────────────────────────────────────────────────────────────
   const sensors = useSensors(
