@@ -588,20 +588,12 @@ public class PlaybackService extends Service {
         try {
             return StreamInfo.getInfo(yt, videoIdOrUrl);
         } catch (Throwable directFailure) {
-            String normalized = normalizeYouTubeWatchUrl(videoIdOrUrl);
+            String normalized = YouTubeUrlNormalizer.normalizeWatchUrl(videoIdOrUrl);
             if (normalized.equals(videoIdOrUrl)) throw directFailure;
             Log.w(TAG, "Retrying with normalized URL", directFailure);
             return StreamInfo.getInfo(yt, normalized);
         }
     }
-
-    private String normalizeYouTubeWatchUrl(String videoIdOrUrl) {
-        if (videoIdOrUrl == null) return "";
-        String t = videoIdOrUrl.trim();
-        if (t.startsWith("http://") || t.startsWith("https://")) return t;
-        return "https://www.youtube.com/watch?v=" + t;
-    }
-
 
     private String pickPlayableVideo(List<VideoStream> videoStreams) {
         if (videoStreams == null || videoStreams.isEmpty()) return null;

@@ -539,12 +539,20 @@ public class WebAppActivity extends AppCompatActivity {
         playerContainer.setVisibility(View.VISIBLE);
         debugToast("Player layout inflated");
 
-        nativePlayerTitle = playerContainer.findViewById(R.id.native_player_title);
+        int nativePlayerTitleId = getResources()
+                .getIdentifier("native_player_title", "id", getPackageName());
+        nativePlayerTitle = nativePlayerTitleId != 0
+                ? playerContainer.findViewById(nativePlayerTitleId)
+                : null;
         if (nativePlayerTitle == null) {
             nativePlayerTitle = playerContainer.findViewById(R.id.title);
         }
 
-        nativePlayerView = playerContainer.findViewById(R.id.native_player_view);
+        int nativePlayerViewId = getResources()
+                .getIdentifier("native_player_view", "id", getPackageName());
+        nativePlayerView = nativePlayerViewId != 0
+                ? playerContainer.findViewById(nativePlayerViewId)
+                : null;
         if (nativePlayerView != null) {
             nativePlayerView.setUseController(true);
             nativePlayerView.setControllerAutoShow(true);
