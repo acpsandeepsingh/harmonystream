@@ -700,19 +700,15 @@ public class WebAppActivity extends AppCompatActivity {
         bottomParams.gravity = Gravity.BOTTOM;
 
         if (videoMode) {
-            webView.setVisibility(View.VISIBLE);
-            bottomParams.width = ViewGroup.LayoutParams.MATCH_PARENT;
-            bottomParams.height = ViewGroup.LayoutParams.WRAP_CONTENT;
-            playerContainer.setVisibility(View.VISIBLE);
-            playerContainer.setAlpha(1f);
-            resetOverlayAutoHideTimer();
-        } else {
-            webView.setVisibility(View.VISIBLE);
-            bottomParams.width = ViewGroup.LayoutParams.MATCH_PARENT;
-            bottomParams.height = ViewGroup.LayoutParams.WRAP_CONTENT;
-            playerContainer.setVisibility(View.VISIBLE);
-            playerContainer.setAlpha(1f);
-            mainHandler.removeCallbacks(controlsAutoHideRunnable);
+    webView.setVisibility(View.VISIBLE);
+    playerContainer.setVisibility(View.VISIBLE);
+    playerContainer.setAlpha(1f);
+    resetOverlayAutoHideTimer();
+} else {
+    webView.setVisibility(View.GONE);
+    playerContainer.setVisibility(View.VISIBLE);
+    playerContainer.setAlpha(1f);
+    mainHandler.removeCallbacks(controlsAutoHideRunnable);
         }
         playerContainer.setLayoutParams(bottomParams);
     }
@@ -921,24 +917,36 @@ public class WebAppActivity extends AppCompatActivity {
     }
 
     private void setVideoMode(boolean enabled) {
-        videoModeEnabled = enabled;
-        lastKnownVideoMode = enabled;
-        applyPlayerLayoutMode(enabled);
-        if (enabled) {
-            hideSystemBars();
-            if (playerContainer != null) {
-                playerContainer.setVisibility(View.VISIBLE);
-                playerContainer.setAlpha(1f);
-            }
-            resetOverlayAutoHideTimer();
-        } else {
-            showNormalBars();
-            if (playerContainer != null) {
-                playerContainer.setVisibility(View.VISIBLE);
-                playerContainer.setAlpha(1f);
-            }
-            mainHandler.removeCallbacks(controlsAutoHideRunnable);
+    videoModeEnabled = enabled;
+    lastKnownVideoMode = enabled;
+
+    applyPlayerLayoutMode(enabled);
+
+    if (enabled) {
+        hideSystemBars();
+
+        if (playerContainer != null) {
+            playerContainer.setVisibility(View.VISIBLE);
+            playerContainer.setAlpha(1f);
         }
+
+        resetOverlayAutoHideTimer();
+
+        dispatchToWeb("window.dispatchEvent(new Event('nativeVideoMode'))");
+
+    } else {
+        showNormalBars();
+
+        if (playerContainer != null) {
+            playerContainer.setVisibility(View.VISIBLE);
+            playerContainer.setAlpha(1f);
+        }
+
+        mainHandler.removeCallbacks(controlsAutoHideRunnable);
+
+        dispatchToWeb("window.dispatchEvent(new Event('nativeAudioMode'))");
+    }
+    }
         Intent intent = new Intent(WebAppActivity.this, PlaybackService.class);
         intent.setAction(PlaybackService.ACTION_SET_MODE);
         intent.putExtra("video_mode", enabled);
