@@ -109,6 +109,17 @@ jobs:
           sed -i 's/\\r$//' gradlew || true
           chmod +x gradlew
 
+
+      - name: Compile Android Java sources (fast fail)
+        run: |
+          cd android
+          ./gradlew :app:compileDebugJavaWithJavac --no-daemon --stacktrace
+
+      - name: Run Android unit tests
+        run: |
+          cd android
+          ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
+
       - name: Forced Cleanup and Build (debug + release)
         run: |
           pkill -9 java || true
