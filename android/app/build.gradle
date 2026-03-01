@@ -47,7 +47,7 @@ android {
         applicationId "com.sansoft.harmonystram"
         minSdk 21
         targetSdk 35
-        versionCode 1
+        versionCode 2
         versionName "1.0"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
@@ -124,6 +124,11 @@ android {
     }
 
     buildTypes {
+        debug {
+            if (hasReleaseSigning) {
+                signingConfig signingConfigs.release
+            }
+        }
         release {
             minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
@@ -211,6 +216,8 @@ dependencies {
     // NewPipeExtractor pulls jsoup; jsoup's Re2jRegex implementation references
     // com.google.re2j classes which must be present in release shrinking.
     implementation 'com.google.re2j:re2j:1.8'
+
+    testImplementation 'junit:junit:4.13.2'
 }
 
 

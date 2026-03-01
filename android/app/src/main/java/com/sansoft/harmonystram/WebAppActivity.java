@@ -18,6 +18,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.util.Log;
 import android.util.Rational;
 import android.view.GestureDetector;
@@ -132,6 +133,8 @@ public class WebAppActivity extends AppCompatActivity {
     // FIX #3: Default false – bars visible until user enters video mode.
     private boolean          videoModeEnabled = false;
     private long             lastProgressMs;
+    private long             lastBridgePlayRequestedAtMs;
+    private String           lastBridgePlaySignature = "";
 
     // -------------------------------------------------------------------------
     // Service connection
@@ -532,96 +535,107 @@ public class WebAppActivity extends AppCompatActivity {
 
     private void initNativePlayerUi() {
         if (playerContainer == null) return;
-        View playerLayout = getLayoutInflater()
-                .inflate(R.layout.view_native_player, playerContainer, false);
-        playerContainer.removeAllViews();
-        playerContainer.addView(playerLayout);
-        playerContainer.setVisibility(View.VISIBLE);
-        debugToast("Player layout inflated");
+        try {
+            View playerLayout = getLayoutInflater()
+                    .inflate(R.layout.view_native_player, playerContainer, false);
+            playerContainer.removeAllViews();
+            playerContainer.addView(playerLayout);
+            playerContainer.setVisibility(View.VISIBLE);
+            debugToast("Player layout inflated");
 
-        nativePlayerTitle = playerContainer.findViewById(R.id.native_player_title);
-        if (nativePlayerTitle == null) {
-            nativePlayerTitle = playerContainer.findViewById(R.id.title);
-        }
-
-        nativePlayerView = playerContainer.findViewById(R.id.native_player_view);
-        if (nativePlayerView != null) {
-            nativePlayerView.setUseController(true);
-            nativePlayerView.setControllerAutoShow(true);
-            nativePlayerView.setControllerHideOnTouch(false);
-            nativePlayerView.setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING);
-        }
-
-        btnPlay = playerContainer.findViewById(R.id.btnPlay);
-        btnNext = playerContainer.findViewById(R.id.btnNext);
-        btnPrev = playerContainer.findViewById(R.id.btnPrev);
-        btnMode = playerContainer.findViewById(R.id.btnMode);
-        seekBar = playerContainer.findViewById(R.id.seekBar);
-        nativePlayerArtist = playerContainer.findViewById(R.id.artist);
-        nativePlayerTimeCurrent = playerContainer.findViewById(R.id.timeCurrent);
-        nativePlayerTimeDuration = playerContainer.findViewById(R.id.timeDuration);
-
-        if (btnPlay != null) {
-            btnPlay.setOnClickListener(v -> {
-                Intent i = new Intent(WebAppActivity.this, PlaybackService.class);
-                i.setAction(PlaybackService.ACTION_PLAY_PAUSE);
-                startPlaybackService(i);
-            });
-        }
-        if (btnNext != null) {
-            btnNext.setOnClickListener(v -> {
-                Intent i = new Intent(WebAppActivity.this, PlaybackService.class);
-                i.setAction(PlaybackService.ACTION_NEXT);
-                startPlaybackService(i);
-            });
-        }
-        if (btnPrev != null) {
-            btnPrev.setOnClickListener(v -> {
-                Intent i = new Intent(WebAppActivity.this, PlaybackService.class);
-                i.setAction(PlaybackService.ACTION_PREVIOUS);
-                startPlaybackService(i);
-            });
-        }
-        if (btnMode != null) {
-            btnMode.setOnClickListener(v -> setVideoMode(!lastKnownVideoMode));
-        }
-        if (seekBar != null) {
-            seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-                @Override
-                public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) {
-                    if (fromUser && nativePlayerTimeCurrent != null) {
-                        nativePlayerTimeCurrent.setText(formatTime(progress));
-                    }
-                }
-
-                @Override
-                public void onStartTrackingTouch(SeekBar bar) {
-                    isSeeking = true;
-                }
-
-                @Override
-                public void onStopTrackingTouch(SeekBar bar) {
-                    isSeeking = false;
-                    Intent i = new Intent(WebAppActivity.this, PlaybackService.class);
-                    i.setAction(PlaybackService.ACTION_SEEK);
-                    i.putExtra("position_ms", (long) bar.getProgress());
-                    startPlaybackService(i);
-                }
-            });
-        }
-
-        debugToast("Player container attached");
-        debugVisibilityState();
-        playerContainer.setVisibility(View.GONE);
-        playerContainer.requestLayout();
-        webView.post(() -> debugToast("WebView height: " + webView.getHeight()));
-        playerContainer.post(() -> {
-            int height = playerContainer.getHeight();
-            debugToast("Player height: " + height);
-            if (height == 0) {
-                debugToast("Player height ZERO");
+            int nativePlayerTitleId = getResources()
+                    .getIdentifier("native_player_title", "id", getPackageName());
+            nativePlayerTitle = nativePlayerTitleId != 0
+                    ? playerLayout.findViewById(nativePlayerTitleId)
+                    : null;
+            if (nativePlayerTitle == null) {
+                nativePlayerTitle = playerLayout.findViewById(R.id.title);
             }
-        });
+
+            int nativePlayerViewId = getResources()
+                    .getIdentifier("native_player_view", "id", getPackageName());
+            nativePlayerView = nativePlayerViewId != 0
+                    ? playerLayout.findViewById(nativePlayerViewId)
+                    : null;
+            if (nativePlayerView != null) {
+                nativePlayerView.setUseController(true);
+                nativePlayerView.setControllerAutoShow(true);
+                nativePlayerView.setControllerHideOnTouch(false);
+                nativePlayerView.setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING);
+            }
+
+            btnPlay = playerLayout.findViewById(R.id.btnPlay);
+            btnNext = playerLayout.findViewById(R.id.btnNext);
+            btnPrev = playerLayout.findViewById(R.id.btnPrev);
+            btnMode = playerLayout.findViewById(R.id.btnMode);
+            seekBar = playerLayout.findViewById(R.id.seekBar);
+            nativePlayerArtist = playerLayout.findViewById(R.id.artist);
+            nativePlayerTimeCurrent = playerLayout.findViewById(R.id.timeCurrent);
+            nativePlayerTimeDuration = playerLayout.findViewById(R.id.timeDuration);
+
+            if (btnPlay != null) {
+                btnPlay.setOnClickListener(v -> {
+                    Intent i = new Intent(WebAppActivity.this, PlaybackService.class);
+                    i.setAction(PlaybackService.ACTION_PLAY_PAUSE);
+                    startPlaybackService(i);
+                });
+            }
+            if (btnNext != null) {
+                btnNext.setOnClickListener(v -> {
+                    Intent i = new Intent(WebAppActivity.this, PlaybackService.class);
+                    i.setAction(PlaybackService.ACTION_NEXT);
+                    startPlaybackService(i);
+                });
+            }
+            if (btnPrev != null) {
+                btnPrev.setOnClickListener(v -> {
+                    Intent i = new Intent(WebAppActivity.this, PlaybackService.class);
+                    i.setAction(PlaybackService.ACTION_PREVIOUS);
+                    startPlaybackService(i);
+                });
+            }
+            if (btnMode != null) {
+                btnMode.setOnClickListener(v -> setVideoMode(!lastKnownVideoMode));
+            }
+            if (seekBar != null) {
+                seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+                    @Override
+                    public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) {
+                        if (fromUser && nativePlayerTimeCurrent != null) {
+                            nativePlayerTimeCurrent.setText(formatTime(progress));
+                        }
+                    }
+
+                    @Override
+                    public void onStartTrackingTouch(SeekBar bar) {
+                        isSeeking = true;
+                    }
+
+                    @Override
+                    public void onStopTrackingTouch(SeekBar bar) {
+                        isSeeking = false;
+                        Intent i = new Intent(WebAppActivity.this, PlaybackService.class);
+                        i.setAction(PlaybackService.ACTION_SEEK);
+                        i.putExtra("position_ms", (long) bar.getProgress());
+                        startPlaybackService(i);
+                    }
+                });
+            }
+
+            debugToast("Player container attached");
+            debugVisibilityState();
+            playerContainer.requestLayout();
+            webView.post(() -> debugToast("WebView height: " + webView.getHeight()));
+            playerContainer.post(() -> {
+                int height = playerContainer.getHeight();
+                debugToast("Player height: " + height);
+                if (height <= 0) {
+                    Log.w(TAG, "Player UI has zero height after inflate");
+                }
+            });
+        } catch (Throwable t) {
+            Log.e(TAG, "Failed to initialize native player UI", t);
+        }
     }
 
     private void attachNativePlayer() {
@@ -730,6 +744,21 @@ public class WebAppActivity extends AppCompatActivity {
                 + "window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').addEventListener&&"
                 + "window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',sendBg);"
                 + "setInterval(sendBg,1500);"
+                + "})();";
+        view.evaluateJavascript(js, null);
+    }
+
+    private void disableWebAudioElements(WebView view) {
+        if (view == null) return;
+        String js = "(function(){"
+                + "if(window.__harmonyWebAudioDisabled){return;}"
+                + "window.__harmonyWebAudioDisabled=true;"
+                + "function muteAll(){"
+                + "var nodes=document.querySelectorAll('audio,video');"
+                + "for(var i=0;i<nodes.length;i++){try{nodes[i].muted=true;nodes[i].volume=0;nodes[i].pause&&nodes[i].pause();}catch(e){}}"
+                + "}"
+                + "muteAll();"
+                + "setInterval(muteAll,1000);"
                 + "})();";
         view.evaluateJavascript(js, null);
     }
@@ -989,6 +1018,7 @@ public class WebAppActivity extends AppCompatActivity {
             if (loadingIndicator != null)
                 loadingIndicator.setVisibility(View.GONE);
             injectBackgroundSyncScript(view);
+            disableWebAudioElements(view);
             applyPlayerLayoutMode(lastKnownVideoMode);
             debugToast("WebView page loaded");
             logContentInfo("onPageFinished url=" + url);
@@ -1094,6 +1124,18 @@ public class WebAppActivity extends AppCompatActivity {
         }
     }
 
+    private boolean shouldSuppressDuplicatePlayRequest(String idOrUrl, String mediaType) {
+        String key = (idOrUrl == null ? "" : idOrUrl.trim()) + "|"
+                + (mediaType == null ? "" : mediaType.trim().toLowerCase());
+        long now = SystemClock.elapsedRealtime();
+        if (key.equals(lastBridgePlaySignature) && (now - lastBridgePlayRequestedAtMs) < 1200L) {
+            return true;
+        }
+        lastBridgePlaySignature = key;
+        lastBridgePlayRequestedAtMs = now;
+        return false;
+    }
+
     // -------------------------------------------------------------------------
     // JavaScript bridge
     // -------------------------------------------------------------------------
@@ -1102,6 +1144,7 @@ public class WebAppActivity extends AppCompatActivity {
         @JavascriptInterface
         public void play(String videoId, String title, String artist,
                          double durationMs, String thumbnailUrl) {
+            if (shouldSuppressDuplicatePlayRequest(videoId, "audio")) return;
             debugToast("Song clicked");
             Intent intent = new Intent(WebAppActivity.this, PlaybackService.class);
             intent.setAction(PlaybackService.ACTION_PLAY);
@@ -1116,6 +1159,7 @@ public class WebAppActivity extends AppCompatActivity {
         @JavascriptInterface
         public void loadMedia(String mediaUrl, String mediaType,
                               String title, String artist, String thumbnailUrl) {
+            if (shouldSuppressDuplicatePlayRequest(mediaUrl, mediaType)) return;
             debugToast("Song clicked");
             Intent intent = new Intent(WebAppActivity.this, PlaybackService.class);
             intent.setAction(PlaybackService.ACTION_PLAY);

@@ -178,6 +178,8 @@ public class PlaybackService extends Service {
     private String                currentVideoId;
     private String                currentThumbnailUrl = "";
     private String                audioStreamUrl;
+    private String                currentResolvedStreamUrl;
+    private volatile long         resolveRequestToken;
     @SuppressWarnings("unused")
     private String                videoStreamUrl;
     private boolean               videoMode           = false;
@@ -469,6 +471,7 @@ public class PlaybackService extends Service {
             + "{ detail: { enabled: " + enableVideo + " } }));");
 
         if (currentVideoId != null && !currentVideoId.isEmpty()) {
+            currentResolvedStreamUrl = null;
             resolveAndPlay(currentVideoId, currentPositionMs);
         }
 
@@ -491,6 +494,14 @@ public class PlaybackService extends Service {
             }
             return;
         }
+        if (currentVideoId != null
+                && currentVideoId.equals(videoId)
+                && player != null
+                && player.isPlaying()) {
+            Log.d(TAG, "Ignoring duplicate play request for currently playing media");
+            return;
+        }
+
         currentVideoId = videoId;
         String t = intent.getStringExtra("title");
         currentTitle = (t != null) ? t : "HarmonyStream";
@@ -533,6 +544,7 @@ public class PlaybackService extends Service {
     // Resolve and play selected stream URL in audio or video mode.
     // -------------------------------------------------------------------------
     private void resolveAndPlay(final String videoId, final long seekMs) {
+        final long requestToken = ++resolveRequestToken;
         resolverExecutor.execute(() -> {
             try {
                 debugToast("Starting extraction");
@@ -558,18 +570,31 @@ public class PlaybackService extends Service {
 
                 mainHandler.post(() -> {
                     if (player == null) return;
+                    if (requestToken != resolveRequestToken) {
+                        Log.d(TAG, "Ignoring stale resolve result");
+                        return;
+                    }
+
+                    if (selected.equals(currentResolvedStreamUrl) && player.isPlaying()) {
+                        Log.d(TAG, "Skipping duplicate prepare/play for same stream URL");
+                        return;
+                    }
+
                     debugToast("Preparing player");
                     player.setMediaItem(MediaItem.fromUri(selected));
                     player.prepare();
                     if (seekMs > 0) player.seekTo(seekMs);
                     player.play();
+                    currentResolvedStreamUrl = selected;
                     pendingPlayRequestedAtMs = 0L;
                     refreshArtworkAsync(currentThumbnailUrl);
                     updateNotification();
                     broadcastState();
                 });
             } catch (Throwable t) {
-                pendingPlayRequestedAtMs = 0L;
+                if (requestToken == resolveRequestToken) {
+                    pendingPlayRequestedAtMs = 0L;
+                }
                 debugToast("Extraction failed");
                 Log.e(TAG, "Unable to resolve stream URL", t);
             }
@@ -588,20 +613,12 @@ public class PlaybackService extends Service {
         try {
             return StreamInfo.getInfo(yt, videoIdOrUrl);
         } catch (Throwable directFailure) {
-            String normalized = normalizeYouTubeWatchUrl(videoIdOrUrl);
+            String normalized = YouTubeUrlNormalizer.normalizeWatchUrl(videoIdOrUrl);
             if (normalized.equals(videoIdOrUrl)) throw directFailure;
             Log.w(TAG, "Retrying with normalized URL", directFailure);
             return StreamInfo.getInfo(yt, normalized);
         }
     }
-
-    private String normalizeYouTubeWatchUrl(String videoIdOrUrl) {
-        if (videoIdOrUrl == null) return "";
-        String t = videoIdOrUrl.trim();
-        if (t.startsWith("http://") || t.startsWith("https://")) return t;
-        return "https://www.youtube.com/watch?v=" + t;
-    }
-
 
     private String pickPlayableVideo(List<VideoStream> videoStreams) {
         if (videoStreams == null || videoStreams.isEmpty()) return null;
@@ -1047,6 +1064,7 @@ public class PlaybackService extends Service {
         if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
         resolverExecutor.shutdownNow();
         artworkExecutor.shutdownNow();
+        currentResolvedStreamUrl = null;
         super.onDestroy();
     }
 }
