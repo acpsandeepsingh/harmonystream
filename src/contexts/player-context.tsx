@@ -184,7 +184,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (isAndroidNativeRuntime()) {
       sendQueueToNative([track]);
       (window as any).HarmonyNative?.setIndex?.(0);
-      (window as any).HarmonyNative?.play?.();
     }
   }, [setNewCurrentTrack]);
   
@@ -228,7 +227,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       if (isAndroidNativeRuntime()) {
         sendQueueToNative(playlistToPlay);
         (window as any).HarmonyNative?.setIndex?.(Math.max(0, selectedIndex));
-        (window as any).HarmonyNative?.play?.();
       }
     } else {
         // This case is unlikely if newPlaylist has items.

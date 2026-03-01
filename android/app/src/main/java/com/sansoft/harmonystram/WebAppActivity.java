@@ -536,14 +536,18 @@ public class WebAppActivity extends AppCompatActivity {
     }
 
     private void initNativePlayerUi() {
-        if (playerContainer == null) return;
+        if (playerContainer == null) {
+            debugToast("Player inflation failed: playerContainer is null");
+            return;
+        }
+        debugToast("Player layout inflation start");
         try {
             View playerLayout = getLayoutInflater()
                     .inflate(R.layout.view_native_player, playerContainer, false);
             playerContainer.removeAllViews();
             playerContainer.addView(playerLayout);
             playerContainer.setVisibility(View.VISIBLE);
-            debugToast("Player layout inflated");
+            debugToast("Player layout inflation success");
 
             int nativePlayerTitleId = getResources()
                     .getIdentifier("native_player_title", "id", getPackageName());
@@ -574,6 +578,28 @@ public class WebAppActivity extends AppCompatActivity {
             nativePlayerArtist = playerLayout.findViewById(R.id.artist);
             nativePlayerTimeCurrent = playerLayout.findViewById(R.id.timeCurrent);
             nativePlayerTimeDuration = playerLayout.findViewById(R.id.timeDuration);
+
+            if (nativePlayerTitle != null) {
+                nativePlayerTitle.setText("No song selected");
+            }
+            if (nativePlayerArtist != null) {
+                nativePlayerArtist.setText("-");
+            }
+            if (btnPlay != null) {
+                btnPlay.setEnabled(false);
+                btnPlay.setAlpha(0.5f);
+            }
+            if (btnNext != null) {
+                btnNext.setEnabled(false);
+                btnNext.setAlpha(0.5f);
+            }
+            if (btnPrev != null) {
+                btnPrev.setEnabled(false);
+                btnPrev.setAlpha(0.5f);
+            }
+            if (seekBar != null) {
+                seekBar.setEnabled(false);
+            }
 
             if (btnPlay != null) {
                 btnPlay.setOnClickListener(v -> {
@@ -636,6 +662,7 @@ public class WebAppActivity extends AppCompatActivity {
                 }
             });
         } catch (Throwable t) {
+            debugToast("Player layout inflation failure: " + t.getMessage());
             Log.e(TAG, "Failed to initialize native player UI", t);
         }
     }
@@ -653,12 +680,29 @@ public class WebAppActivity extends AppCompatActivity {
             nativePlayerTitle.setText(title);
         }
         if (nativePlayerArtist != null) {
-            nativePlayerArtist.setText(artist != null ? artist : "");
+            nativePlayerArtist.setText(artist != null && !artist.trim().isEmpty() ? artist : "-");
         }
 
         boolean isPlaying = intent.getBooleanExtra("playing", false);
+        boolean hasSong = title != null && !title.trim().isEmpty();
+        if (!hasSong && nativePlayerTitle != null) {
+            nativePlayerTitle.setText("No song selected");
+        }
         if (btnPlay != null) {
             btnPlay.setImageResource(isPlaying ? R.drawable.ic_pause : R.drawable.ic_play_arrow);
+            btnPlay.setEnabled(hasSong);
+            btnPlay.setAlpha(hasSong ? 1f : 0.5f);
+        }
+        if (btnNext != null) {
+            btnNext.setEnabled(hasSong);
+            btnNext.setAlpha(hasSong ? 1f : 0.5f);
+        }
+        if (btnPrev != null) {
+            btnPrev.setEnabled(hasSong);
+            btnPrev.setAlpha(hasSong ? 1f : 0.5f);
+        }
+        if (seekBar != null) {
+            seekBar.setEnabled(hasSong);
         }
 
         playerContainer.setVisibility(View.VISIBLE);
@@ -1037,6 +1081,24 @@ public class WebAppActivity extends AppCompatActivity {
             applyPlayerLayoutMode(lastKnownVideoMode);
             debugToast("WebView page loaded");
             logContentInfo("onPageFinished url=" + url);
+        }
+
+        @Override
+        public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+            if (request == null || request.getUrl() == null) {
+                return false;
+            }
+
+            String url = request.getUrl().toString();
+            boolean allowed = url.startsWith(BUNDLED_HOME_URL)
+                    || url.startsWith("https://appassets.androidplatform.net/harmonystream/")
+                    || url.startsWith("about:blank");
+
+            if (!allowed) {
+                Log.w(WEB_CONSOLE_TAG, "Blocked unexpected WebView navigation: " + url);
+                return true;
+            }
+            return false;
         }
 
         @Override
