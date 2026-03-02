@@ -1,70 +1,54 @@
-name: HarmonyStream CI with NewPipeExtractor v0.26.0
+name: Sync NewPipeExtractor v0.26.0
 
 on:
-  push:
-    branches: [ main ]
   workflow_dispatch:
 
 jobs:
-  build:
+  sync:
     runs-on: ubuntu-latest
 
     steps:
+      # Checkout your Harmony repo
       - name: Checkout HarmonyStream
         uses: actions/checkout@v4
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
-          java-version: '17'
-          cache: gradle
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-      # ----------------------------------------
-      # Download official NewPipeExtractor v0.26.0
-      # ----------------------------------------
-      - name: Download NewPipeExtractor v0.26.0
+      # Clone official v0.26.0
+      - name: Clone NewPipeExtractor v0.26.0
         run: |
-          wget https://github.com/TeamNewPipe/NewPipeExtractor/archive/refs/tags/v0.26.0.zip
-          unzip v0.26.0.zip
-          rm -rf android/newpipe-extractor
-          mv NewPipeExtractor-0.26.0/extractor android/newpipe-extractor
-          rm -rf NewPipeExtractor-0.26.0 v0.26.0.zip
+          git clone --depth 1 --branch v0.26.0 https://github.com/TeamNewPipe/NewPipeExtractor.git temp-extractor
 
-      # ----------------------------------------
+          rm -rf android/newpipe-extractor
+          mkdir -p android
+          cp -r temp-extractor/extractor android/newpipe-extractor
+          rm -rf temp-extractor
+
+          echo "Extractor copied:"
+          ls -la android/newpipe-extractor
+
       # Patch Android 30 decode crash
-      # ----------------------------------------
-      - name: Patch Utils.java for Android 30
+      - name: Patch Utils.java
         run: |
           FILE=android/newpipe-extractor/src/main/java/org/schabi/newpipe/extractor/utils/Utils.java
-          sed -i 's/URLEncoder.encode(string, StandardCharsets.UTF_8)/URLEncoder.encode(string, "UTF-8")/g' $FILE
-          sed -i 's/URLDecoder.decode(s, StandardCharsets.UTF_8)/URLDecoder.decode(url, "UTF-8")/g' $FILE
+
+          if [ ! -f "$FILE" ]; then
+            echo "Utils.java not found!"
+            exit 1
+          fi
+
+          sed -i 's/StandardCharsets.UTF_8/"UTF-8"/g' $FILE
+          sed -i 's/URLDecoder.decode(s,/URLDecoder.decode(url,/g' $FILE
           sed -i '/StandardCharsets/d' $FILE
 
-      # ----------------------------------------
-      # Ensure module is included
-      # ----------------------------------------
-      - name: Ensure module included in settings.gradle
+          echo "Patch complete."
+
+      # Commit changes back to repo
+      - name: Commit and push changes
         run: |
-          echo "include ':newpipe-extractor'" >> android/settings.gradle
-          echo "project(':newpipe-extractor').projectDir = new File(rootDir, 'newpipe-extractor')" >> android/settings.gradle
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
 
-      - name: Ensure dependency in app/build.gradle
-        run: |
-          echo "implementation project(':newpipe-extractor')" >> android/app/build.gradle
-
-      # ----------------------------------------
-      # Build
-      # ----------------------------------------
-      - name: Grant execute permission
-        run: chmod +x android/gradlew
-
-      - name: Build Debug APK
-        working-directory: android
-        run: ./gradlew assembleDebug
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: HarmonyStream-Debug
-          path: android/app/build/outputs/apk/debug/*.apk
+          git add android/newpipe-extractor
+          git commit -m "Sync NewPipeExtractor v0.26.0 (Android 30 patched)" || echo "No changes to commit"
+          git push
