@@ -32,7 +32,7 @@ jobs:
       - name: Clone NewPipeExtractor v0.26.0
         run: |
           git clone --depth 1 --branch v0.26.0 https://github.com/TeamNewPipe/NewPipeExtractor.git temp-extractor
-          rm -rf android/newpipe-extractor
+          
           mkdir -p android
           cp -r temp-extractor/extractor android/newpipe-extractor
           rm -rf temp-extractor
