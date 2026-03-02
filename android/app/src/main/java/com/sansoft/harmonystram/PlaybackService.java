@@ -647,15 +647,30 @@ public class PlaybackService extends Service {
     }
 
     private StreamInfo resolveStreamInfo(StreamingService yt,
-                                         String videoIdOrUrl) throws Exception {
-        try {
-            return StreamInfo.getInfo(yt, videoIdOrUrl);
-        } catch (Throwable directFailure) {
-            String normalized = YouTubeUrlNormalizer.normalizeWatchUrl(videoIdOrUrl);
-            if (normalized.equals(videoIdOrUrl)) throw directFailure;
-            Log.w(TAG, "Retrying with normalized URL", directFailure);
-            return StreamInfo.getInfo(yt, normalized);
-        }
+                                     String videoIdOrUrl) throws Exception {
+
+    try {
+        return StreamInfo.getInfo(yt, videoIdOrUrl);
+
+    } catch (NoSuchMethodError decodeCrash) {
+
+        Log.e("HS_EXTRACT", "Android 30 decode() crash intercepted", decodeCrash);
+
+        // Fallback: retry using normalized watch URL
+        String safeUrl = YouTubeUrlNormalizer.normalizeWatchUrl(videoIdOrUrl);
+
+        return StreamInfo.getInfo(yt, safeUrl);
+
+    } catch (Throwable directFailure) {
+
+        String normalized = YouTubeUrlNormalizer.normalizeWatchUrl(videoIdOrUrl);
+
+        if (normalized.equals(videoIdOrUrl)) throw directFailure;
+
+        Log.w(TAG, "Retrying with normalized URL", directFailure);
+
+        return StreamInfo.getInfo(yt, normalized);
+    }
     }
 
     private String pickPlayableVideo(List<VideoStream> videoStreams) {
