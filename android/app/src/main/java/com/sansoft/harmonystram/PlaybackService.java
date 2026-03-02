@@ -120,17 +120,21 @@ public class PlaybackService extends Service {
     public static class PlaybackSnapshot {
         public final String  title;
         public final String  artist;
+        public final String  thumbnailUrl;
         public final boolean playing;
         public final long    positionMs;
         public final long    durationMs;
+        public final boolean videoMode;
 
-        PlaybackSnapshot(String title, String artist, boolean playing,
-                         long positionMs, long durationMs) {
-            this.title      = title;
-            this.artist     = artist;
-            this.playing    = playing;
-            this.positionMs = positionMs;
-            this.durationMs = durationMs;
+        PlaybackSnapshot(String title, String artist, String thumbnailUrl, boolean playing,
+                         long positionMs, long durationMs, boolean videoMode) {
+            this.title        = title;
+            this.artist       = artist;
+            this.thumbnailUrl = thumbnailUrl;
+            this.playing      = playing;
+            this.positionMs   = positionMs;
+            this.durationMs   = durationMs;
+            this.videoMode    = videoMode;
         }
     }
 
@@ -138,11 +142,13 @@ public class PlaybackService extends Service {
         SharedPreferences p = context.getSharedPreferences(
                 PREFS_NAME, android.content.Context.MODE_PRIVATE);
         return new PlaybackSnapshot(
-                p.getString(KEY_TITLE,    "HarmonyStream"),
-                p.getString(KEY_ARTIST,   ""),
+                p.getString(KEY_TITLE, "HarmonyStream"),
+                p.getString(KEY_ARTIST, ""),
+                p.getString(KEY_THUMBNAIL_URL, ""),
                 p.getBoolean(KEY_PLAYING, false),
                 Math.max(0, p.getLong(KEY_POSITION_MS, 0)),
-                Math.max(0, p.getLong(KEY_DURATION_MS,  0))
+                Math.max(0, p.getLong(KEY_DURATION_MS, 0)),
+                false
         );
     }
 
@@ -422,8 +428,10 @@ public class PlaybackService extends Service {
                 break;
             case ACTION_SEEK:
                 debugToast("Seek to " + intent.getLongExtra("position_ms", 0L));
-                if (player != null)
+                if (player != null) {
                     player.seekTo(Math.max(0L, intent.getLongExtra("position_ms", 0L)));
+                }
+                broadcastState();
                 break;
             case ACTION_SEEK_RELATIVE:
                 if (player != null) {
@@ -491,6 +499,11 @@ public class PlaybackService extends Service {
         dispatchToLinkedWebView(
             "window.dispatchEvent(new CustomEvent('nativeSetVideoMode',"
             + "{ detail: { enabled: " + enableVideo + " } }));");
+
+        if (player != null && currentVideoId != null && !currentVideoId.isEmpty()) {
+            long resumePositionMs = Math.max(0L, player.getCurrentPosition());
+            resolveAndPlay(currentVideoId, resumePositionMs);
+        }
 
         broadcastState();
         updateNotification();
@@ -1085,7 +1098,7 @@ public class PlaybackService extends Service {
                 ? Math.max(0, player.getCurrentPosition()) : currentPositionMs;
         long dur = player != null
                 ? Math.max(0, player.getDuration()) : currentDurationMs;
-        return new PlaybackSnapshot(currentTitle, currentArtist, playing, pos, dur);
+        return new PlaybackSnapshot(currentTitle, currentArtist, currentThumbnailUrl, playing, pos, dur, videoMode);
     }
 
     public ExoPlayer getPlayer() { return player; }
