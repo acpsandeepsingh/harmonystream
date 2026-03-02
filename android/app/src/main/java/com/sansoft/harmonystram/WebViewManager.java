@@ -103,21 +103,7 @@ final class WebViewManager {
             return assetLoader.shouldInterceptRequest(request.getUrl());
         }
 
-        @Override
-        public void onReceivedError(WebView view,
-                                    WebResourceRequest request,
-                                    android.webkit.WebResourceError error) {
-            super.onReceivedError(view, request, error);
-            if (request == null || !request.isForMainFrame() || loadingFallback) {
-                return;
-            }
-            String url = request.getUrl() != null ? request.getUrl().toString() : "";
-            if (url.startsWith(BUNDLED_HOME_URL)) {
-                loadingFallback = true;
-                view.loadUrl(FALLBACK_SHELL_URL);
-            }
-        }
-    }
+    
 
     private final class NativePlaybackBridge {
         @JavascriptInterface
