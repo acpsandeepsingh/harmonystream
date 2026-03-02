@@ -1,14 +1,21 @@
 package com.sansoft.harmonystram;
 
 import android.content.Intent;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.view.View;
 import android.widget.FrameLayout;
 import android.widget.ImageButton;
+import android.widget.ImageView;
 import android.widget.SeekBar;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 
 final class PlayerUiController {
 
@@ -26,6 +33,7 @@ final class PlayerUiController {
     private TextView artist;
     private TextView currentTime;
     private TextView durationTime;
+    private ImageView thumb;
     private ImageButton play;
     private ImageButton next;
     private ImageButton previous;
@@ -36,6 +44,8 @@ final class PlayerUiController {
     private SeekBar volumeBar;
 
     private boolean isSeeking;
+    private int artworkRequestId;
+    @Nullable private String currentThumbnailUrl;
 
     PlayerUiController(@NonNull WebAppActivity activity,
                        @NonNull FrameLayout playerContainer,
@@ -53,6 +63,7 @@ final class PlayerUiController {
         artist = playerContainer.findViewById(R.id.artist);
         currentTime = playerContainer.findViewById(R.id.timeCurrent);
         durationTime = playerContainer.findViewById(R.id.timeDuration);
+        thumb = playerContainer.findViewById(R.id.thumb);
 
         play = playerContainer.findViewById(R.id.btnPlay);
         next = playerContainer.findViewById(R.id.btnNext);
@@ -94,18 +105,20 @@ final class PlayerUiController {
         }
         if (queue != null) {
             queue.setOnClickListener(v -> actions.dispatchToWeb(
-                    "window.dispatchEvent(new CustomEvent('nativeOpenQueue'));"));
+                    "window.dispatchEvent(new CustomEvent('nativeOpenQueue'))"));
         }
         if (add != null) {
             add.setOnClickListener(v -> actions.dispatchToWeb(
-                    "window.dispatchEvent(new CustomEvent('nativeAddToPlaylist'));"));
+                    "window.dispatchEvent(new CustomEvent('nativeAddToPlaylist'))"));
         }
 
         if (seekBar != null) {
             seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
                 @Override
                 public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) {
-                    if (fromUser && currentTime != null) currentTime.setText(formatTime(progress));
+                    if (fromUser && currentTime != null) {
+                        currentTime.setText(formatTime(progress));
+                    }
                 }
 
                 @Override
@@ -144,7 +157,7 @@ final class PlayerUiController {
     }
 
     void showEmptyState() {
-        updateUi("No song selected", "-", false, 0L, 0L, false);
+        updateUi("No song selected", "-", null, false, 0L, 0L, false);
     }
 
     void updateFromState(@Nullable Intent stateIntent) {
@@ -152,6 +165,7 @@ final class PlayerUiController {
         updateUi(
                 stateIntent.getStringExtra("title"),
                 stateIntent.getStringExtra("artist"),
+                stateIntent.getStringExtra("thumbnailUrl"),
                 stateIntent.getBooleanExtra("playing", false),
                 stateIntent.getLongExtra("position_ms", 0L),
                 stateIntent.getLongExtra("duration_ms", 0L),
@@ -160,10 +174,24 @@ final class PlayerUiController {
     }
 
     void updateFromSnapshot(@NonNull PlaybackService.PlaybackSnapshot snapshot) {
-        updateUi(snapshot.title, snapshot.artist, snapshot.playing, snapshot.positionMs, snapshot.durationMs, false);
+        updateUi(
+                snapshot.title,
+                snapshot.artist,
+                snapshot.thumbnailUrl,
+                snapshot.playing,
+                snapshot.positionMs,
+                snapshot.durationMs,
+                snapshot.videoMode
+        );
     }
 
-    private void updateUi(String rawTitle, String rawArtist, boolean playing, long positionMs, long durationMs, boolean videoModeEnabled) {
+    private void updateUi(String rawTitle,
+                          String rawArtist,
+                          @Nullable String thumbnailUrl,
+                          boolean playing,
+                          long positionMs,
+                          long durationMs,
+                          boolean videoModeEnabled) {
         String safeTitle = (rawTitle == null || rawTitle.trim().isEmpty()) ? "No song selected" : rawTitle;
         String safeArtist = (rawArtist == null || rawArtist.trim().isEmpty()) ? "-" : rawArtist;
         boolean hasMedia = !"No song selected".equals(safeTitle);
@@ -172,6 +200,7 @@ final class PlayerUiController {
         if (artist != null) artist.setText(safeArtist);
         if (play != null) {
             play.setImageResource(playing ? R.drawable.ic_pause : R.drawable.ic_play_arrow);
+            play.setContentDescription(playing ? "Pause" : "Play");
             play.setEnabled(hasMedia);
             play.setAlpha(hasMedia ? 1f : 0.5f);
         }
@@ -185,13 +214,15 @@ final class PlayerUiController {
         }
         if (mode != null) {
             mode.setSelected(videoModeEnabled);
+            mode.setImageResource(videoModeEnabled ? R.drawable.ic_music_note : R.drawable.ic_videocam);
+            mode.setContentDescription(videoModeEnabled ? "Switch to audio" : "Switch to video");
         }
 
         long safeDuration = Math.max(0L, durationMs);
         long safePosition = Math.max(0L, positionMs);
 
         if (seekBar != null) {
-            seekBar.setEnabled(hasMedia);
+            seekBar.setEnabled(hasMedia && safeDuration > 0L);
             seekBar.setMax((int) Math.min(Integer.MAX_VALUE, safeDuration));
             if (!isSeeking) {
                 seekBar.setProgress((int) Math.min(Integer.MAX_VALUE, safePosition));
@@ -200,7 +231,55 @@ final class PlayerUiController {
         if (currentTime != null && !isSeeking) currentTime.setText(formatTime(safePosition));
         if (durationTime != null) durationTime.setText(formatTime(safeDuration));
 
+        updateThumb(thumbnailUrl);
         playerContainer.setVisibility(View.VISIBLE);
+    }
+
+    private void updateThumb(@Nullable String thumbnailUrl) {
+        if (thumb == null) return;
+        if (thumbnailUrl == null || thumbnailUrl.trim().isEmpty()) {
+            currentThumbnailUrl = null;
+            thumb.setImageResource(R.drawable.ic_music_note);
+            return;
+        }
+
+        String normalized = thumbnailUrl.trim();
+        if (normalized.equals(currentThumbnailUrl)) {
+            return;
+        }
+
+        currentThumbnailUrl = normalized;
+        final int req = ++artworkRequestId;
+        thumb.setImageResource(R.drawable.ic_music_note);
+
+        new Thread(() -> {
+            Bitmap bmp = null;
+            HttpURLConnection connection = null;
+            try {
+                URL url = new URL(normalized);
+                connection = (HttpURLConnection) url.openConnection();
+                connection.setConnectTimeout(5000);
+                connection.setReadTimeout(7000);
+                connection.setDoInput(true);
+                connection.connect();
+                try (InputStream stream = connection.getInputStream()) {
+                    bmp = BitmapFactory.decodeStream(stream);
+                }
+            } catch (Exception ignored) {
+            } finally {
+                if (connection != null) connection.disconnect();
+            }
+
+            Bitmap resolved = bmp;
+            activity.runOnUiThread(() -> {
+                if (thumb == null || req != artworkRequestId) return;
+                if (resolved != null) {
+                    thumb.setImageBitmap(resolved);
+                } else {
+                    thumb.setImageResource(R.drawable.ic_music_note);
+                }
+            });
+        }).start();
     }
 
     private String formatTime(long ms) {

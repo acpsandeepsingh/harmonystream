@@ -93,7 +93,7 @@ public class WebAppActivity extends AppCompatActivity
     @Override
     public void onPlaybackStateChanged(@NonNull Intent stateIntent) {
         playbackActive = stateIntent.getBooleanExtra("playing", false);
-        videoModeEnabled = stateIntent.getBooleanExtra("video_mode", false);
+        videoModeEnabled = stateIntent.getBooleanExtra("video_mode", false) && playbackActive;
         playerUiController.updateFromState(stateIntent);
         applyModeUi(videoModeEnabled);
 
@@ -105,6 +105,7 @@ public class WebAppActivity extends AppCompatActivity
             payload.put("isPlaying", playbackActive);
             payload.put("position_ms", stateIntent.getLongExtra("position_ms", 0L));
             payload.put("duration_ms", stateIntent.getLongExtra("duration_ms", 0L));
+            payload.put("thumbnailUrl", stateIntent.getStringExtra("thumbnailUrl"));
             payload.put("video_mode", videoModeEnabled);
             payload.put("queue_index", stateIntent.getIntExtra("queue_index", -1));
             payload.put("queue_length", stateIntent.getIntExtra("queue_length", 0));
@@ -116,7 +117,9 @@ public class WebAppActivity extends AppCompatActivity
     @Override
     public void onServiceConnected(@NonNull PlaybackService.PlaybackSnapshot snapshot) {
         playbackActive = snapshot.playing;
+        videoModeEnabled = snapshot.videoMode && snapshot.playing;
         playerUiController.updateFromSnapshot(snapshot);
+        applyModeUi(videoModeEnabled);
     }
 
     @Override
@@ -155,14 +158,14 @@ public class WebAppActivity extends AppCompatActivity
     }
 
     private void applyModeUi(boolean enabled) {
+        webView.setVisibility(WebView.VISIBLE);
         if (enabled) {
             hideSystemBars();
-            webView.setVisibility(WebView.VISIBLE);
+            playerContainer.setVisibility(FrameLayout.GONE);
         } else {
             showNormalBars();
-            webView.setVisibility(WebView.GONE);
+            playerContainer.setVisibility(FrameLayout.VISIBLE);
         }
-        playerContainer.setVisibility(FrameLayout.VISIBLE);
     }
 
     @Override
