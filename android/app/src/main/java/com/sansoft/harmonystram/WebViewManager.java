@@ -2,9 +2,11 @@ package com.sansoft.harmonystram;
 
 import android.annotation.SuppressLint;
 import android.content.Intent;
+import android.content.res.AssetManager;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
+import android.webkit.MimeTypeMap;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
@@ -16,6 +18,10 @@ import androidx.webkit.WebViewAssetLoader;
 import androidx.webkit.WebViewClientCompat;
 
 import org.json.JSONObject;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.Locale;
 
 final class WebViewManager {
 
@@ -46,10 +52,26 @@ final class WebViewManager {
         this.activity = activity;
         this.webView = webView;
         this.actions = actions;
+        String[] nextCandidates = new String[] {
+                "public/_next/",
+                "_next/",
+                "public/next/",
+                "next/",
+                "public/harmonystream/_next/",
+                "harmonystream/_next/",
+                "public/harmonystream/next/",
+                "harmonystream/next/"
+        };
+
         this.assetLoader = new WebViewAssetLoader.Builder()
                 .setDomain("appassets.androidplatform.net")
                 .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(activity))
-                .addPathHandler("/", new WebViewAssetLoader.AssetsPathHandler(activity))
+                .addPathHandler("/_next/", new MultiPathAssetsHandler(nextCandidates))
+                .addPathHandler("/harmonystream/_next/", new MultiPathAssetsHandler(nextCandidates))
+                .addPathHandler("/next/", new MultiPathAssetsHandler(nextCandidates))
+                .addPathHandler("/harmonystream/next/", new MultiPathAssetsHandler(nextCandidates))
+                .addPathHandler("/harmonystream/", new PublicAssetsPathHandler("harmonystream/"))
+                .addPathHandler("/", new PublicRoutesPathHandler())
                 .build();
     }
 
@@ -104,6 +126,114 @@ final class WebViewManager {
             return assetLoader.shouldInterceptRequest(request.getUrl());
         }
 
+    }
+
+    private final class MultiPathAssetsHandler implements WebViewAssetLoader.PathHandler {
+        private final String[] candidatePrefixes;
+
+        MultiPathAssetsHandler(String[] candidatePrefixes) {
+            this.candidatePrefixes = candidatePrefixes;
+        }
+
+        @Override
+        public WebResourceResponse handle(String path) {
+            String normalizedPath = normalize(path);
+            String mime = detectMime(normalizedPath);
+
+            for (String prefix : candidatePrefixes) {
+                InputStream stream = openAsset(activity.getAssets(), prefix + normalizedPath);
+                if (stream != null) {
+                    return new WebResourceResponse(mime, "UTF-8", stream);
+                }
+            }
+
+            return null;
+        }
+    }
+
+    private final class PublicAssetsPathHandler implements WebViewAssetLoader.PathHandler {
+        private final String assetPrefix;
+
+        PublicAssetsPathHandler(String assetPrefix) {
+            this.assetPrefix = assetPrefix;
+        }
+
+        @Override
+        public WebResourceResponse handle(String path) {
+            String normalizedPath = normalize(path);
+            String primary = "public/" + assetPrefix + normalizedPath;
+            String fallback = assetPrefix + normalizedPath;
+            InputStream stream = openAssetWithFallback(activity.getAssets(), primary, fallback);
+            if (stream == null) {
+                return null;
+            }
+            return new WebResourceResponse(detectMime(primary), "UTF-8", stream);
+        }
+    }
+
+    private final class PublicRoutesPathHandler implements WebViewAssetLoader.PathHandler {
+        @Override
+        public WebResourceResponse handle(String path) {
+            String normalizedPath = normalize(path);
+            String assetPath;
+            if (normalizedPath.isEmpty()) {
+                assetPath = "public/index.html";
+            } else if (normalizedPath.endsWith("/")) {
+                assetPath = "public/" + normalizedPath + "index.html";
+            } else if (normalizedPath.contains(".")) {
+                assetPath = "public/" + normalizedPath;
+            } else {
+                assetPath = "public/" + normalizedPath + "/index.html";
+            }
+
+            String fallback = assetPath.startsWith("public/")
+                    ? assetPath.substring("public/".length())
+                    : assetPath;
+            InputStream stream = openAssetWithFallback(activity.getAssets(), assetPath, fallback);
+            if (stream == null) {
+                return null;
+            }
+            return new WebResourceResponse(detectMime(assetPath), "UTF-8", stream);
+        }
+    }
+
+    private static String normalize(String path) {
+        if (path == null || path.isEmpty()) {
+            return "";
+        }
+        return path.startsWith("/") ? path.substring(1) : path;
+    }
+
+    private static String detectMime(String path) {
+        String extension = MimeTypeMap.getFileExtensionFromUrl(path);
+        if (extension == null || extension.isEmpty()) {
+            return "application/octet-stream";
+        }
+        String mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension.toLowerCase(Locale.US));
+        return mime == null ? "application/octet-stream" : mime;
+    }
+
+    private static InputStream openAssetWithFallback(
+            AssetManager assetManager,
+            String primary,
+            String fallback
+    ) {
+        InputStream stream = openAsset(assetManager, primary);
+        if (stream != null) {
+            return stream;
+        }
+        if (fallback == null || fallback.isEmpty() || fallback.equals(primary)) {
+            return null;
+        }
+        return openAsset(assetManager, fallback);
+    }
+
+    private static InputStream openAsset(AssetManager assetManager, String assetPath) {
+        try {
+            return assetManager.open(assetPath);
+        } catch (IOException ignored) {
+            return null;
+        }
     }
 
     private final class NativePlaybackBridge {
