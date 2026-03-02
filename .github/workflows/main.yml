@@ -2,51 +2,36 @@ name: Download NewPipeExtractor v0.26.0
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
 
 jobs:
-  download-extractor:
+  download:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout project
+      - name: Checkout repo
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Download NewPipeExtractor v0.26.0
+      - name: Download extractor
         run: |
           curl -L -o newpipe.tar.gz \
           https://github.com/TeamNewPipe/NewPipeExtractor/archive/refs/tags/v0.26.0.tar.gz
 
-      - name: Extract archive
+      - name: Extract files
         run: |
           tar -xzf newpipe.tar.gz
           mkdir -p android
           mv NewPipeExtractor-0.26.0/extractor android/newpipe-extractor
           rm -rf newpipe.tar.gz NewPipeExtractor-0.26.0
 
-      - name: Verify extractor copied
+      - name: Commit to repo
         run: |
-          echo "Contents of android/newpipe-extractor:"
-          ls -la android/newpipe-extractor
-      # ----------------------------------
-      # Patch Android 30 decode crash
-      # ----------------------------------
-      - name: Patch Utils.java for Android 30
-        run: |
-          FILE=android/newpipe-extractor/src/main/java/org/schabi/newpipe/extractor/utils/Utils.java
-
-          if [ ! -f "$FILE" ]; then
-            echo "Utils.java not found!"
-            exit 1
-          fi
-
-          sed -i 's/StandardCharsets.UTF_8/"UTF-8"/g' $FILE
-          sed -i 's/URLDecoder.decode(s,/URLDecoder.decode(url,/g' $FILE
-          sed -i '/StandardCharsets/d' $FILE
-
-          echo "Patch completed."
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add android/newpipe-extractor
+          git commit -m "Added NewPipeExtractor v0.26.0" || echo "Nothing to commit"
+          git push
 
       # ----------------------------------
       # Ensure module included in settings.gradle
