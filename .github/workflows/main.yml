@@ -92,7 +92,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: 8.2
-    
+          cache-read-only: false
           build-scan-terms-of-use-url: "https://gradle.com/terms-of-service"
           build-scan-terms-of-use-agree: "yes"
 
