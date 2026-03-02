@@ -1,0 +1,97 @@
+name: HarmonyStream CI (NewPipe v0.26.0)
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # ----------------------------------
+      # Checkout HarmonyStream repo
+      # ----------------------------------
+      - name: Checkout HarmonyStream
+        uses: actions/checkout@v4
+
+      # ----------------------------------
+      # Setup Java
+      # ----------------------------------
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: gradle
+
+      # ----------------------------------
+      # Clone official NewPipeExtractor v0.26.0
+      # ----------------------------------
+      - name: Clone NewPipeExtractor v0.26.0
+        run: |
+          git clone --depth 1 --branch v0.26.0 https://github.com/TeamNewPipe/NewPipeExtractor.git temp-extractor
+          rm -rf android/newpipe-extractor
+          mkdir -p android
+          cp -r temp-extractor/extractor android/newpipe-extractor
+          rm -rf temp-extractor
+
+          echo "Verify extractor copied:"
+          ls -la android/newpipe-extractor
+
+      # ----------------------------------
+      # Patch Android 30 decode crash
+      # ----------------------------------
+      - name: Patch Utils.java for Android 30
+        run: |
+          FILE=android/newpipe-extractor/src/main/java/org/schabi/newpipe/extractor/utils/Utils.java
+
+          if [ ! -f "$FILE" ]; then
+            echo "Utils.java not found!"
+            exit 1
+          fi
+
+          sed -i 's/StandardCharsets.UTF_8/"UTF-8"/g' $FILE
+          sed -i 's/URLDecoder.decode(s,/URLDecoder.decode(url,/g' $FILE
+          sed -i '/StandardCharsets/d' $FILE
+
+          echo "Patch completed."
+
+      # ----------------------------------
+      # Ensure module included in settings.gradle
+      # ----------------------------------
+      - name: Register module in settings.gradle
+        run: |
+          if ! grep -q "newpipe-extractor" android/settings.gradle; then
+            echo "include ':newpipe-extractor'" >> android/settings.gradle
+            echo "project(':newpipe-extractor').projectDir = new File(rootDir, 'newpipe-extractor')" >> android/settings.gradle
+          fi
+
+      # ----------------------------------
+      # Ensure dependency added to app/build.gradle
+      # ----------------------------------
+      - name: Add dependency to app/build.gradle
+        run: |
+          if ! grep -q "newpipe-extractor" android/app/build.gradle; then
+            echo "dependencies { implementation project(':newpipe-extractor') }" >> android/app/build.gradle
+          fi
+
+      # ----------------------------------
+      # Build APK
+      # ----------------------------------
+      - name: Grant Gradle permission
+        run: chmod +x android/gradlew
+
+      - name: Build Debug APK
+        working-directory: android
+        run: ./gradlew assembleDebug
+
+      # ----------------------------------
+      # Upload APK
+      # ----------------------------------
+      - name: Upload Debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: HarmonyStream-Debug
+          path: android/app/build/outputs/apk/debug/*.apk
