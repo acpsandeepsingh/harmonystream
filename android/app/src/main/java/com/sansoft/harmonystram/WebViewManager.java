@@ -19,19 +19,13 @@ import org.json.JSONObject;
 
 final class WebViewManager {
 
-    static final String EXTRA_START_URL = "start_url";
-
     static final String BUNDLED_HOME_URL = "https://appassets.androidplatform.net/";
     static final String BUNDLED_HOME_URL_BASE_PATH =
-            "https://appassets.androidplatform.net/public/index.html";
-    static final String BUNDLED_HOME_URL_BASE_PATH_WITH_GH_PAGES =
-            "https://appassets.androidplatform.net/public/harmonystream/index.html";
-    static final String LEGACY_BUNDLED_HOME_URL_BASE_PATH =
             "https://appassets.androidplatform.net/index.html";
-    static final String LEGACY_BUNDLED_HOME_URL_BASE_PATH_WITH_GH_PAGES =
-            "https://appassets.androidplatform.net/harmonystream/index.html";
     static final String FALLBACK_SHELL_URL =
-            "https://appassets.androidplatform.net/web/offline_shell.html";
+            "https://appassets.androidplatform.net/assets/web/offline_shell.html";
+    static final String BUNDLED_HOME_ASSET_PATH =
+            "public/index.html";
 
     interface BridgeActions {
         void sendServiceIntent(@NonNull Intent intent);
@@ -44,15 +38,7 @@ final class WebViewManager {
     private final BridgeActions actions;
 
     private final WebViewAssetLoader assetLoader;
-    private int startupCandidateIndex;
-
-    private final String[] startupCandidates = new String[] {
-            BUNDLED_HOME_URL_BASE_PATH,
-            BUNDLED_HOME_URL_BASE_PATH_WITH_GH_PAGES,
-            LEGACY_BUNDLED_HOME_URL_BASE_PATH,
-            LEGACY_BUNDLED_HOME_URL_BASE_PATH_WITH_GH_PAGES,
-            FALLBACK_SHELL_URL
-    };
+    private boolean loadingFallback;
 
     WebViewManager(@NonNull WebAppActivity activity,
                    @NonNull WebView webView,
@@ -62,6 +48,7 @@ final class WebViewManager {
         this.actions = actions;
         this.assetLoader = new WebViewAssetLoader.Builder()
                 .setDomain("appassets.androidplatform.net")
+                .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(activity))
                 .addPathHandler("/", new WebViewAssetLoader.AssetsPathHandler(activity))
                 .build();
     }
@@ -83,40 +70,11 @@ final class WebViewManager {
     }
 
     void loadInitialUrl(String startUrl) {
-        String resolvedStartUrl;
-        if (startUrl != null && !startUrl.trim().isEmpty()) {
-            resolvedStartUrl = normalizeLegacyFileUrl(startUrl.trim());
-        } else {
-            resolvedStartUrl = startupCandidates[0];
-        }
-
-        startupCandidateIndex = indexOfStartupCandidate(resolvedStartUrl);
-        webView.loadUrl(resolvedStartUrl);
+    if (startUrl != null && !startUrl.trim().isEmpty()) {
+        webView.loadUrl(startUrl.trim());
+        return;
     }
-
-    private String normalizeLegacyFileUrl(@NonNull String url) {
-        if (url.startsWith("file:///android_asset/public/harmonystream/index.html")) {
-            return BUNDLED_HOME_URL_BASE_PATH_WITH_GH_PAGES;
-        }
-        if (url.startsWith("file:///android_asset/public/index.html")) {
-            return BUNDLED_HOME_URL_BASE_PATH;
-        }
-        if (LEGACY_BUNDLED_HOME_URL_BASE_PATH.equals(url)) {
-            return BUNDLED_HOME_URL_BASE_PATH;
-        }
-        if (LEGACY_BUNDLED_HOME_URL_BASE_PATH_WITH_GH_PAGES.equals(url)) {
-            return BUNDLED_HOME_URL_BASE_PATH_WITH_GH_PAGES;
-        }
-        return url;
-    }
-
-    private int indexOfStartupCandidate(@NonNull String url) {
-        for (int i = 0; i < startupCandidates.length; i++) {
-            if (startupCandidates[i].equals(url)) {
-                return i;
-            }
-        }
-        return -1;
+    webView.loadUrl(BUNDLED_HOME_URL_BASE_PATH);
     }
 
     void onPause() {
@@ -146,36 +104,6 @@ final class WebViewManager {
             return assetLoader.shouldInterceptRequest(request.getUrl());
         }
 
-        @Override
-        public WebResourceResponse shouldInterceptRequest(WebView view, String url) {
-            return assetLoader.shouldInterceptRequest(Uri.parse(url));
-        }
-
-        @Override
-        public void onReceivedError(WebView view,
-                                    WebResourceRequest request,
-                                    android.webkit.WebResourceError error) {
-            super.onReceivedError(view, request, error);
-            if (request == null || !request.isForMainFrame()) {
-                return;
-            }
-            loadNextStartupCandidate(view, request.getUrl() != null ? request.getUrl().toString() : "");
-        }
-
-        private void loadNextStartupCandidate(@NonNull WebView view, @NonNull String failingUrl) {
-            if (!failingUrl.startsWith(BUNDLED_HOME_URL)) {
-                return;
-            }
-            int nextIndex = startupCandidateIndex + 1;
-            if (nextIndex < 0) {
-                nextIndex = 0;
-            }
-            if (nextIndex >= startupCandidates.length) {
-                return;
-            }
-            startupCandidateIndex = nextIndex;
-            view.loadUrl(startupCandidates[startupCandidateIndex]);
-        }
     }
 
     private final class NativePlaybackBridge {

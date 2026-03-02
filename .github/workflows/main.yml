@@ -92,8 +92,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: 8.2
-          gradle-home-cache-cleanup: true
-          build-scan-publish: false
+    
           build-scan-terms-of-use-url: "https://gradle.com/terms-of-service"
           build-scan-terms-of-use-agree: "yes"
 
@@ -110,7 +109,7 @@ jobs:
           chmod +x gradlew
 
 
-      - name: Compile Android Java sources (fast fail)
+      - name: Compile Andoid Java sources (fast fail)
         run: |
           cd android
           ./gradlew :app:compileDebugJavaWithJavac --no-daemon --stacktrace
