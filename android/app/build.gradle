@@ -213,7 +213,7 @@ dependencies {
     implementation 'com.google.android.exoplayer:exoplayer:2.19.1'
     implementation 'com.google.android.exoplayer:extension-mediasession:2.19.1'
     implementation 'androidx.lifecycle:lifecycle-viewmodel:2.7.0'
-    implementation 'com.github.TeamNewPipe:NewPipeExtractor:v0.26.0'
+    implementation 'com.github.acpsandeepsingh:NewPipeExtractor:8a70c4f688b85381d22a3077b128339ab7ccf58e'
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
     implementation 'com.google.android.gms:play-services-base:18.5.0'
 
