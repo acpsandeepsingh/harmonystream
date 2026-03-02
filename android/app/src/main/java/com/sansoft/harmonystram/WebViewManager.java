@@ -103,7 +103,7 @@ final class WebViewManager {
             return assetLoader.shouldInterceptRequest(request.getUrl());
         }
 
-    
+    }
 
     private final class NativePlaybackBridge {
         @JavascriptInterface
