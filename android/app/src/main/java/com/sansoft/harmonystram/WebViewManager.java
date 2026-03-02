@@ -15,8 +15,7 @@ import org.json.JSONObject;
 
 final class WebViewManager {
 
-    static final String BUNDLED_HOME_URL = "https://appassets.androidplatform.net/harmonystream/index.html";
-
+    static final String BUNDLED_HOME_URL = "file:///android_asset/public/harmonystream/index.html";
     interface BridgeActions {
         void sendServiceIntent(@NonNull Intent intent);
         void setVideoMode(boolean enabled);
