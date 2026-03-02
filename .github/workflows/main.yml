@@ -23,26 +23,7 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      
-      - name: Download extractor
-        run: |
-          curl -L -o newpipe.tar.gz \
-          https://github.com/TeamNewPipe/NewPipeExtractor/archive/refs/tags/v0.26.0.tar.gz
 
-      - name: Extract files
-        run: |
-          tar -xzf newpipe.tar.gz
-          mkdir -p android
-          mv NewPipeExtractor-0.26.0/extractor android/newpipe-extractor
-          rm -rf newpipe.tar.gz NewPipeExtractor-0.26.0
-
-      - name: Commit to repo
-        run: |
-          git config user.name "github-actions"
-          git config user.email "actions@github.com"
-          git add android/newpipe-extractor
-          git commit -m "Added NewPipeExtractor v0.26.0" || echo "Nothing to commit"
-          git push
       - name: Set up Node 22
         uses: actions/setup-node@v4
         with:
@@ -111,7 +92,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: 8.2
-    
+          cache-read-only: false
           build-scan-terms-of-use-url: "https://gradle.com/terms-of-service"
           build-scan-terms-of-use-agree: "yes"
 
@@ -173,3 +154,4 @@ jobs:
         with:
           name: HarmonyStream-Android-APK-Release
           path: android/app/build/outputs/apk/release/app-release.apk
+          
