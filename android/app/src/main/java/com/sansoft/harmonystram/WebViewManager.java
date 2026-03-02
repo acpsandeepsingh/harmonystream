@@ -3,6 +3,7 @@ package com.sansoft.harmonystram;
 import android.annotation.SuppressLint;
 import android.content.Intent;
 import android.graphics.Color;
+import android.net.Uri;
 import android.os.Build;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebResourceRequest;
