@@ -41,12 +41,12 @@ def hasReleaseSigning = [
 android {
 
     namespace 'com.sansoft.harmonystram'
-    compileSdk 35
+    compileSdk 34
 
     defaultConfig {
         applicationId "com.sansoft.harmonystram"
         minSdk 21
-        targetSdk 35
+        targetSdk 34
         versionCode 4
         versionName "1.0"
 
