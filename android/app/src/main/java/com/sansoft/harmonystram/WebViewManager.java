@@ -69,8 +69,10 @@ final class WebViewManager {
     }
 
     void loadInitialUrl(String startUrl) {
+        startupCandidateIndex = 0;
         if (startUrl != null && !startUrl.trim().isEmpty()) {
-            webView.loadUrl(startUrl);
+            String normalized = normalizeLegacyFileUrl(startUrl.trim());
+            webView.loadUrl(normalized);
             return;
         }
         webView.loadUrl(BUNDLED_HOME_URL_BASE_PATH);
