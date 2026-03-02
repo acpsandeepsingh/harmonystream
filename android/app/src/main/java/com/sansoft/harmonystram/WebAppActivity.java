@@ -223,7 +223,7 @@ public class WebAppActivity extends AppCompatActivity
     }
 
     @Override
-    protected void onConfigurationChanged(@NonNull Configuration newConfig) {
+    public void onConfigurationChanged(@NonNull Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
         playerUiController.init();
         requestInitialPlaybackState();
