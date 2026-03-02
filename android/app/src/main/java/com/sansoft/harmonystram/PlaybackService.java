@@ -621,13 +621,21 @@ public class PlaybackService extends Service {
                     updateNotification();
                     broadcastState();
                 });
-            } catch (Throwable t) {
-                if (requestToken == resolveRequestToken) {
-                    pendingPlayRequestedAtMs = 0L;
-                }
-                debugToast("Extraction failed");
-                Log.e(TAG, "Unable to resolve stream URL", t);
+      } catch (Throwable t) {
+    if (requestToken == resolveRequestToken) {
+        pendingPlayRequestedAtMs = 0L;
+    }
+
+    Log.e("HS_EXTRACT", "========== EXTRACTION FAILED ==========");
+    Log.e("HS_EXTRACT", "Video ID: " + videoId);
+    Log.e("HS_EXTRACT", "Android SDK: " + Build.VERSION.SDK_INT);
+    Log.e("HS_EXTRACT", "Error class: " + t.getClass().getName());
+    Log.e("HS_EXTRACT", "Error message: " + t.getMessage(), t);
+
+    debugToast("Extraction failed");
             }
+
+                
         });
     }
 
