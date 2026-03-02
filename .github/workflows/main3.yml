@@ -40,6 +40,17 @@ jobs:
           echo "Verify extractor copied:"
           ls -la android/newpipe-extractor
 
+      - name: Clone extractor
+       run: |
+        git clone --depth 1 --branch v0.26.0 https://github.com/TeamNewPipe/NewPipeExtractor.git temp-extractor
+        mkdir -p android
+        cp -r temp-extractor/extractor android/newpipe-extractor
+        rm -rf temp-extractor
+      - name: Register module
+        run: |
+         echo 'include(":newpipe-extractor")' >> settings.gradle
+         echo 'project(":newpipe-extractor").projectDir = file("android/newpipe-extractor")' >> settings.gradle
+
       # ----------------------------------
       # Patch Android 30 decode crash
       # ----------------------------------
