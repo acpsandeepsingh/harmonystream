@@ -5,17 +5,27 @@ import android.content.Intent;
 import android.graphics.Color;
 import android.os.Build;
 import android.webkit.JavascriptInterface;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
-import android.webkit.WebViewClient;
 
 import androidx.annotation.NonNull;
+import androidx.webkit.WebViewAssetLoader;
+import androidx.webkit.WebViewClientCompat;
 
 import org.json.JSONObject;
 
 final class WebViewManager {
 
-    static final String BUNDLED_HOME_URL = "file:///android_asset/public/harmonystream/index.html";
+    static final String BUNDLED_HOME_URL = "https://appassets.androidplatform.net/";
+    static final String BUNDLED_HOME_URL_BASE_PATH =
+            "https://appassets.androidplatform.net/index.html";
+    static final String FALLBACK_SHELL_URL =
+            "https://appassets.androidplatform.net/assets/web/offline_shell.html";
+    static final String BUNDLED_HOME_ASSET_PATH =
+            "public/index.html";
+
     interface BridgeActions {
         void sendServiceIntent(@NonNull Intent intent);
         void setVideoMode(boolean enabled);
@@ -26,12 +36,20 @@ final class WebViewManager {
     private final WebView webView;
     private final BridgeActions actions;
 
+    private final WebViewAssetLoader assetLoader;
+    private boolean loadingFallback;
+
     WebViewManager(@NonNull WebAppActivity activity,
                    @NonNull WebView webView,
                    @NonNull BridgeActions actions) {
         this.activity = activity;
         this.webView = webView;
         this.actions = actions;
+        this.assetLoader = new WebViewAssetLoader.Builder()
+                .setDomain("appassets.androidplatform.net")
+                .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(activity))
+                .addPathHandler("/", new WebViewAssetLoader.AssetsPathHandler(activity))
+                .build();
     }
 
     @SuppressLint({"SetJavaScriptEnabled", "JavascriptInterface"})
@@ -46,7 +64,7 @@ final class WebViewManager {
         webView.setBackgroundColor(Color.rgb(11, 18, 32));
         webView.addJavascriptInterface(new NativePlaybackBridge(), "HarmonyNative");
         webView.addJavascriptInterface(new NativePlaybackBridge(), "AndroidNative");
-        webView.setWebViewClient(new WebViewClient());
+        webView.setWebViewClient(new AssetBackedWebViewClient());
         PlaybackService.attachWebView(webView);
     }
 
@@ -55,7 +73,7 @@ final class WebViewManager {
             webView.loadUrl(startUrl);
             return;
         }
-        webView.loadUrl(BUNDLED_HOME_URL);
+        webView.loadUrl(BUNDLED_HOME_URL_BASE_PATH);
     }
 
     void onPause() {
@@ -77,6 +95,28 @@ final class WebViewManager {
                 + " } }));");
         actions.dispatchToWeb("window.__harmonyNativeApplyCommand&&window.__harmonyNativeApplyCommand("
                 + JSONObject.quote(action) + ");");
+    }
+
+    private final class AssetBackedWebViewClient extends WebViewClientCompat {
+        @Override
+        public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+            return assetLoader.shouldInterceptRequest(request.getUrl());
+        }
+
+        @Override
+        public void onReceivedError(WebView view,
+                                    WebResourceRequest request,
+                                    android.webkit.WebResourceError error) {
+            super.onReceivedError(view, request, error);
+            if (request == null || !request.isForMainFrame() || loadingFallback) {
+                return;
+            }
+            String url = request.getUrl() != null ? request.getUrl().toString() : "";
+            if (url.startsWith(BUNDLED_HOME_URL)) {
+                loadingFallback = true;
+                view.loadUrl(FALLBACK_SHELL_URL);
+            }
+        }
     }
 
     private final class NativePlaybackBridge {
