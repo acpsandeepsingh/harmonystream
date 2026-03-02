@@ -621,21 +621,13 @@ public class PlaybackService extends Service {
                     updateNotification();
                     broadcastState();
                 });
-      } catch (Throwable t) {
-    if (requestToken == resolveRequestToken) {
-        pendingPlayRequestedAtMs = 0L;
-    }
-
-    Log.e("HS_EXTRACT", "========== EXTRACTION FAILED ==========");
-    Log.e("HS_EXTRACT", "Video ID: " + videoId);
-    Log.e("HS_EXTRACT", "Android SDK: " + Build.VERSION.SDK_INT);
-    Log.e("HS_EXTRACT", "Error class: " + t.getClass().getName());
-    Log.e("HS_EXTRACT", "Error message: " + t.getMessage(), t);
-
-    debugToast("Extraction failed");
+            } catch (Throwable t) {
+                if (requestToken == resolveRequestToken) {
+                    pendingPlayRequestedAtMs = 0L;
+                }
+                debugToast("Extraction failed");
+                Log.e(TAG, "Unable to resolve stream URL", t);
             }
-
-                
         });
     }
 
@@ -647,30 +639,15 @@ public class PlaybackService extends Service {
     }
 
     private StreamInfo resolveStreamInfo(StreamingService yt,
-                                     String videoIdOrUrl) throws Exception {
-
-    try {
-        return StreamInfo.getInfo(yt, videoIdOrUrl);
-
-    } catch (NoSuchMethodError decodeCrash) {
-
-        Log.e("HS_EXTRACT", "Android 30 decode() crash intercepted", decodeCrash);
-
-        // Fallback: retry using normalized watch URL
-        String safeUrl = YouTubeUrlNormalizer.normalizeWatchUrl(videoIdOrUrl);
-
-        return StreamInfo.getInfo(yt, safeUrl);
-
-    } catch (Throwable directFailure) {
-
-        String normalized = YouTubeUrlNormalizer.normalizeWatchUrl(videoIdOrUrl);
-
-        if (normalized.equals(videoIdOrUrl)) throw directFailure;
-
-        Log.w(TAG, "Retrying with normalized URL", directFailure);
-
-        return StreamInfo.getInfo(yt, normalized);
-    }
+                                         String videoIdOrUrl) throws Exception {
+        try {
+            return StreamInfo.getInfo(yt, videoIdOrUrl);
+        } catch (Throwable directFailure) {
+            String normalized = YouTubeUrlNormalizer.normalizeWatchUrl(videoIdOrUrl);
+            if (normalized.equals(videoIdOrUrl)) throw directFailure;
+            Log.w(TAG, "Retrying with normalized URL", directFailure);
+            return StreamInfo.getInfo(yt, normalized);
+        }
     }
 
     private String pickPlayableVideo(List<VideoStream> videoStreams) {
