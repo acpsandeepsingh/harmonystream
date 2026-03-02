@@ -1,56 +1,35 @@
-name: HarmonyStream CI (NewPipe v0.26.0)
+name: Download NewPipeExtractor v0.26.0
 
 on:
-  push:
-    branches: [ main ]
   workflow_dispatch:
+  push:
+    branches:
+      - main
 
 jobs:
-  build:
+  download-extractor:
     runs-on: ubuntu-latest
 
     steps:
-      # ----------------------------------
-      # Checkout HarmonyStream repo
-      # ----------------------------------
-      - name: Checkout HarmonyStream
+      - name: Checkout project
         uses: actions/checkout@v4
 
-      # ----------------------------------
-      # Setup Java
-      # ----------------------------------
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '17'
-          cache: gradle
-
-      # ----------------------------------
-      # Clone official NewPipeExtractor v0.26.0
-      # ----------------------------------
-      - name: Clone NewPipeExtractor v0.26.0
+      - name: Download NewPipeExtractor v0.26.0
         run: |
-          git clone --depth 1 --branch v0.26.0 https://github.com/TeamNewPipe/NewPipeExtractor.git temp-extractor
-          
+          curl -L -o newpipe.tar.gz \
+          https://github.com/TeamNewPipe/NewPipeExtractor/archive/refs/tags/v0.26.0.tar.gz
+
+      - name: Extract archive
+        run: |
+          tar -xzf newpipe.tar.gz
           mkdir -p android
-          cp -r temp-extractor/extractor android/newpipe-extractor
-          rm -rf temp-extractor
+          mv NewPipeExtractor-0.26.0/extractor android/newpipe-extractor
+          rm -rf newpipe.tar.gz NewPipeExtractor-0.26.0
 
-          echo "Verify extractor copied:"
-          ls -la android/newpipe-extractor
-
-      - name: Clone extractor
-       run: |
-        git clone --depth 1 --branch v0.26.0 https://github.com/TeamNewPipe/NewPipeExtractor.git temp-extractor
-        mkdir -p android
-        cp -r temp-extractor/extractor android/newpipe-extractor
-        rm -rf temp-extractor
-      - name: Register module
+      - name: Verify extractor copied
         run: |
-         echo 'include(":newpipe-extractor")' >> settings.gradle
-         echo 'project(":newpipe-extractor").projectDir = file("android/newpipe-extractor")' >> settings.gradle
-
+          echo "Contents of android/newpipe-extractor:"
+          ls -la android/newpipe-extractor
       # ----------------------------------
       # Patch Android 30 decode crash
       # ----------------------------------
