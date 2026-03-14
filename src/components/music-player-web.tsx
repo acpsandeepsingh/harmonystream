@@ -162,6 +162,7 @@ const PortraitPlayer = React.memo(function PortraitPlayer({
   onToggleLike, onTogglePlayerMode, onPlayPrev, onPlayNext,
   onTogglePlayPause, onVolumeChange, onSeekChange, onSeekCommit,
   onAddToPlaylist, onShare, onOpenCreatePlaylistDialog, container,
+  isAndroidAppRuntime,
 }: any) {
   return (
     <div className={cn(
@@ -246,6 +247,7 @@ const PortraitPlayer = React.memo(function PortraitPlayer({
           onPlayNext={onPlayNext}
           onTogglePlayPause={onTogglePlayPause}
           onVolumeChange={onVolumeChange}
+          showVolumeControl={isAndroidAppRuntime}
         />
       </div>
     </div>
@@ -263,6 +265,7 @@ const LandscapePlayer = React.memo(function LandscapePlayer({
   onTogglePlayPause, onVolumeChange, onSeekChange, onSeekCommit,
   onAddToPlaylist, onShare, onOpenCreatePlaylistDialog, onVideoZoomChange,
   onResetControlsTimeout, container,
+  isAndroidAppRuntime,
 }: any) {
   const isVideo = playerMode === 'video';
 
@@ -400,7 +403,9 @@ const LandscapePlayer = React.memo(function LandscapePlayer({
                 ? <Video className="h-5 w-5" />
                 : <MusicIcon className="h-5 w-5" />}
             </Button>
-            <VolumeToggleControl volume={volume} onVolumeChange={onVolumeChange} />
+            {isAndroidAppRuntime && (
+              <VolumeToggleControl volume={volume} onVolumeChange={onVolumeChange} />
+            )}
           </div>
         </div>
       </div>
@@ -565,7 +570,7 @@ export function WebMusicPlayer() {
    * When false (Android audio mode) ExoPlayer owns audio and the
    * iframe must NOT be rendered or polled.
    */
-  const iframeIsPlayer = true;
+  const iframeIsPlayer = !isAndroidAppRuntime;
   const { setVolume: syncAudioEngineVolume } = useAudioEngine({
     playerRef,
     isAndroidAppRuntime,
@@ -670,6 +675,11 @@ export function WebMusicPlayer() {
     window.addEventListener('nativePlaybackState', handler);
     return () => window.removeEventListener('nativePlaybackState', handler);
   }, [syncNativeIndex, setGlobalIsPlaying, iframeIsPlayer, toast]);
+
+  useEffect(() => {
+    if (!isAndroidAppRuntime) return;
+    window.HarmonyNative?.getState?.();
+  }, [isAndroidAppRuntime, currentTrack?.id, playerMode]);
 
   // ── SYNC: nativeSetVideoMode — service tells JS to switch mode ─────────────
   useEffect(() => {
@@ -837,9 +847,20 @@ export function WebMusicPlayer() {
     setGlobalIsPlaying, startProgressPolling, stopProgressPolling, globalPlayNext,
   ]);
 
-  const onPlayerError = useCallback((_event: YouTubeEvent) => {
+  const onPlayerError = useCallback((event: YouTubeEvent) => {
+    const errorCode = (event as YouTubeEvent & { data?: number }).data;
+    console.error('[Player] YouTube error', {
+      errorCode,
+      trackId: currentTrack?.id,
+      videoId: currentTrack?.videoId,
+    });
+    toast({
+      title: 'Playback error',
+      description: 'We could not load this track. Skipping to the next song.',
+      variant: 'destructive',
+    });
     if (currentTrack) handleTrackError(currentTrack.id);
-  }, [currentTrack, handleTrackError]);
+  }, [currentTrack, handleTrackError, toast]);
 
   // ── Video mode immersive/fullscreen + zoom persistence ───────────────────
   useEffect(() => {
@@ -1027,11 +1048,22 @@ export function WebMusicPlayer() {
     if (!currentTrack) return;
     const url = `https://www.youtube.com/watch?v=${currentTrack.videoId || currentTrack.id}`;
     if (navigator.share) {
-      navigator.share({ title: currentTrack.title, url }).catch(() => {});
-    } else {
-      navigator.clipboard.writeText(url).then(() =>
-        toast({ title: 'Link copied to clipboard' }));
+      navigator.share({ title: currentTrack.title, url }).catch((error) => {
+        console.warn('[Player] Share failed', error);
+      });
+      return;
     }
+
+    navigator.clipboard.writeText(url)
+      .then(() => toast({ title: 'Link copied to clipboard' }))
+      .catch((error) => {
+        console.warn('[Player] Clipboard write failed', error);
+        toast({
+          title: 'Unable to copy link',
+          description: 'Copy the URL manually from the address bar.',
+          variant: 'destructive',
+        });
+      });
   }, [currentTrack, toast]);
 
   useEffect(() => {
@@ -1144,6 +1176,7 @@ export function WebMusicPlayer() {
     onOpenCreatePlaylistDialog: setIsCreatePlaylistDialogOpen,
     videoZoom,
     onVideoZoomChange: handleVideoZoomChange,
+    isAndroidAppRuntime,
   };
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -1241,6 +1274,7 @@ export function WebMusicPlayer() {
                           if (idx === -1) return;
                           if (isAndroidAppRuntime) {
                             window.HarmonyNative?.setIndex?.(idx);
+                            window.HarmonyNative?.play?.();
                           } else {
                             syncNativeIndex(idx);
                             setGlobalIsPlaying(true);

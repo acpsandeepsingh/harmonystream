@@ -69,6 +69,7 @@ public class PlaybackService extends Service {
     private static final String TAG = "PlaybackService";
     private static final String PLAYER_DEBUG_TAG = "PLAYER_DEBUG";
     private static final int STREAM_RESOLVE_MAX_ATTEMPTS = 2;
+    private static final int MAX_CONSECUTIVE_PLAYER_ERRORS = 2;
     public static final String CHANNEL_ID = "harmonystream_playback";
     public static final int NOTIFICATION_ID = 1001;
 
@@ -190,6 +191,8 @@ public class PlaybackService extends Service {
     private String                audioStreamUrl;
     private String                currentResolvedStreamUrl;
     private volatile long         resolveRequestToken;
+    private int consecutivePlayerErrors;
+    private int pendingQueueIndex = -1;
     @SuppressWarnings("unused")
     private String                videoStreamUrl;
     private boolean               videoMode           = false;
@@ -373,6 +376,7 @@ public class PlaybackService extends Service {
                     currentDurationMs = Math.max(0, player.getDuration());
                 }
                 if (state == Player.STATE_READY) {
+                    consecutivePlayerErrors = 0;
                     debugToast("Player ready");
                 }
                 if (state == Player.STATE_ENDED) {
@@ -399,6 +403,12 @@ public class PlaybackService extends Service {
                 lastPlaybackError = "Playback failed: " + rootMessage(error);
                 broadcastState();
 
+                consecutivePlayerErrors++;
+                if (consecutivePlayerErrors > MAX_CONSECUTIVE_PLAYER_ERRORS) {
+                    Log.e(TAG, "Aborting auto-retry after repeated player errors for videoId=" + currentVideoId);
+                    return;
+                }
+
                 if (currentVideoId != null && !currentVideoId.isEmpty()) {
                     Log.w(TAG, "Re-resolving stream after player error for videoId=" + currentVideoId);
                     resolveAndPlay(currentVideoId, Math.max(0L, currentPositionMs));
@@ -413,6 +423,10 @@ public class PlaybackService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent == null || intent.getAction() == null) return START_STICKY;
+        Log.d(TAG, "onStartCommand action=" + intent.getAction()
+                + " queueSize=" + playbackQueue.size()
+                + " queueIndex=" + currentQueueIndex
+                + " videoMode=" + videoMode);
 
         switch (intent.getAction()) {
             case ACTION_PLAY:
@@ -648,6 +662,21 @@ public class PlaybackService extends Service {
 
     private StreamResolution resolveStreamUrl(String videoId, int attempt) throws Exception {
         debugToast("Starting extraction");
+        StreamResolution resolution = extractYouTubeStream(videoId, videoMode, attempt);
+
+        Log.d(TAG, "Extractor response: attempt=" + attempt
+                + " videoId=" + videoId
+                + " mode=" + (videoMode ? "video" : "audio")
+                + " selectedHost=" + safeHost(resolution.streamUrl)
+                + " audioHost=" + safeHost(resolution.audioStreamUrl)
+                + " videoHost=" + safeHost(resolution.videoStreamUrl));
+
+        return resolution;
+    }
+
+    private StreamResolution extractYouTubeStream(String videoId,
+                                                  boolean preferVideo,
+                                                  int attempt) throws Exception {
         StreamingService yt = ServiceList.YouTube;
         StreamInfo info = resolveStreamInfo(yt, videoId);
 
@@ -656,16 +685,16 @@ public class PlaybackService extends Service {
 
         String audioCandidate = pickPreferredAudioStream(audioStreams);
         String videoCandidate = pickPlayableVideo(videoStreams);
-        String selected = videoMode ? videoCandidate : audioCandidate;
 
-        Log.d(TAG, "Extractor response: attempt=" + attempt
-                + " videoId=" + videoId
-                + " audioStreams=" + (audioStreams == null ? 0 : audioStreams.size())
-                + " videoStreams=" + (videoStreams == null ? 0 : videoStreams.size())
-                + " selectedHost=" + safeHost(selected));
+        String selected = preferVideo ? firstPlayable(videoCandidate, audioCandidate)
+                : firstPlayable(audioCandidate, videoCandidate);
 
         if (!isLikelyPlayableUrl(selected)) {
-            throw new IllegalStateException("Extractor returned an invalid stream URL");
+            throw new IllegalStateException("Extractor returned an invalid stream URL"
+                    + " [attempt=" + attempt
+                    + ", audioStreams=" + (audioStreams == null ? 0 : audioStreams.size())
+                    + ", videoStreams=" + (videoStreams == null ? 0 : videoStreams.size())
+                    + ", preferVideo=" + preferVideo + "]");
         }
 
         return new StreamResolution(selected, audioCandidate, videoCandidate);
@@ -714,6 +743,17 @@ public class PlaybackService extends Service {
             if (s != null && isLikelyPlayableUrl(s.getContent())) {
                 return s.getContent();
             }
+        }
+        return null;
+    }
+
+    private String firstPlayable(@Nullable String primary,
+                                 @Nullable String fallback) {
+        if (isLikelyPlayableUrl(primary)) {
+            return primary;
+        }
+        if (isLikelyPlayableUrl(fallback)) {
+            return fallback;
         }
         return null;
     }
@@ -782,12 +822,32 @@ public class PlaybackService extends Service {
         }
         int idx = intent.getIntExtra("queue_index", -1);
         currentQueueIndex = (idx >= 0 && idx < playbackQueue.size()) ? idx : 0;
+
+        if (pendingQueueIndex >= 0 && pendingQueueIndex < playbackQueue.size()) {
+            int deferredIndex = pendingQueueIndex;
+            pendingQueueIndex = -1;
+            Log.d(TAG, "Applying deferred queue index " + deferredIndex + " after queue sync");
+            playQueueIndex(deferredIndex);
+            return;
+        }
+
         broadcastState();
     }
 
     private void handleSetIndex(Intent intent) {
         if (intent == null) return;
         int index = intent.getIntExtra("queue_index", -1);
+        if (index < 0) return;
+        if (playbackQueue.isEmpty()) {
+            pendingQueueIndex = index;
+            Log.w(TAG, "Received setIndex before queue was available. Deferring index=" + index);
+            return;
+        }
+        if (index >= playbackQueue.size()) return;
+        playQueueIndex(index);
+    }
+
+    private void playQueueIndex(int index) {
         if (index < 0 || index >= playbackQueue.size()) return;
         currentQueueIndex   = index;
         QueueItem item      = playbackQueue.get(index);
