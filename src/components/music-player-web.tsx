@@ -721,7 +721,7 @@ export function WebMusicPlayer() {
       setProgress(0);
       setCurrentTime(0);
       setDuration(0);
-      currentVideoIdRef.current = currentTrack.id;
+      currentVideoIdRef.current = currentTrack.videoId || currentTrack.id;
     }
   }, [currentTrack?.id, prevTrackId]);
 
@@ -911,7 +911,7 @@ export function WebMusicPlayer() {
 
   const handleShare = useCallback(() => {
     if (!currentTrack) return;
-    const url = `https://www.youtube.com/watch?v=${currentTrack.id}`;
+    const url = `https://www.youtube.com/watch?v=${currentTrack.videoId || currentTrack.id}`;
     if (navigator.share) {
       navigator.share({ title: currentTrack.title, url }).catch(() => {});
     } else {
@@ -962,6 +962,27 @@ export function WebMusicPlayer() {
 
   // ── Mount ──────────────────────────────────────────────────────────────────
   useEffect(() => { setContainer(document.body); }, []);
+
+  useEffect(() => {
+    if (!isAndroidAppRuntime) return;
+    if (playlist.length === 0) return;
+
+    const payload = playlist.map((song) => ({
+      id: song.id,
+      title: song.title,
+      artist: song.artist,
+      videoId: song.videoId,
+      thumbnailUrl: song.thumbnailUrl,
+    }));
+    window.HarmonyNative?.setQueue?.(JSON.stringify(payload));
+
+    if (currentTrack) {
+      const activeIndex = playlist.findIndex((song) => song.id === currentTrack.id);
+      if (activeIndex >= 0) {
+        window.HarmonyNative?.setIndex?.(activeIndex);
+      }
+    }
+  }, [playlist, currentTrack, isAndroidAppRuntime]);
 
   // ── YouTube opts ───────────────────────────────────────────────────────────
   /**
@@ -1032,7 +1053,7 @@ export function WebMusicPlayer() {
         >
           <YouTube
             key={currentTrack.id}
-            videoId={currentTrack.id}
+            videoId={currentTrack.videoId || currentTrack.id}
             opts={youtubeOpts}
             onReady={onPlayerReady}
             onStateChange={onPlayerStateChange}
@@ -1092,7 +1113,14 @@ export function WebMusicPlayer() {
                         hasBeenPlayed={hasBeenPlayed}
                         onPlay={() => {
                           const idx = playlist.findIndex(s => s.id === song.id);
-                          if (idx !== -1) syncNativeIndex(idx);
+                          if (idx === -1) return;
+                          if (isAndroidAppRuntime) {
+                            window.HarmonyNative?.setIndex?.(idx);
+                          } else {
+                            syncNativeIndex(idx);
+                            setGlobalIsPlaying(true);
+                            try { playerRef.current?.playVideo(); } catch { /* ignore */ }
+                          }
                         }}
                         onRemove={() => removeSongFromQueue(song.id)}
                       />
