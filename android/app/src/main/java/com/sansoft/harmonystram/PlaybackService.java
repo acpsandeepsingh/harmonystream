@@ -5,6 +5,9 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
@@ -44,6 +47,9 @@ import com.google.android.exoplayer2.Player;
 import com.google.android.exoplayer2.audio.AudioAttributes;
 import com.google.android.exoplayer2.ext.mediasession.MediaSessionConnector;
 import com.google.android.exoplayer2.ext.mediasession.TimelineQueueNavigator;
+import com.google.android.exoplayer2.source.DefaultMediaSourceFactory;
+import com.google.android.exoplayer2.upstream.DefaultDataSource;
+import com.google.android.exoplayer2.upstream.DefaultHttpDataSource;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -66,6 +72,8 @@ public class PlaybackService extends Service {
     private static final int STREAM_RESOLVE_MAX_ATTEMPTS = 2;
     private static final long RESOLVED_STREAM_REUSE_WINDOW_MS = 5 * 60 * 1000L;
     private static final int MAX_CONSECUTIVE_PLAYER_ERRORS = 2;
+    private static final String YT_REFERER = "https://www.youtube.com/";
+    private static final String YT_ORIGIN = "https://www.youtube.com";
     public static final String CHANNEL_ID = "harmonystream_playback";
     public static final int NOTIFICATION_ID = 1001;
 
@@ -295,6 +303,20 @@ public class PlaybackService extends Service {
                 .setActions(ENABLED_PLAYBACK_ACTIONS);
     }
 
+    private DefaultDataSource.Factory buildPlayerDataSourceFactory() {
+        DefaultHttpDataSource.Factory httpFactory = new DefaultHttpDataSource.Factory()
+                .setUserAgent(YouTubeStreamExtractor.EXTRACTOR_USER_AGENT)
+                .setAllowCrossProtocolRedirects(true)
+                .setConnectTimeoutMs(20_000)
+                .setReadTimeoutMs(20_000);
+
+        httpFactory.getDefaultRequestProperties().set("Referer", YT_REFERER);
+        httpFactory.getDefaultRequestProperties().set("Origin", YT_ORIGIN);
+        httpFactory.getDefaultRequestProperties().set("Accept-Language", "en-US,en;q=0.9");
+
+        return new DefaultDataSource.Factory(this, httpFactory);
+    }
+
     private void initPlayer() {
         debugToast("ExoPlayer initialization start");
         AudioAttributes audioAttrs = new AudioAttributes.Builder()
@@ -303,7 +325,10 @@ public class PlaybackService extends Service {
                 .build();
 
         try {
-            player = new ExoPlayer.Builder(this).build();
+            DefaultDataSource.Factory dataSourceFactory = buildPlayerDataSourceFactory();
+            player = new ExoPlayer.Builder(this)
+                    .setMediaSourceFactory(new DefaultMediaSourceFactory(dataSourceFactory))
+                    .build();
             player.setAudioAttributes(audioAttrs, true);
             player.setVolume(1.0f);
             debugToast("ExoPlayer initialization success");
@@ -434,8 +459,18 @@ public class PlaybackService extends Service {
                 broadcastState();
 
                 Log.e(TAG, "Aborting auto-retry after repeated player errors for videoId=" + currentVideoId);
-                handleSkip(+1);
-                dispatchActionToUi(ACTION_NEXT);
+                if (handleSkip(+1)) {
+                    dispatchActionToUi(ACTION_NEXT);
+                } else {
+                    // Avoid repeated player-error loops when the current item cannot be recovered
+                    // and there is no next item to skip to.
+                    if (player != null) {
+                        player.stop();
+                    }
+                    updatePlaybackState();
+                    updateNotification();
+                    broadcastState();
+                }
             }
         });
     }
@@ -666,8 +701,10 @@ public class PlaybackService extends Service {
                 videoStreamUrl = resolution.videoStreamUrl;
 
                 Log.i(TAG, "Resolved playback stream: mode=" + (videoMode ? "video" : "audio")
-                        + " host=" + safeHost(selected) + " videoId=" + videoId);
-                debugToast("Stream URL received");
+                        + " host=" + safeHost(selected) + " videoId=" + videoId
+                        + " url=" + selected);
+                debugToast("Stream URL extracted");
+                copyExtractedUrlToClipboard(selected);
 
                 mainHandler.post(() -> {
                     if (player == null) return;
@@ -732,6 +769,22 @@ public class PlaybackService extends Service {
         mainHandler.post(() -> {
             Log.d(PLAYER_DEBUG_TAG, msg);
             Toast.makeText(getApplicationContext(), msg, Toast.LENGTH_SHORT).show();
+        });
+    }
+
+    private void copyExtractedUrlToClipboard(@Nullable String streamUrl) {
+        if (streamUrl == null || streamUrl.trim().isEmpty()) return;
+        mainHandler.post(() -> {
+            try {
+                ClipboardManager clipboardManager =
+                        (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                if (clipboardManager == null) return;
+                ClipData clip = ClipData.newPlainText("HarmonyStream extracted URL", streamUrl);
+                clipboardManager.setPrimaryClip(clip);
+                debugToast("Extracted URL copied");
+            } catch (Throwable t) {
+                Log.w(TAG, "Failed to copy extracted URL", t);
+            }
         });
     }
 
@@ -838,10 +891,10 @@ public class PlaybackService extends Service {
         resolveAndPlay(item.videoId, 0L);
     }
 
-    private void handleSkip(int direction) {
-        if (playbackQueue.isEmpty()) return;
+    private boolean handleSkip(int direction) {
+        if (playbackQueue.isEmpty()) return false;
         int newIndex = currentQueueIndex + direction;
-        if (newIndex < 0 || newIndex >= playbackQueue.size()) return;
+        if (newIndex < 0 || newIndex >= playbackQueue.size()) return false;
         currentQueueIndex   = newIndex;
         QueueItem item      = playbackQueue.get(newIndex);
         currentVideoId      = item.videoId;
@@ -852,6 +905,7 @@ public class PlaybackService extends Service {
         ensureForegroundWithCurrentState();
         broadcastState();
         resolveAndPlay(item.videoId, 0L);
+        return true;
     }
 
     private void handleAddToQueue(Intent intent) {

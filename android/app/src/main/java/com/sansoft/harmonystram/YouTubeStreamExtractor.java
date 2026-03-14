@@ -15,6 +15,9 @@ import java.util.List;
  */
 final class YouTubeStreamExtractor {
 
+    static final String EXTRACTOR_USER_AGENT =
+            "com.google.android.youtube/19.09.37 (Linux; U; Android 12) gzip";
+
     static final class ExtractionResult {
         final String streamUrl;
         @Nullable final String audioStreamUrl;
@@ -35,9 +38,10 @@ final class YouTubeStreamExtractor {
         List<VideoStream> videoStreams = info.getVideoStreams();
 
         String audioCandidate = pickPreferredAudioStream(audioStreams);
-        String videoCandidate = pickPlayableVideo(videoStreams);
+        String videoCandidate = pickPreferredVideoStream(videoStreams);
 
-        String selected = preferVideo ? firstPlayable(videoCandidate, audioCandidate)
+        String selected = preferVideo
+                ? firstPlayable(videoCandidate, audioCandidate)
                 : firstPlayable(audioCandidate, videoCandidate);
 
         if (!isLikelyPlayableUrl(selected)) {
@@ -66,15 +70,26 @@ final class YouTubeStreamExtractor {
     }
 
     @Nullable
-    private String pickPlayableVideo(@Nullable List<VideoStream> videoStreams) {
+    private String pickPreferredVideoStream(@Nullable List<VideoStream> videoStreams) {
         if (videoStreams == null || videoStreams.isEmpty()) return null;
+        String nonThrottled = null;
+        String fallback = null;
         for (VideoStream stream : videoStreams) {
             if (stream == null || stream.getContent() == null) continue;
-            if (isLikelyPlayableUrl(stream.getContent())) {
-                return stream.getContent();
+            String url = stream.getContent();
+            if (!isLikelyPlayableUrl(url)) continue;
+
+            // Prefer non-progressive/adaptive streams that avoid throttling markers when possible.
+            if (!isPotentiallyThrottledStream(url)) {
+                nonThrottled = url;
+                break;
+            }
+
+            if (fallback == null) {
+                fallback = url;
             }
         }
-        return null;
+        return nonThrottled != null ? nonThrottled : fallback;
     }
 
     @Nullable
@@ -92,6 +107,12 @@ final class YouTubeStreamExtractor {
             }
         }
         return null;
+    }
+
+    private boolean isPotentiallyThrottledStream(@Nullable String streamUrl) {
+        if (streamUrl == null) return true;
+        String value = streamUrl.toLowerCase();
+        return value.contains("&n=") || value.contains("?n=") || value.contains("&c=web") || value.contains("?c=web");
     }
 
     @Nullable
