@@ -26,8 +26,7 @@ public class DownloaderImpl extends Downloader {
     private static final String TAG = "ExtractorDownloader";
 
     private static final String FALLBACK_USER_AGENT =
-            "Mozilla/5.0 (Linux; Android 8.1; Mobile) AppleWebKit/537.36 "
-                    + "(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
+            YouTubeStreamExtractor.EXTRACTOR_USER_AGENT;
 
     private static final RequestBody EMPTY_BODY =
             RequestBody.create(new byte[0], (MediaType) null);
@@ -90,6 +89,12 @@ public class DownloaderImpl extends Downloader {
         // 2. Add fallback UA only when caller did not provide one (case-insensitive)
         if (!hasHeaderIgnoreCase(headers, "User-Agent")) {
             builder.header("User-Agent", FALLBACK_USER_AGENT);
+        }
+        if (!hasHeaderIgnoreCase(headers, "Referer")) {
+            builder.header("Referer", "https://www.youtube.com/");
+        }
+        if (!hasHeaderIgnoreCase(headers, "Origin")) {
+            builder.header("Origin", "https://www.youtube.com");
         }
 
         // 3. Attach request body if extractor supplied one
