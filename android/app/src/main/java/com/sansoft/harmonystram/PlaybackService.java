@@ -662,6 +662,21 @@ public class PlaybackService extends Service {
 
     private StreamResolution resolveStreamUrl(String videoId, int attempt) throws Exception {
         debugToast("Starting extraction");
+        StreamResolution resolution = extractYouTubeStream(videoId, videoMode, attempt);
+
+        Log.d(TAG, "Extractor response: attempt=" + attempt
+                + " videoId=" + videoId
+                + " mode=" + (videoMode ? "video" : "audio")
+                + " selectedHost=" + safeHost(resolution.streamUrl)
+                + " audioHost=" + safeHost(resolution.audioStreamUrl)
+                + " videoHost=" + safeHost(resolution.videoStreamUrl));
+
+        return resolution;
+    }
+
+    private StreamResolution extractYouTubeStream(String videoId,
+                                                  boolean preferVideo,
+                                                  int attempt) throws Exception {
         StreamingService yt = ServiceList.YouTube;
         StreamInfo info = resolveStreamInfo(yt, videoId);
 
@@ -670,16 +685,16 @@ public class PlaybackService extends Service {
 
         String audioCandidate = pickPreferredAudioStream(audioStreams);
         String videoCandidate = pickPlayableVideo(videoStreams);
-        String selected = videoMode ? videoCandidate : audioCandidate;
 
-        Log.d(TAG, "Extractor response: attempt=" + attempt
-                + " videoId=" + videoId
-                + " audioStreams=" + (audioStreams == null ? 0 : audioStreams.size())
-                + " videoStreams=" + (videoStreams == null ? 0 : videoStreams.size())
-                + " selectedHost=" + safeHost(selected));
+        String selected = preferVideo ? firstPlayable(videoCandidate, audioCandidate)
+                : firstPlayable(audioCandidate, videoCandidate);
 
         if (!isLikelyPlayableUrl(selected)) {
-            throw new IllegalStateException("Extractor returned an invalid stream URL");
+            throw new IllegalStateException("Extractor returned an invalid stream URL"
+                    + " [attempt=" + attempt
+                    + ", audioStreams=" + (audioStreams == null ? 0 : audioStreams.size())
+                    + ", videoStreams=" + (videoStreams == null ? 0 : videoStreams.size())
+                    + ", preferVideo=" + preferVideo + "]");
         }
 
         return new StreamResolution(selected, audioCandidate, videoCandidate);
@@ -728,6 +743,17 @@ public class PlaybackService extends Service {
             if (s != null && isLikelyPlayableUrl(s.getContent())) {
                 return s.getContent();
             }
+        }
+        return null;
+    }
+
+    private String firstPlayable(@Nullable String primary,
+                                 @Nullable String fallback) {
+        if (isLikelyPlayableUrl(primary)) {
+            return primary;
+        }
+        if (isLikelyPlayableUrl(fallback)) {
+            return fallback;
         }
         return null;
     }
