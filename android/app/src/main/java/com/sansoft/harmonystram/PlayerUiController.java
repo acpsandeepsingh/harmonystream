@@ -214,8 +214,13 @@ final class PlayerUiController {
         }
         if (mode != null) {
             mode.setSelected(videoModeEnabled);
-            mode.setImageResource(videoModeEnabled ? R.drawable.ic_music_note : R.drawable.ic_videocam);
+            mode.setImageResource(videoModeEnabled ? R.drawable.ic_videocam : R.drawable.ic_music_note);
             mode.setContentDescription(videoModeEnabled ? "Switch to audio" : "Switch to video");
+            mode.setBackgroundResource(videoModeEnabled
+                    ? R.drawable.player_button_bg_active
+                    : R.drawable.player_button_bg);
+            mode.setEnabled(hasMedia);
+            mode.setAlpha(hasMedia ? 1f : 0.5f);
         }
 
         long safeDuration = Math.max(0L, durationMs);

@@ -3,45 +3,47 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:background="@color/player_bg"
-    android:padding="8dp">
+    android:background="@drawable/player_surface_modern"
+    android:paddingStart="12dp"
+    android:paddingTop="8dp"
+    android:paddingEnd="12dp"
+    android:paddingBottom="10dp">
 
-    <!-- Seek Row -->
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="48dp"
+        android:layout_height="44dp"
         android:gravity="center_vertical">
 
         <TextView
             android:id="@+id/timeCurrent"
-            android:layout_width="40dp"
+            android:layout_width="44dp"
             android:layout_height="wrap_content"
             android:text="0:00"
-            android:textSize="12sp"
-            android:textColor="@android:color/darker_gray" />
+            android:textColor="#B0B7C8"
+            android:textSize="12sp" />
 
         <SeekBar
             android:id="@+id/seekBar"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_weight="1" />
+            android:layout_weight="1"
+            android:progressDrawable="@drawable/seek_progress"
+            android:thumb="@drawable/seek_thumb_glow" />
 
         <TextView
             android:id="@+id/timeDuration"
-            android:layout_width="40dp"
+            android:layout_width="44dp"
             android:layout_height="wrap_content"
             android:text="0:00"
-            android:textSize="12sp"
-            android:textColor="@android:color/darker_gray" />
+            android:textColor="#B0B7C8"
+            android:textSize="12sp" />
     </LinearLayout>
 
-    <!-- Controls Row -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="64dp"
         android:gravity="center_vertical">
 
-        <!-- LEFT -->
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
@@ -52,7 +54,10 @@
                 android:id="@+id/thumb"
                 android:layout_width="48dp"
                 android:layout_height="48dp"
-                android:contentDescription="@string/app_name" />
+                android:background="@drawable/player_button_bg"
+                android:contentDescription="@string/app_name"
+                android:padding="2dp"
+                android:scaleType="centerCrop" />
 
             <LinearLayout
                 android:layout_width="wrap_content"
@@ -73,12 +78,11 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="Artist"
-                    android:textSize="12sp"
-                    android:textColor="@android:color/darker_gray" />
+                    android:textColor="#B0B7C8"
+                    android:textSize="12sp" />
             </LinearLayout>
         </LinearLayout>
 
-        <!-- CENTER -->
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -86,30 +90,35 @@
 
             <ImageButton
                 android:id="@+id/btnPrev"
-                android:src="@drawable/ic_skip_previous"
-                android:background="?attr/selectableItemBackgroundBorderless"
                 android:layout_width="48dp"
                 android:layout_height="48dp"
-                android:contentDescription="Previous" />
+                android:background="@drawable/player_button_bg"
+                android:contentDescription="Previous"
+                android:padding="12dp"
+                android:src="@drawable/ic_skip_previous"
+                android:tint="#FFFFFF" />
 
             <ImageButton
                 android:id="@+id/btnPlay"
-                android:src="@drawable/ic_play_arrow"
-                android:background="?attr/selectableItemBackgroundBorderless"
                 android:layout_width="56dp"
                 android:layout_height="56dp"
-                android:contentDescription="Play" />
+                android:background="@drawable/player_button_bg_active"
+                android:contentDescription="Play"
+                android:padding="14dp"
+                android:src="@drawable/ic_play_arrow"
+                android:tint="#FFFFFF" />
 
             <ImageButton
                 android:id="@+id/btnNext"
-                android:src="@drawable/ic_skip_next"
-                android:background="?attr/selectableItemBackgroundBorderless"
                 android:layout_width="48dp"
                 android:layout_height="48dp"
-                android:contentDescription="Next" />
+                android:background="@drawable/player_button_bg"
+                android:contentDescription="Next"
+                android:padding="12dp"
+                android:src="@drawable/ic_skip_next"
+                android:tint="#FFFFFF" />
         </LinearLayout>
 
-        <!-- RIGHT -->
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
@@ -117,33 +126,41 @@
             android:gravity="end|center_vertical">
 
             <ImageButton
-                android:id="@+id/btnShare"
-                android:src="@drawable/ic_share"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:contentDescription="Share" />
+                android:id="@+id/btnQueue"
+                android:layout_width="42dp"
+                android:layout_height="42dp"
+                android:background="@drawable/player_button_bg"
+                android:contentDescription="Queue"
+                android:padding="10dp"
+                android:src="@drawable/ic_queue_music"
+                android:tint="#FFFFFF" />
 
             <ImageButton
-                android:id="@+id/btnQueue"
-                android:src="@drawable/ic_queue_music"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:contentDescription="Queue" />
+                android:id="@+id/btnAdd"
+                android:layout_width="42dp"
+                android:layout_height="42dp"
+                android:background="@drawable/player_button_bg"
+                android:contentDescription="Add"
+                android:padding="10dp"
+                android:src="@drawable/ic_add"
+                android:tint="#FFFFFF" />
 
             <ImageButton
                 android:id="@+id/btnMode"
+                android:layout_width="42dp"
+                android:layout_height="42dp"
+                android:background="@drawable/player_button_bg"
+                android:contentDescription="Mode"
+                android:padding="10dp"
                 android:src="@drawable/ic_videocam"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:contentDescription="Mode" />
+                android:tint="#FFFFFF" />
 
             <SeekBar
                 android:id="@+id/volumeBar"
-                android:layout_width="100dp"
-                android:layout_height="wrap_content" />
+                android:layout_width="96dp"
+                android:layout_height="wrap_content"
+                android:progressDrawable="@drawable/seek_progress"
+                android:thumb="@drawable/seek_thumb_glow" />
         </LinearLayout>
 
     </LinearLayout>
