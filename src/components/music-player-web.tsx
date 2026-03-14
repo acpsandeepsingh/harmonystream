@@ -5,11 +5,10 @@
  *
  * ARCHITECTURE
  * ┌─────────────────────────────────────────────────────────────────┐
- * │  AUDIO MODE (Android)  →  ExoPlayer owns audio                  │
- * │    • No YouTube iframe rendered at all                           │
- * │    • UI state driven 100% by nativePlaybackState broadcasts      │
- * │    • Progress from Java broadcastState() every 500 ms           │
- * │    • Track changes synced via queue_index in broadcast           │
+ * │  AUDIO MODE (default)  →  New player UI + hidden YouTube iframe  │
+ * │    • Video keeps running in background                            │
+ * │    • UI is shown in audio style by default                        │
+ * │    • Switching to video reveals the already-running video         │
  * │                                                                  │
  * │  VIDEO MODE (Android)  →  YouTube iframe owns audio+video       │
  * │    • Full-screen iframe rendered                                  │
@@ -32,9 +31,8 @@
  *      prevented by mode-gated guards.
  *  #4  key={currentTrack.id} on every YouTube component forces a
  *      clean remount + onReady whenever the track changes.
- *  #5  Hidden iframe completely removed for Android audio mode.
- *      Web audio mode keeps the iframe (it IS the player) but with
- *      key so it remounts on track change.
+ *  #5  A single iframe now remains mounted in both modes so switching
+ *      between audio/video is instant and keeps playback continuity.
  *  #6  Video mode nativePlaybackState broadcasts are ignored for
  *      playing/progress — iframe is the sole source of truth.
  *  #7  currentVideoIdRef tracks last loaded videoId so we never
@@ -272,7 +270,7 @@ PortraitPlayer.displayName = 'PortraitPlayer';
 // ---------------------------------------------------------------------------
 const LandscapePlayer = React.memo(function LandscapePlayer({
   currentTrack, progress, duration, currentTime, isPlaying, isLiked,
-  playerMode, volume, playlists, isPip, showControls,
+  playerMode, volume, playlists, showControls,
   onToggleLike, onTogglePlayerMode, onPlayPrev, onPlayNext,
   onTogglePlayPause, onVolumeChange, onSeekChange, onSeekCommit,
   onAddToPlaylist, onShare, onOpenCreatePlaylistDialog,
@@ -284,7 +282,6 @@ const LandscapePlayer = React.memo(function LandscapePlayer({
     <div className={cn(
       'hidden md:block',
       !isVideo && 'w-full fixed bottom-0 left-0 right-0 z-[60]',
-      !isVideo && isPip && 'opacity-0 pointer-events-none',
     )}>
       <div
         className={cn(
@@ -532,7 +529,6 @@ export function WebMusicPlayer() {
   const [container, setContainer]   = useState<HTMLElement | null>(null);
   const [volume, setVolume]         = useState(100);
   const [isQueueOpen, setIsQueueOpen] = useState(false);
-  const [isPip, setIsPip]           = useState(false);
   const [showControls, setShowControls] = useState(true);
   const [isCreatePlaylistDialogOpen, setIsCreatePlaylistDialogOpen] = useState(false);
 
@@ -563,7 +559,7 @@ export function WebMusicPlayer() {
    * When false (Android audio mode) ExoPlayer owns audio and the
    * iframe must NOT be rendered or polled.
    */
-  const iframeIsPlayer = !isAndroidAppRuntime || playerMode === 'video';
+  const iframeIsPlayer = true;
 
   // ── Progress helpers ───────────────────────────────────────────────────────
   const stopProgressPolling = useCallback(() => {
@@ -626,10 +622,9 @@ export function WebMusicPlayer() {
         syncNativeIndex(queueIndex);
       }
 
-      // ── SYNC #3: single source of truth per mode ──────────────────────────
-      // In VIDEO MODE the iframe owns isPlaying and progress — ignore these
-      // fields from the broadcast to prevent the two sources fighting.
-      if (playerMode === 'video') return;
+      // ── SYNC #3: iframe is the player for playback/progress in both modes ─
+      // Native state still drives queue index sync only.
+      if (iframeIsPlayer) return;
 
       // AUDIO MODE: trust the native broadcast completely
       const posMs = detail.position_ms ?? detail.currentPosition ?? 0;
@@ -650,7 +645,7 @@ export function WebMusicPlayer() {
 
     window.addEventListener('nativePlaybackState', handler);
     return () => window.removeEventListener('nativePlaybackState', handler);
-  }, [playerMode, syncNativeIndex, setGlobalIsPlaying]);
+  }, [syncNativeIndex, setGlobalIsPlaying, iframeIsPlayer]);
 
   // ── SYNC: nativeSetVideoMode — service tells JS to switch mode ─────────────
   useEffect(() => {
@@ -659,18 +654,11 @@ export function WebMusicPlayer() {
       if (!detail) return;
       const newMode = detail.enabled ? 'video' : 'audio';
       setPlayerMode(newMode);
-      if (!detail.enabled) {
-        // Switching to audio mode: stop iframe polling, reset progress
-        // so stale iframe position doesn't flash in the UI.
-        stopProgressPolling();
-        if (playerRef.current) {
-          try { playerRef.current.pauseVideo(); } catch { /* ignore */ }
-        }
-      }
+      // Keep iframe running in both modes so mode switches are seamless.
     };
     window.addEventListener('nativeSetVideoMode', handler);
     return () => window.removeEventListener('nativeSetVideoMode', handler);
-  }, [setPlayerMode, stopProgressPolling]);
+  }, [setPlayerMode]);
 
   // ── SYNC: nativePlaybackCommand (Bluetooth / notification buttons) ─────────
   const applyNativeCommand = useCallback((action: string) => {
@@ -724,16 +712,6 @@ export function WebMusicPlayer() {
     };
     window.addEventListener('nativeVolumeChanged', handler);
     return () => window.removeEventListener('nativeVolumeChanged', handler);
-  }, []);
-
-  // ── SYNC: PiP ─────────────────────────────────────────────────────────────
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent<{ isInPictureInPictureMode: boolean }>).detail;
-      setIsPip(detail?.isInPictureInPictureMode ?? false);
-    };
-    window.addEventListener('nativePictureInPictureChanged', handler);
-    return () => window.removeEventListener('nativePictureInPictureChanged', handler);
   }, []);
 
   // ── iframe polling lifecycle ───────────────────────────────────────────────
@@ -802,13 +780,9 @@ export function WebMusicPlayer() {
 
   /**
    * SYNC #3 & #6: iframe state changes are the source of truth in
-   * video/web mode.  In audio mode on Android this callback should
-   * never fire (no iframe rendered), but guard anyway.
+   * video/web mode.
    */
   const onPlayerStateChange = useCallback((event: YouTubeEvent) => {
-    // Safety: if for any reason the iframe fires in audio mode on Android, ignore.
-    if (isAndroidAppRuntime && playerMode === 'audio') return;
-
     const state = event.data as number;
     // YT.PlayerState: -1=unstarted, 0=ended, 1=playing, 2=paused, 3=buffering, 5=cued
     switch (state) {
@@ -829,7 +803,6 @@ export function WebMusicPlayer() {
         break;
     }
   }, [
-    isAndroidAppRuntime, playerMode,
     setGlobalIsPlaying, startProgressPolling, stopProgressPolling, globalPlayNext,
   ]);
 
@@ -937,15 +910,8 @@ export function WebMusicPlayer() {
         window.AndroidNative?.setVideoMode?.(newMode === 'video');
     }
 
-    if (newMode === 'audio') {
-      stopProgressPolling();
-      // Pause iframe so ExoPlayer can claim audio focus cleanly
-      if (playerRef.current) {
-        try { playerRef.current.pauseVideo(); } catch { /* ignore */ }
-      }
-    }
-    // Video mode: iframe mounts fresh (key changes) → onPlayerReady auto-plays
-  }, [playerMode, setPlayerMode, isAndroidAppRuntime, stopProgressPolling]);
+    // Keep the same iframe alive across both modes.
+  }, [playerMode, setPlayerMode, isAndroidAppRuntime]);
 
   // ── Like / playlist / share ────────────────────────────────────────────────
   const isLiked = currentTrack ? isSongLiked(currentTrack.id) : false;
@@ -1059,49 +1025,28 @@ export function WebMusicPlayer() {
 
       <Sheet open={isQueueOpen} onOpenChange={setIsQueueOpen}>
 
-        {/* ═══════════════════════════════════════════════════════════════════
-            VIDEO MODE — full-screen YouTube iframe
-            SYNC #4 & #7: key={currentTrack.id} forces a clean iframe remount
-            whenever the track changes, so onPlayerReady always fires fresh.
-        ════════════════════════════════════════════════════════════════════ */}
-        {playerMode === 'video' && (
-          <div
-            className="fixed inset-0 z-40 bg-black"
-            onMouseMove={resetControlsTimeout}
-            onClick={resetControlsTimeout}
-          >
-            <YouTube
-              key={currentTrack.id}
-              videoId={currentTrack.id}
-              opts={youtubeOpts}
-              onReady={onPlayerReady}
-              onStateChange={onPlayerStateChange}
-              onError={onPlayerError}
-              className="w-full h-full"
-              iframeClassName="w-full h-full"
-            />
-          </div>
-        )}
-
-        {/* ═══════════════════════════════════════════════════════════════════
-            WEB AUDIO MODE — invisible iframe, iframe IS the audio engine.
-            SYNC #5: Only rendered on non-Android (web browser).
-            SYNC #7: key={currentTrack.id} forces remount on track change.
-            Not rendered on Android audio mode — ExoPlayer owns audio there.
-        ════════════════════════════════════════════════════════════════════ */}
-        {playerMode === 'audio' && !isAndroidAppRuntime && (
-          <div style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden' }}
-            aria-hidden>
-            <YouTube
-              key={currentTrack.id}
-              videoId={currentTrack.id}
-              opts={youtubeOpts}
-              onReady={onPlayerReady}
-              onStateChange={onPlayerStateChange}
-              onError={onPlayerError}
-            />
-          </div>
-        )}
+        {/* Single iframe stays mounted in both modes.
+            Audio mode keeps it hidden; video mode reveals it instantly. */}
+        <div
+          className={cn(
+            'fixed inset-0 z-40 bg-black transition-opacity duration-300',
+            playerMode === 'video' ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none',
+          )}
+          onMouseMove={resetControlsTimeout}
+          onClick={resetControlsTimeout}
+          aria-hidden={playerMode !== 'video'}
+        >
+          <YouTube
+            key={currentTrack.id}
+            videoId={currentTrack.id}
+            opts={youtubeOpts}
+            onReady={onPlayerReady}
+            onStateChange={onPlayerStateChange}
+            onError={onPlayerError}
+            className="w-full h-full"
+            iframeClassName="w-full h-full"
+          />
+        </div>
 
         {/* ═══════════════════════════════════════════════════════════════════
             PLAYER BARS — always visible (portrait + landscape)
@@ -1109,7 +1054,6 @@ export function WebMusicPlayer() {
         <PortraitPlayer  {...sharedPlayerProps} />
         <LandscapePlayer
           {...sharedPlayerProps}
-          isPip={isPip}
           showControls={showControls}
           onResetControlsTimeout={resetControlsTimeout}
         />
