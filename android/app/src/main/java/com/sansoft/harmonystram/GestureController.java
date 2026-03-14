@@ -3,6 +3,7 @@ package com.sansoft.harmonystram;
 import android.content.Intent;
 import android.view.GestureDetector;
 import android.view.MotionEvent;
+import android.view.ScaleGestureDetector;
 import android.view.View;
 import android.widget.TextView;
 
@@ -22,6 +23,8 @@ final class GestureController {
     private final Callbacks callbacks;
 
     private GestureDetector detector;
+    private ScaleGestureDetector scaleDetector;
+    private float zoomScale = 1f;
 
     GestureController(@NonNull WebAppActivity activity,
                       @NonNull View webView,
@@ -53,9 +56,27 @@ final class GestureController {
             }
         });
 
+        scaleDetector = new ScaleGestureDetector(activity, new ScaleGestureDetector.SimpleOnScaleGestureListener() {
+            @Override
+            public boolean onScale(ScaleGestureDetector detector) {
+                if (!callbacks.isVideoModeEnabled()) return false;
+                float next = zoomScale * detector.getScaleFactor();
+                zoomScale = Math.max(1f, Math.min(next, 2.5f));
+                webView.setPivotX(webView.getWidth() / 2f);
+                webView.setPivotY(webView.getHeight() / 2f);
+                webView.setScaleX(zoomScale);
+                webView.setScaleY(zoomScale);
+                return true;
+            }
+        });
+
         webView.setOnTouchListener((v, event) -> {
+            if (!callbacks.isVideoModeEnabled()) {
+                return true;
+            }
+            if (scaleDetector != null) scaleDetector.onTouchEvent(event);
             if (detector != null) detector.onTouchEvent(event);
-            return false;
+            return true;
         });
     }
 }

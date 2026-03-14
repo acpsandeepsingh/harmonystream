@@ -158,12 +158,17 @@ public class WebAppActivity extends AppCompatActivity
     }
 
     private void applyModeUi(boolean enabled) {
-        webView.setVisibility(WebView.VISIBLE);
         if (enabled) {
             hideSystemBars();
+            webView.setVisibility(WebView.VISIBLE);
+            webView.setClickable(false);
+            webView.setLongClickable(false);
             playerContainer.setVisibility(FrameLayout.GONE);
         } else {
             showNormalBars();
+            webView.setVisibility(WebView.INVISIBLE);
+            webView.setClickable(false);
+            webView.setLongClickable(false);
             playerContainer.setVisibility(FrameLayout.VISIBLE);
         }
     }
