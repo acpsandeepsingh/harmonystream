@@ -38,8 +38,10 @@ final class PlayerUiController {
     private ImageButton next;
     private ImageButton previous;
     private ImageButton mode;
+    private ImageButton like;
     private ImageButton queue;
     private ImageButton add;
+    private ImageButton share;
     private SeekBar seekBar;
     private SeekBar volumeBar;
 
@@ -69,8 +71,10 @@ final class PlayerUiController {
         next = playerContainer.findViewById(R.id.btnNext);
         previous = playerContainer.findViewById(R.id.btnPrev);
         mode = playerContainer.findViewById(R.id.btnMode);
+        like = playerContainer.findViewById(R.id.btnLike);
         queue = playerContainer.findViewById(R.id.btnQueue);
         add = playerContainer.findViewById(R.id.btnAdd);
+        share = playerContainer.findViewById(R.id.btnShare);
         seekBar = playerContainer.findViewById(R.id.seekBar);
         volumeBar = playerContainer.findViewById(R.id.volumeBar);
 
@@ -103,6 +107,10 @@ final class PlayerUiController {
         if (mode != null) {
             mode.setOnClickListener(v -> actions.onModeToggleRequested(!v.isSelected()));
         }
+        if (like != null) {
+            like.setOnClickListener(v -> actions.dispatchToWeb(
+                    "window.dispatchEvent(new CustomEvent('nativeToggleLike'))"));
+        }
         if (queue != null) {
             queue.setOnClickListener(v -> actions.dispatchToWeb(
                     "window.dispatchEvent(new CustomEvent('nativeOpenQueue'))"));
@@ -110,6 +118,10 @@ final class PlayerUiController {
         if (add != null) {
             add.setOnClickListener(v -> actions.dispatchToWeb(
                     "window.dispatchEvent(new CustomEvent('nativeAddToPlaylist'))"));
+        }
+        if (share != null) {
+            share.setOnClickListener(v -> actions.dispatchToWeb(
+                    "window.dispatchEvent(new CustomEvent('nativeShareTrack'))"));
         }
 
         if (seekBar != null) {
@@ -157,7 +169,7 @@ final class PlayerUiController {
     }
 
     void showEmptyState() {
-        updateUi("No song selected", "-", null, false, 0L, 0L, false);
+        updateUi("No song selected", "-", null, false, 0L, 0L, false, false);
     }
 
     void updateFromState(@Nullable Intent stateIntent) {
@@ -169,7 +181,8 @@ final class PlayerUiController {
                 stateIntent.getBooleanExtra("playing", false),
                 stateIntent.getLongExtra("position_ms", 0L),
                 stateIntent.getLongExtra("duration_ms", 0L),
-                stateIntent.getBooleanExtra("video_mode", false)
+                stateIntent.getBooleanExtra("video_mode", false),
+                stateIntent.getBooleanExtra("liked", false)
         );
     }
 
@@ -181,7 +194,8 @@ final class PlayerUiController {
                 snapshot.playing,
                 snapshot.positionMs,
                 snapshot.durationMs,
-                snapshot.videoMode
+                snapshot.videoMode,
+                false
         );
     }
 
@@ -191,7 +205,8 @@ final class PlayerUiController {
                           boolean playing,
                           long positionMs,
                           long durationMs,
-                          boolean videoModeEnabled) {
+                          boolean videoModeEnabled,
+                          boolean liked) {
         String safeTitle = (rawTitle == null || rawTitle.trim().isEmpty()) ? "No song selected" : rawTitle;
         String safeArtist = (rawArtist == null || rawArtist.trim().isEmpty()) ? "-" : rawArtist;
         boolean hasMedia = !"No song selected".equals(safeTitle);
@@ -221,6 +236,16 @@ final class PlayerUiController {
                     : R.drawable.player_button_bg);
             mode.setEnabled(hasMedia);
             mode.setAlpha(hasMedia ? 1f : 0.5f);
+        }
+        if (like != null) {
+            like.setEnabled(hasMedia);
+            like.setAlpha(hasMedia ? 1f : 0.5f);
+            like.setImageResource(liked ? R.drawable.ic_favorite : R.drawable.ic_favorite_border);
+            like.setBackgroundResource(liked ? R.drawable.player_button_bg_active : R.drawable.player_button_bg);
+        }
+        if (share != null) {
+            share.setEnabled(hasMedia);
+            share.setAlpha(hasMedia ? 1f : 0.5f);
         }
 
         long safeDuration = Math.max(0L, durationMs);

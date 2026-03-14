@@ -126,6 +126,16 @@
             android:gravity="end|center_vertical">
 
             <ImageButton
+                android:id="@+id/btnLike"
+                android:layout_width="42dp"
+                android:layout_height="42dp"
+                android:background="@drawable/player_button_bg"
+                android:contentDescription="Like"
+                android:padding="10dp"
+                android:src="@drawable/ic_favorite_border"
+                android:tint="#FFFFFF" />
+
+            <ImageButton
                 android:id="@+id/btnQueue"
                 android:layout_width="42dp"
                 android:layout_height="42dp"
@@ -143,6 +153,16 @@
                 android:contentDescription="Add"
                 android:padding="10dp"
                 android:src="@drawable/ic_add"
+                android:tint="#FFFFFF" />
+
+            <ImageButton
+                android:id="@+id/btnShare"
+                android:layout_width="42dp"
+                android:layout_height="42dp"
+                android:background="@drawable/player_button_bg"
+                android:contentDescription="Share"
+                android:padding="10dp"
+                android:src="@drawable/ic_share"
                 android:tint="#FFFFFF" />
 
             <ImageButton
