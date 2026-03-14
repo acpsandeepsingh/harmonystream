@@ -6,6 +6,7 @@ import java.util.regex.Pattern;
 final class YouTubeUrlNormalizer {
     private static final Pattern SHORT_URL = Pattern.compile("(?:https?://)?(?:www\\.)?youtu\\.be/([A-Za-z0-9_-]{6,})");
     private static final Pattern EMBED_URL = Pattern.compile("(?:https?://)?(?:www\\.)?youtube\\.com/embed/([A-Za-z0-9_-]{6,})");
+    private static final Pattern WATCH_URL = Pattern.compile("(?:https?://)?(?:www\\.)?youtube\\.com/watch\\?[^\\s]*v=([A-Za-z0-9_-]{6,})");
 
     private YouTubeUrlNormalizer() {}
 
@@ -14,6 +15,11 @@ final class YouTubeUrlNormalizer {
 
         String input = videoIdOrUrl.trim();
         if (input.isEmpty()) return "";
+
+        Matcher watchMatcher = WATCH_URL.matcher(input);
+        if (watchMatcher.find()) {
+            return "https://www.youtube.com/watch?v=" + watchMatcher.group(1);
+        }
 
         if (input.startsWith("http://") || input.startsWith("https://")) {
             Matcher shortMatcher = SHORT_URL.matcher(input);

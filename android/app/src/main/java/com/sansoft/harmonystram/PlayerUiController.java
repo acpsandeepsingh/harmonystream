@@ -229,7 +229,9 @@ final class PlayerUiController {
         }
         if (mode != null) {
             mode.setSelected(videoModeEnabled);
-            mode.setImageResource(videoModeEnabled ? R.drawable.ic_videocam : R.drawable.ic_music_note);
+            // Mode button always shows the *target* mode.
+            // In audio mode we show the video icon; in video mode we show audio icon.
+            mode.setImageResource(videoModeEnabled ? R.drawable.ic_music_note : R.drawable.ic_videocam);
             mode.setContentDescription(videoModeEnabled ? "Switch to audio" : "Switch to video");
             mode.setBackgroundResource(videoModeEnabled
                     ? R.drawable.player_button_bg_active

@@ -52,12 +52,16 @@ final class YouTubeStreamExtractor {
     }
 
     private StreamInfo resolveStreamInfo(StreamingService yt, String videoIdOrUrl) throws Exception {
+        String normalized = YouTubeUrlNormalizer.normalizeWatchUrl(videoIdOrUrl);
         try {
-            return StreamInfo.getInfo(yt, videoIdOrUrl);
-        } catch (Throwable directFailure) {
-            String normalized = YouTubeUrlNormalizer.normalizeWatchUrl(videoIdOrUrl);
-            if (normalized.equals(videoIdOrUrl)) throw directFailure;
             return StreamInfo.getInfo(yt, normalized);
+        } catch (Throwable normalizedFailure) {
+            if (normalized.equals(videoIdOrUrl)) {
+                throw normalizedFailure;
+            }
+            // Fallback to the original source in case upstream extractor logic
+            // is stricter for specific URL variants.
+            return StreamInfo.getInfo(yt, videoIdOrUrl);
         }
     }
 
