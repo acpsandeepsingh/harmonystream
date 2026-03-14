@@ -943,14 +943,25 @@ export function WebMusicPlayer() {
       addSongToPlaylist(playlists[0].id, currentTrack);
     };
     const handleNativeOpenQueue = () => setIsQueueOpen(true);
+    const handleNativeToggleLike = () => {
+      if (!currentTrack) return;
+      toggleLikeSong(currentTrack);
+    };
+    const handleNativeShareTrack = () => {
+      handleShare();
+    };
 
     window.addEventListener('nativeAddToPlaylist', handleNativeAddToPlaylist);
     window.addEventListener('nativeOpenQueue', handleNativeOpenQueue);
+    window.addEventListener('nativeToggleLike', handleNativeToggleLike);
+    window.addEventListener('nativeShareTrack', handleNativeShareTrack);
     return () => {
       window.removeEventListener('nativeAddToPlaylist', handleNativeAddToPlaylist);
       window.removeEventListener('nativeOpenQueue', handleNativeOpenQueue);
+      window.removeEventListener('nativeToggleLike', handleNativeToggleLike);
+      window.removeEventListener('nativeShareTrack', handleNativeShareTrack);
     };
-  }, [currentTrack, playlists, addSongToPlaylist]);
+  }, [currentTrack, playlists, addSongToPlaylist, toggleLikeSong, handleShare]);
 
   // ── Queue DnD ──────────────────────────────────────────────────────────────
   const sensors = useSensors(
