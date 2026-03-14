@@ -82,5 +82,10 @@ function AndroidBridgePlayer() {
 export function MusicPlayer() {
   const isAndroidAppRuntime = useMemo(detectAndroidRuntime, []);
   if (!isAndroidAppRuntime) return <WebMusicPlayer />;
-  return <AndroidBridgePlayer />;
+  return (
+    <>
+      <AndroidBridgePlayer />
+      <WebMusicPlayer />
+    </>
+  );
 }
