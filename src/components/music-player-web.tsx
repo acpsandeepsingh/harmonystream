@@ -46,7 +46,7 @@ import { Slider } from '@/components/ui/slider';
 import {
   Play, Pause, SkipBack, SkipForward,
   Video, Music as MusicIcon, Plus, ListMusic, PlusCircle,
-  Heart, X, History, GripVertical, Share2,
+  Heart, X, History, GripVertical, Share2, MonitorUp,
 } from 'lucide-react';
 import React, {
   useEffect, useState, useRef, useCallback, useMemo,
@@ -142,6 +142,10 @@ declare global {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+const VIDEO_ZOOM_LEVELS = [100, 125, 150] as const;
+type VideoZoomPercent = (typeof VIDEO_ZOOM_LEVELS)[number];
+const DEFAULT_VIDEO_ZOOM: VideoZoomPercent = 125;
+
 const formatDuration = (seconds: number) => {
   if (!isFinite(seconds) || seconds < 0) return '0:00';
   const m = Math.floor(seconds / 60);
@@ -254,10 +258,10 @@ PortraitPlayer.displayName = 'PortraitPlayer';
 // ---------------------------------------------------------------------------
 const LandscapePlayer = React.memo(function LandscapePlayer({
   currentTrack, progress, duration, currentTime, isPlaying, isLiked,
-  playerMode, volume, playlists, showControls,
+  playerMode, volume, playlists, showControls, videoZoom,
   onToggleLike, onTogglePlayerMode, onPlayPrev, onPlayNext,
   onTogglePlayPause, onVolumeChange, onSeekChange, onSeekCommit,
-  onAddToPlaylist, onShare, onOpenCreatePlaylistDialog,
+  onAddToPlaylist, onShare, onOpenCreatePlaylistDialog, onVideoZoomChange,
   onResetControlsTimeout, container,
 }: any) {
   const isVideo = playerMode === 'video';
@@ -368,6 +372,29 @@ const LandscapePlayer = React.memo(function LandscapePlayer({
                 <span className="sr-only">Queue</span>
               </Button>
             </SheetTrigger>
+            {isVideo && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="sm" className="min-w-14 px-2 gap-1">
+                    <MonitorUp className="h-4 w-4" />
+                    <span>{videoZoom}%</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent container={container} align="end">
+                  <DropdownMenuLabel>Zoom</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {VIDEO_ZOOM_LEVELS.map((zoomLevel) => (
+                    <DropdownMenuItem
+                      key={zoomLevel}
+                      onClick={() => onVideoZoomChange(zoomLevel)}
+                      className={cn(videoZoom === zoomLevel && 'font-semibold')}
+                    >
+                      {zoomLevel}%
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
             <Button variant="ghost" size="icon" onClick={onTogglePlayerMode}>
               {playerMode === 'audio'
                 ? <Video className="h-5 w-5" />
@@ -507,6 +534,7 @@ export function WebMusicPlayer() {
   const [volume, setVolume]         = useState(100);
   const [isQueueOpen, setIsQueueOpen] = useState(false);
   const [showControls, setShowControls] = useState(true);
+  const [videoZoom, setVideoZoom] = useState<VideoZoomPercent>(DEFAULT_VIDEO_ZOOM);
   const [isCreatePlaylistDialogOpen, setIsCreatePlaylistDialogOpen] = useState(false);
 
   // Progress — updated at 500 ms cadence from either polling or native broadcast
@@ -798,6 +826,77 @@ export function WebMusicPlayer() {
     if (currentTrack) handleTrackError(currentTrack.id);
   }, [currentTrack, handleTrackError]);
 
+  // ── Video mode immersive/fullscreen + zoom persistence ───────────────────
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    let cancelled = false;
+    const htmlEl = document.documentElement;
+    const bodyEl = document.body;
+
+    const enterImmersive = async () => {
+      htmlEl.style.overflow = 'hidden';
+      bodyEl.style.overflow = 'hidden';
+      bodyEl.style.touchAction = 'none';
+      bodyEl.classList.add('overscroll-none');
+
+      const root = document.documentElement as any;
+      if (playerMode === 'video' && root?.requestFullscreen && !document.fullscreenElement) {
+        try {
+          await root.requestFullscreen();
+        } catch {
+          // On iOS/embedded contexts this may reject; CSS fallback still applies.
+        }
+      }
+    };
+
+    const exitImmersive = async () => {
+      htmlEl.style.overflow = '';
+      bodyEl.style.overflow = '';
+      bodyEl.style.touchAction = '';
+      bodyEl.classList.remove('overscroll-none');
+
+      if (document.fullscreenElement && document.exitFullscreen) {
+        try {
+          await document.exitFullscreen();
+        } catch {
+          // Ignore fullscreen exit failures from browser policies.
+        }
+      }
+    };
+
+    if (playerMode === 'video') {
+      void enterImmersive();
+    } else {
+      void exitImmersive();
+    }
+
+    return () => {
+      if (cancelled) return;
+      cancelled = true;
+      void exitImmersive();
+    };
+  }, [playerMode]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const storedZoom = window.localStorage.getItem('harmony-video-zoom');
+    if (!storedZoom) return;
+
+    const parsedZoom = Number(storedZoom);
+    if (VIDEO_ZOOM_LEVELS.includes(parsedZoom as VideoZoomPercent)) {
+      setVideoZoom(parsedZoom as VideoZoomPercent);
+    }
+  }, []);
+
+  const handleVideoZoomChange = useCallback((zoomPercent: VideoZoomPercent) => {
+    setVideoZoom(zoomPercent);
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('harmony-video-zoom', String(zoomPercent));
+    }
+  }, []);
+
   // ── Controls auto-hide (video mode) ───────────────────────────────────────
   const resetControlsTimeout = useCallback(() => {
     setShowControls(true);
@@ -1028,6 +1127,8 @@ export function WebMusicPlayer() {
     onAddToPlaylist:           handleAddToPlaylist,
     onShare:                   handleShare,
     onOpenCreatePlaylistDialog: setIsCreatePlaylistDialogOpen,
+    videoZoom,
+    onVideoZoomChange: handleVideoZoomChange,
   };
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -1047,11 +1148,19 @@ export function WebMusicPlayer() {
             'fixed inset-0 z-40 bg-black transition-opacity duration-300',
             playerMode === 'video' ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none',
           )}
+          style={{
+            padding: playerMode === 'video' ? 0 : undefined,
+            margin: 0,
+          }}
           onMouseMove={resetControlsTimeout}
           onClick={resetControlsTimeout}
           aria-hidden={playerMode !== 'video'}
         >
-          <YouTube
+          <div
+            className="w-full h-full"
+            style={{ transform: `scale(${videoZoom / 100})`, transformOrigin: 'center center' }}
+          >
+            <YouTube
             key={currentTrack.id}
             videoId={currentTrack.videoId || currentTrack.id}
             opts={youtubeOpts}
@@ -1061,6 +1170,7 @@ export function WebMusicPlayer() {
             className="w-full h-full"
             iframeClassName="w-full h-full"
           />
+          </div>
         </div>
 
         {/* ═══════════════════════════════════════════════════════════════════
