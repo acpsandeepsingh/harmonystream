@@ -123,8 +123,8 @@ public class WebAppActivity extends AppCompatActivity
     }
 
     @Override
-    public void onMediaAction(@NonNull String action) {
-        webViewManager.dispatchPendingMediaAction(action);
+    public void onMediaAction(@NonNull Intent mediaIntent) {
+        webViewManager.dispatchPendingMediaAction(mediaIntent);
         clearPendingMediaAction();
     }
 
@@ -185,7 +185,9 @@ public class WebAppActivity extends AppCompatActivity
         if (intent == null) return;
         String action = intent.getStringExtra(PlaybackService.EXTRA_PENDING_MEDIA_ACTION);
         if (action != null && !action.isEmpty()) {
-            webViewManager.dispatchPendingMediaAction(action);
+            Intent mediaIntent = new Intent(PlaybackService.ACTION_MEDIA_CONTROL);
+            mediaIntent.putExtra("action", action);
+            webViewManager.dispatchPendingMediaAction(mediaIntent);
             clearPendingMediaAction();
         }
     }

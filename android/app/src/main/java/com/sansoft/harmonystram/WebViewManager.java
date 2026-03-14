@@ -112,12 +112,30 @@ final class WebViewManager {
         webView.destroy();
     }
 
-    void dispatchPendingMediaAction(@NonNull String action) {
-        actions.dispatchToWeb("window.dispatchEvent(new CustomEvent('nativePlaybackCommand', { detail: { action: "
-                + JSONObject.quote(action)
-                + " } }));");
+    void dispatchPendingMediaAction(@NonNull Intent mediaIntent) {
+        String action = mediaIntent.getStringExtra("action");
+        if (action == null || action.isEmpty()) return;
+
+        JSONObject detail = new JSONObject();
+        try {
+            detail.put("action", action);
+            detail.put("queue_index", mediaIntent.getIntExtra("queue_index", -1));
+            detail.put("queue_length", mediaIntent.getIntExtra("queue_length", 0));
+            detail.put("title", mediaIntent.getStringExtra("title"));
+            detail.put("artist", mediaIntent.getStringExtra("artist"));
+            detail.put("video_id", mediaIntent.getStringExtra("video_id"));
+            detail.put("position_ms", mediaIntent.getLongExtra("position_ms", 0L));
+            detail.put("duration_ms", mediaIntent.getLongExtra("duration_ms", 0L));
+            detail.put("playing", mediaIntent.getBooleanExtra("playing", false));
+            detail.put("event_ts", mediaIntent.getLongExtra("event_ts", System.currentTimeMillis()));
+        } catch (Exception ignored) {
+        }
+
+        actions.dispatchToWeb("window.dispatchEvent(new CustomEvent('nativePlaybackCommand', { detail: "
+                + detail
+                + " }));");
         actions.dispatchToWeb("window.__harmonyNativeApplyCommand&&window.__harmonyNativeApplyCommand("
-                + JSONObject.quote(action) + ");");
+                + JSONObject.quote(action) + "," + detail + ");");
     }
 
     private final class AssetBackedWebViewClient extends WebViewClientCompat {

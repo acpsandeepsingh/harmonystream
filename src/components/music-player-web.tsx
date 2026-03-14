@@ -133,7 +133,7 @@ declare global {
       setVolume?:    (volume: number)     => void;
     };
     updateProgress?:              (positionMs: number, durationMs: number) => void;
-    __harmonyNativeApplyCommand?: (action: string) => void;
+    __harmonyNativeApplyCommand?: (action: string, detail?: any) => void;
   }
 }
 
@@ -661,8 +661,14 @@ export function WebMusicPlayer() {
   }, [setPlayerMode]);
 
   // ── SYNC: nativePlaybackCommand (Bluetooth / notification buttons) ─────────
-  const applyNativeCommand = useCallback((action: string) => {
+  const applyNativeCommand = useCallback((action: string, detail?: any) => {
     if (!action) return;
+
+    const queueIndex = detail?.queue_index ?? -1;
+    if (typeof queueIndex === 'number' && queueIndex >= 0) {
+      syncNativeIndex(queueIndex);
+    }
+
     switch (action) {
       case 'com.sansoft.harmonystram.PLAY':
         if (iframeIsPlayer && playerRef.current) {
@@ -687,7 +693,7 @@ export function WebMusicPlayer() {
       default:
         break;
     }
-  }, [iframeIsPlayer, setGlobalIsPlaying, globalPlayNext, globalPlayPrev]);
+  }, [iframeIsPlayer, setGlobalIsPlaying, globalPlayNext, globalPlayPrev, syncNativeIndex]);
 
   useEffect(() => {
     window.__harmonyNativeApplyCommand = applyNativeCommand;
@@ -696,8 +702,9 @@ export function WebMusicPlayer() {
 
   useEffect(() => {
     const handler = (e: Event) => {
-      const action = (e as CustomEvent<{ action: string }>).detail?.action;
-      if (action) applyNativeCommand(action);
+      const detail = (e as CustomEvent<any>).detail;
+      const action = detail?.action;
+      if (action) applyNativeCommand(action, detail);
     };
     window.addEventListener('nativePlaybackCommand', handler);
     return () => window.removeEventListener('nativePlaybackCommand', handler);

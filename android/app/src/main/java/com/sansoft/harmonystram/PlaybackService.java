@@ -897,6 +897,17 @@ public class PlaybackService extends Service {
     private void dispatchActionToUi(String action) {
         Intent intent = new Intent(ACTION_MEDIA_CONTROL);
         intent.putExtra("action", action);
+        intent.putExtra("queue_index", currentQueueIndex);
+        intent.putExtra("queue_length", playbackQueue.size());
+        intent.putExtra("title", currentTitle);
+        intent.putExtra("artist", currentArtist);
+        intent.putExtra("video_id", currentVideoId);
+        intent.putExtra("position_ms", player != null
+                ? Math.max(0, player.getCurrentPosition()) : currentPositionMs);
+        intent.putExtra("duration_ms", player != null
+                ? Math.max(0, player.getDuration()) : currentDurationMs);
+        intent.putExtra("playing", player != null && player.isPlaying());
+        intent.putExtra("event_ts", System.currentTimeMillis());
         sendBroadcast(intent);
     }
 
