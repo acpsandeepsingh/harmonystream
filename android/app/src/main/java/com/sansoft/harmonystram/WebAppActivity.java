@@ -9,6 +9,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.util.Rational;
 import android.webkit.WebView;
+import android.view.View;
 import android.widget.FrameLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
@@ -58,6 +59,16 @@ public class WebAppActivity extends AppCompatActivity
         seekOverlayIndicator = findViewById(R.id.seek_overlay_indicator);
         ProgressBar loadingIndicator = findViewById(R.id.web_loading_indicator);
         if (loadingIndicator != null) loadingIndicator.setVisibility(ProgressBar.GONE);
+
+        webView.setClipToPadding(false);
+        playerContainer.setClickable(false);
+        playerContainer.setFocusable(false);
+        playerContainer.addOnLayoutChangeListener((v, left, top, right, bottom,
+                                                   oldLeft, oldTop, oldRight, oldBottom) -> {
+            if (bottom - top != oldBottom - oldTop) {
+                updateWebViewBottomInset();
+            }
+        });
 
         insetsController = WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
         showNormalBars();
@@ -161,16 +172,33 @@ public class WebAppActivity extends AppCompatActivity
         if (enabled) {
             hideSystemBars();
             webView.setVisibility(WebView.VISIBLE);
-            webView.setClickable(false);
-            webView.setLongClickable(false);
+            webView.setClickable(true);
+            webView.setLongClickable(true);
             playerContainer.setVisibility(FrameLayout.GONE);
+            updateWebViewBottomInset();
         } else {
             showNormalBars();
-            webView.setVisibility(WebView.INVISIBLE);
-            webView.setClickable(false);
-            webView.setLongClickable(false);
+            webView.setVisibility(WebView.VISIBLE);
+            webView.setClickable(true);
+            webView.setLongClickable(true);
             playerContainer.setVisibility(FrameLayout.VISIBLE);
+            updateWebViewBottomInset();
         }
+    }
+
+    private void updateWebViewBottomInset() {
+        int bottomInset = playerContainer.getVisibility() == View.VISIBLE
+                ? playerContainer.getHeight()
+                : 0;
+        if (webView.getPaddingBottom() == bottomInset) {
+            return;
+        }
+        webView.setPadding(
+                webView.getPaddingLeft(),
+                webView.getPaddingTop(),
+                webView.getPaddingRight(),
+                bottomInset
+        );
     }
 
     @Override
