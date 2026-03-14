@@ -47,8 +47,8 @@ import com.google.android.exoplayer2.Player;
 import com.google.android.exoplayer2.audio.AudioAttributes;
 import com.google.android.exoplayer2.ext.mediasession.MediaSessionConnector;
 import com.google.android.exoplayer2.ext.mediasession.TimelineQueueNavigator;
-import com.google.android.exoplayer2.source.DefaultMediaSourceFactory;
-import com.google.android.exoplayer2.upstream.DefaultDataSource;
+import com.google.android.exoplayer2.source.MediaSource;
+import com.google.android.exoplayer2.source.ProgressiveMediaSource;
 import com.google.android.exoplayer2.upstream.DefaultHttpDataSource;
 
 import org.json.JSONArray;
@@ -305,18 +305,20 @@ public class PlaybackService extends Service {
                 .setActions(ENABLED_PLAYBACK_ACTIONS);
     }
 
-    private DefaultDataSource.Factory buildPlayerDataSourceFactory() {
+    private ProgressiveMediaSource.Factory buildPlayerMediaSourceFactory() {
         DefaultHttpDataSource.Factory httpFactory = new DefaultHttpDataSource.Factory()
                 .setUserAgent(YouTubeStreamExtractor.EXTRACTOR_USER_AGENT)
                 .setAllowCrossProtocolRedirects(true)
                 .setConnectTimeoutMs(20_000)
                 .setReadTimeoutMs(20_000);
 
-        httpFactory.getDefaultRequestProperties().set("Referer", YT_REFERER);
-        httpFactory.getDefaultRequestProperties().set("Origin", YT_ORIGIN);
-        httpFactory.getDefaultRequestProperties().set("Accept-Language", "en-US,en;q=0.9");
+        Map<String, String> defaultHeaders = new HashMap<>();
+        defaultHeaders.put("Referer", YT_REFERER);
+        defaultHeaders.put("Origin", YT_ORIGIN);
+        defaultHeaders.put("Accept-Language", "en-US,en;q=0.9");
+        httpFactory.setDefaultRequestProperties(defaultHeaders);
 
-        return new DefaultDataSource.Factory(this, httpFactory);
+        return new ProgressiveMediaSource.Factory(httpFactory);
     }
 
     private void initPlayer() {
@@ -327,10 +329,7 @@ public class PlaybackService extends Service {
                 .build();
 
         try {
-            DefaultDataSource.Factory dataSourceFactory = buildPlayerDataSourceFactory();
-            player = new ExoPlayer.Builder(this)
-                    .setMediaSourceFactory(new DefaultMediaSourceFactory(dataSourceFactory))
-                    .build();
+            player = new ExoPlayer.Builder(this).build();
             player.setAudioAttributes(audioAttrs, true);
             player.setVolume(1.0f);
             debugToast("ExoPlayer initialization success");
@@ -721,7 +720,9 @@ public class PlaybackService extends Service {
                     }
 
                     debugToast("Preparing player");
-                    player.setMediaItem(MediaItem.fromUri(selected));
+                    MediaSource mediaSource = buildPlayerMediaSourceFactory()
+                            .createMediaSource(MediaItem.fromUri(selected));
+                    player.setMediaSource(mediaSource);
                     player.prepare();
                     if (seekMs > 0) player.seekTo(seekMs);
                     player.play();
