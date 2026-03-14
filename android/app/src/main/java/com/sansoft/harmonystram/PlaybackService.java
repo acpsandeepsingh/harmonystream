@@ -47,6 +47,9 @@ import com.google.android.exoplayer2.Player;
 import com.google.android.exoplayer2.audio.AudioAttributes;
 import com.google.android.exoplayer2.ext.mediasession.MediaSessionConnector;
 import com.google.android.exoplayer2.ext.mediasession.TimelineQueueNavigator;
+import com.google.android.exoplayer2.source.DefaultMediaSourceFactory;
+import com.google.android.exoplayer2.upstream.DefaultDataSource;
+import com.google.android.exoplayer2.upstream.DefaultHttpDataSource;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -69,6 +72,8 @@ public class PlaybackService extends Service {
     private static final int STREAM_RESOLVE_MAX_ATTEMPTS = 2;
     private static final long RESOLVED_STREAM_REUSE_WINDOW_MS = 5 * 60 * 1000L;
     private static final int MAX_CONSECUTIVE_PLAYER_ERRORS = 2;
+    private static final String YT_REFERER = "https://www.youtube.com/";
+    private static final String YT_ORIGIN = "https://www.youtube.com";
     public static final String CHANNEL_ID = "harmonystream_playback";
     public static final int NOTIFICATION_ID = 1001;
 
@@ -298,6 +303,20 @@ public class PlaybackService extends Service {
                 .setActions(ENABLED_PLAYBACK_ACTIONS);
     }
 
+    private DefaultDataSource.Factory buildPlayerDataSourceFactory() {
+        DefaultHttpDataSource.Factory httpFactory = new DefaultHttpDataSource.Factory()
+                .setUserAgent(YouTubeStreamExtractor.EXTRACTOR_USER_AGENT)
+                .setAllowCrossProtocolRedirects(true)
+                .setConnectTimeoutMs(20_000)
+                .setReadTimeoutMs(20_000);
+
+        httpFactory.getDefaultRequestProperties().set("Referer", YT_REFERER);
+        httpFactory.getDefaultRequestProperties().set("Origin", YT_ORIGIN);
+        httpFactory.getDefaultRequestProperties().set("Accept-Language", "en-US,en;q=0.9");
+
+        return new DefaultDataSource.Factory(this, httpFactory);
+    }
+
     private void initPlayer() {
         debugToast("ExoPlayer initialization start");
         AudioAttributes audioAttrs = new AudioAttributes.Builder()
@@ -306,7 +325,10 @@ public class PlaybackService extends Service {
                 .build();
 
         try {
-            player = new ExoPlayer.Builder(this).build();
+            DefaultDataSource.Factory dataSourceFactory = buildPlayerDataSourceFactory();
+            player = new ExoPlayer.Builder(this)
+                    .setMediaSourceFactory(new DefaultMediaSourceFactory(dataSourceFactory))
+                    .build();
             player.setAudioAttributes(audioAttrs, true);
             player.setVolume(1.0f);
             debugToast("ExoPlayer initialization success");
