@@ -520,6 +520,7 @@ export function WebMusicPlayer() {
   const controlsTimeoutRef     = useRef<NodeJS.Timeout | null>(null);
   const pendingActionRef       = useRef<string | null>(null);
   const lastNativeStateTsRef   = useRef(0);
+  const lastNativeErrorRef     = useRef<string | null>(null);
 
   /**
    * Tracks the videoId that is currently loaded in the iframe.
@@ -631,6 +632,20 @@ export function WebMusicPlayer() {
         syncNativeIndex(queueIndex);
       }
 
+      const nativeError = typeof detail.last_error === 'string'
+        ? detail.last_error.trim()
+        : '';
+      if (nativeError && nativeError !== lastNativeErrorRef.current) {
+        lastNativeErrorRef.current = nativeError;
+        toast({
+          title: 'Playback failed',
+          description: nativeError,
+          variant: 'destructive',
+        });
+      } else if (!nativeError) {
+        lastNativeErrorRef.current = null;
+      }
+
       // ── SYNC #3: iframe is the player for playback/progress in both modes ─
       // Native state still drives queue index sync only.
       if (iframeIsPlayer) return;
@@ -654,7 +669,7 @@ export function WebMusicPlayer() {
 
     window.addEventListener('nativePlaybackState', handler);
     return () => window.removeEventListener('nativePlaybackState', handler);
-  }, [syncNativeIndex, setGlobalIsPlaying, iframeIsPlayer]);
+  }, [syncNativeIndex, setGlobalIsPlaying, iframeIsPlayer, toast]);
 
   // ── SYNC: nativeSetVideoMode — service tells JS to switch mode ─────────────
   useEffect(() => {

@@ -13,6 +13,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
+import android.util.Log;
+
 import okhttp3.MediaType;
 import okhttp3.ConnectionSpec;
 import okhttp3.OkHttpClient;
@@ -21,6 +23,7 @@ import okhttp3.RequestBody;
 import okhttp3.ResponseBody;
 
 public class DownloaderImpl extends Downloader {
+    private static final String TAG = "ExtractorDownloader";
 
     private static final String FALLBACK_USER_AGENT =
             "Mozilla/5.0 (Linux; Android 8.1; Mobile) AppleWebKit/537.36 "
@@ -66,6 +69,9 @@ public class DownloaderImpl extends Downloader {
     }
 
     private Response makeRequest(Request request) throws IOException {
+        final String method = normalizeHttpMethod(request.httpMethod());
+        Log.d(TAG, "Extractor request: method=" + method + " url=" + request.url());
+
         okhttp3.Request.Builder builder = new okhttp3.Request.Builder()
                 .url(request.url());
 
@@ -93,7 +99,6 @@ public class DownloaderImpl extends Downloader {
             requestBody = RequestBody.create(dataToSend, (MediaType) null);
         }
 
-        String method = normalizeHttpMethod(request.httpMethod());
         if (requiresRequestBody(method) && requestBody == null) {
             // OkHttp requires a non-null body for methods like POST/PUT/PATCH.
             requestBody = EMPTY_BODY;
@@ -108,6 +113,9 @@ public class DownloaderImpl extends Downloader {
             int code = response.code();
             String message = response.message();
             String finalUrl = response.request().url().toString();
+            Log.d(TAG, "Extractor response: method=" + method
+                    + " code=" + code
+                    + " finalUrl=" + finalUrl);
 
             // 5. Read response body as string (expected by extractor Response contract)
             String body = "";
