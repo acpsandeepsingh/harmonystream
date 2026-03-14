@@ -57,6 +57,7 @@ import org.schabi.newpipe.extractor.stream.VideoStream;
 
 import java.io.InputStream;
 import java.net.HttpURLConnection;
+import java.net.URI;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
@@ -67,6 +68,7 @@ public class PlaybackService extends Service {
 
     private static final String TAG = "PlaybackService";
     private static final String PLAYER_DEBUG_TAG = "PLAYER_DEBUG";
+    private static final int STREAM_RESOLVE_MAX_ATTEMPTS = 2;
     public static final String CHANNEL_ID = "harmonystream_playback";
     public static final int NOTIFICATION_ID = 1001;
 
@@ -193,6 +195,7 @@ public class PlaybackService extends Service {
     private boolean               videoMode           = false;
     private boolean               progressLoopRunning;
     private volatile long         pendingPlayRequestedAtMs;
+    @Nullable private String      lastPlaybackError;
 
     private final List<QueueItem> playbackQueue     = new ArrayList<>();
     private int                   currentQueueIndex = -1;
@@ -393,6 +396,13 @@ public class PlaybackService extends Service {
             public void onPlayerError(PlaybackException error) {
                 debugToast("Player error: " + error.getMessage());
                 Log.e(TAG, "Playback error", error);
+                lastPlaybackError = "Playback failed: " + rootMessage(error);
+                broadcastState();
+
+                if (currentVideoId != null && !currentVideoId.isEmpty()) {
+                    Log.w(TAG, "Re-resolving stream after player error for videoId=" + currentVideoId);
+                    resolveAndPlay(currentVideoId, Math.max(0L, currentPositionMs));
+                }
             }
         });
     }
@@ -577,26 +587,28 @@ public class PlaybackService extends Service {
         final long requestToken = ++resolveRequestToken;
         resolverExecutor.execute(() -> {
             try {
-                debugToast("Starting extraction");
-                StreamingService yt = ServiceList.YouTube;
-                StreamInfo info     = resolveStreamInfo(yt, videoId);
-                debugToast("Extraction success");
-
-                List<AudioStream> audioStreams = info.getAudioStreams();
-                List<VideoStream> videoStreams = info.getVideoStreams();
-
-                audioStreamUrl = pickItag140(audioStreams);
-                if (videoStreams != null && !videoStreams.isEmpty()) {
-                    videoStreamUrl = videoStreams.get(0).getContent();
+                StreamResolution resolution = null;
+                Throwable lastResolveFailure = null;
+                for (int attempt = 1; attempt <= STREAM_RESOLVE_MAX_ATTEMPTS; attempt++) {
+                    try {
+                        resolution = resolveStreamUrl(videoId, attempt);
+                        break;
+                    } catch (Throwable t) {
+                        lastResolveFailure = t;
+                        Log.w(TAG, "Extractor attempt " + attempt + " failed for videoId=" + videoId, t);
+                    }
+                }
+                if (resolution == null) {
+                    throw new IllegalStateException("Could not resolve stream URL", lastResolveFailure);
                 }
 
-                final String selected = videoMode
-                        ? pickPlayableVideo(videoStreams)
-                        : audioStreamUrl;
+                final String selected = resolution.streamUrl;
+                audioStreamUrl = resolution.audioStreamUrl;
+                videoStreamUrl = resolution.videoStreamUrl;
+
+                Log.i(TAG, "Resolved playback stream: mode=" + (videoMode ? "video" : "audio")
+                        + " host=" + safeHost(selected) + " videoId=" + videoId);
                 debugToast("Stream URL received");
-                if (selected == null || !selected.contains("googlevideo.com")) {
-                    throw new IllegalStateException("No playable googlevideo stream found");
-                }
 
                 mainHandler.post(() -> {
                     if (player == null) return;
@@ -615,6 +627,7 @@ public class PlaybackService extends Service {
                     player.prepare();
                     if (seekMs > 0) player.seekTo(seekMs);
                     player.play();
+                    lastPlaybackError = null;
                     currentResolvedStreamUrl = selected;
                     pendingPlayRequestedAtMs = 0L;
                     refreshArtworkAsync(currentThumbnailUrl);
@@ -625,10 +638,37 @@ public class PlaybackService extends Service {
                 if (requestToken == resolveRequestToken) {
                     pendingPlayRequestedAtMs = 0L;
                 }
+                lastPlaybackError = "Extraction failed: " + rootMessage(t);
                 debugToast("Extraction failed");
                 Log.e(TAG, "Unable to resolve stream URL", t);
+                broadcastState();
             }
         });
+    }
+
+    private StreamResolution resolveStreamUrl(String videoId, int attempt) throws Exception {
+        debugToast("Starting extraction");
+        StreamingService yt = ServiceList.YouTube;
+        StreamInfo info = resolveStreamInfo(yt, videoId);
+
+        List<AudioStream> audioStreams = info.getAudioStreams();
+        List<VideoStream> videoStreams = info.getVideoStreams();
+
+        String audioCandidate = pickPreferredAudioStream(audioStreams);
+        String videoCandidate = pickPlayableVideo(videoStreams);
+        String selected = videoMode ? videoCandidate : audioCandidate;
+
+        Log.d(TAG, "Extractor response: attempt=" + attempt
+                + " videoId=" + videoId
+                + " audioStreams=" + (audioStreams == null ? 0 : audioStreams.size())
+                + " videoStreams=" + (videoStreams == null ? 0 : videoStreams.size())
+                + " selectedHost=" + safeHost(selected));
+
+        if (!isLikelyPlayableUrl(selected)) {
+            throw new IllegalStateException("Extractor returned an invalid stream URL");
+        }
+
+        return new StreamResolution(selected, audioCandidate, videoCandidate);
     }
 
     private void debugToast(String msg) {
@@ -641,11 +681,12 @@ public class PlaybackService extends Service {
     private StreamInfo resolveStreamInfo(StreamingService yt,
                                          String videoIdOrUrl) throws Exception {
         try {
+            Log.d(TAG, "Extractor request: source=" + videoIdOrUrl);
             return StreamInfo.getInfo(yt, videoIdOrUrl);
         } catch (Throwable directFailure) {
             String normalized = YouTubeUrlNormalizer.normalizeWatchUrl(videoIdOrUrl);
             if (normalized.equals(videoIdOrUrl)) throw directFailure;
-            Log.w(TAG, "Retrying with normalized URL", directFailure);
+            Log.w(TAG, "Retrying extractor with normalized URL: " + normalized, directFailure);
             return StreamInfo.getInfo(yt, normalized);
         }
     }
@@ -654,11 +695,64 @@ public class PlaybackService extends Service {
         if (videoStreams == null || videoStreams.isEmpty()) return null;
         for (VideoStream stream : videoStreams) {
             if (stream == null || stream.getContent() == null) continue;
-            if (stream.getContent().contains("googlevideo.com")) {
+            if (isLikelyPlayableUrl(stream.getContent())) {
                 return stream.getContent();
             }
         }
         return null;
+    }
+
+    private String pickPreferredAudioStream(List<AudioStream> streams) {
+        if (streams == null || streams.isEmpty()) return null;
+        for (AudioStream s : streams) {
+            if (s == null) continue;
+            if (s.getItag() == 140 && isLikelyPlayableUrl(s.getContent())) {
+                return s.getContent();
+            }
+        }
+        for (AudioStream s : streams) {
+            if (s != null && isLikelyPlayableUrl(s.getContent())) {
+                return s.getContent();
+            }
+        }
+        return null;
+    }
+
+    private boolean isLikelyPlayableUrl(@Nullable String streamUrl) {
+        if (streamUrl == null || streamUrl.trim().isEmpty()) return false;
+        String url = streamUrl.trim().toLowerCase();
+        return url.startsWith("https://") || url.startsWith("http://");
+    }
+
+    private String safeHost(@Nullable String streamUrl) {
+        if (streamUrl == null || streamUrl.trim().isEmpty()) return "n/a";
+        try {
+            String host = URI.create(streamUrl).getHost();
+            return host == null ? "n/a" : host;
+        } catch (Throwable ignored) {
+            return "n/a";
+        }
+    }
+
+    private String rootMessage(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null && current.getCause() != null) {
+            current = current.getCause();
+        }
+        String msg = current != null ? current.getMessage() : null;
+        return (msg == null || msg.trim().isEmpty()) ? "Unknown extractor error" : msg;
+    }
+
+    private static final class StreamResolution {
+        final String streamUrl;
+        @Nullable final String audioStreamUrl;
+        @Nullable final String videoStreamUrl;
+
+        StreamResolution(String streamUrl, @Nullable String audioStreamUrl, @Nullable String videoStreamUrl) {
+            this.streamUrl = streamUrl;
+            this.audioStreamUrl = audioStreamUrl;
+            this.videoStreamUrl = videoStreamUrl;
+        }
     }
     // -------------------------------------------------------------------------
     // Queue management
@@ -888,6 +982,7 @@ public class PlaybackService extends Service {
         intent.putExtra("queue_length", playbackQueue.size());
         intent.putExtra("video_mode",   videoMode);
         intent.putExtra("pending_play", pendingPlayRequestedAtMs > 0);
+        intent.putExtra("last_error",   lastPlaybackError);
         intent.putExtra("event_ts",     System.currentTimeMillis());
         sendBroadcast(intent);
 
@@ -1027,14 +1122,6 @@ public class PlaybackService extends Service {
         if (videoId != null && !videoId.trim().isEmpty())
             return "https://i.ytimg.com/vi/" + videoId.trim() + "/hqdefault.jpg";
         return "";
-    }
-
-    private String pickItag140(List<AudioStream> streams) {
-        if (streams == null || streams.isEmpty()) return null;
-        for (AudioStream s : streams) {
-            if (s.getItag() == 140) return s.getContent();
-        }
-        return streams.get(0).getContent();
     }
 
     // -------------------------------------------------------------------------
