@@ -285,6 +285,25 @@ final class WebViewManager {
         }
 
         @JavascriptInterface
+        public void seek(double positionMs) {
+            seekTo(positionMs);
+        }
+
+        @JavascriptInterface
+        public void setVolume(double volume) {
+            float normalizedVolume = (float) volume;
+            if (normalizedVolume > 1f) {
+                normalizedVolume = normalizedVolume / 100f;
+            }
+            normalizedVolume = Math.max(0f, Math.min(1f, normalizedVolume));
+
+            Intent intent = new Intent(activity, PlaybackService.class);
+            intent.setAction(PlaybackService.ACTION_SET_VOLUME);
+            intent.putExtra("volume", normalizedVolume);
+            actions.sendServiceIntent(intent);
+        }
+
+        @JavascriptInterface
         public void setQueue(String queueJson) {
             Intent intent = new Intent(activity, PlaybackService.class);
             intent.setAction(PlaybackService.ACTION_SET_QUEUE);
