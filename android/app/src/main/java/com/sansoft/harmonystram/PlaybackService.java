@@ -49,11 +49,6 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 import org.schabi.newpipe.extractor.NewPipe;
-import org.schabi.newpipe.extractor.ServiceList;
-import org.schabi.newpipe.extractor.StreamingService;
-import org.schabi.newpipe.extractor.stream.AudioStream;
-import org.schabi.newpipe.extractor.stream.StreamInfo;
-import org.schabi.newpipe.extractor.stream.VideoStream;
 
 import java.io.InputStream;
 import java.net.HttpURLConnection;
@@ -162,6 +157,7 @@ public class PlaybackService extends Service {
     private final IBinder         localBinder      = new LocalBinder();
     private final ExecutorService resolverExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService artworkExecutor  = Executors.newSingleThreadExecutor();
+    private final YouTubeStreamExtractor youTubeStreamExtractor = new YouTubeStreamExtractor();
 
     private final Runnable progressSyncRunnable = new Runnable() {
         @Override
@@ -540,6 +536,26 @@ public class PlaybackService extends Service {
     private void handlePlay(Intent intent) {
         String videoId = intent.getStringExtra("video_id");
         if (videoId == null || videoId.isEmpty()) {
+            String restoredVideoId = resolveVideoIdFromQueueIndex();
+            if ((currentVideoId == null || currentVideoId.isEmpty())
+                    && restoredVideoId != null
+                    && !restoredVideoId.isEmpty()) {
+                currentVideoId = restoredVideoId;
+            }
+
+            boolean needsFreshResolve = currentVideoId != null
+                    && !currentVideoId.isEmpty()
+                    && (lastPlaybackError != null
+                    || currentResolvedStreamUrl == null
+                    || player == null
+                    || player.getPlaybackState() == Player.STATE_IDLE
+                    || player.getPlaybackState() == Player.STATE_ENDED);
+
+            if (needsFreshResolve) {
+                resolveAndPlay(currentVideoId, Math.max(0L, currentPositionMs));
+                return;
+            }
+
             if (player != null) {
                 debugToast("Play pressed");
                 player.play();
@@ -662,7 +678,15 @@ public class PlaybackService extends Service {
 
     private StreamResolution resolveStreamUrl(String videoId, int attempt) throws Exception {
         debugToast("Starting extraction");
-        StreamResolution resolution = extractYouTubeStream(videoId, videoMode, attempt);
+        Log.d(TAG, "Extractor request: source=" + videoId);
+        YouTubeStreamExtractor.ExtractionResult extraction =
+                youTubeStreamExtractor.extract(videoId, videoMode, attempt);
+
+        StreamResolution resolution = new StreamResolution(
+                extraction.streamUrl,
+                extraction.audioStreamUrl,
+                extraction.videoStreamUrl
+        );
 
         Log.d(TAG, "Extractor response: attempt=" + attempt
                 + " videoId=" + videoId
@@ -674,94 +698,11 @@ public class PlaybackService extends Service {
         return resolution;
     }
 
-    private StreamResolution extractYouTubeStream(String videoId,
-                                                  boolean preferVideo,
-                                                  int attempt) throws Exception {
-        StreamingService yt = ServiceList.YouTube;
-        StreamInfo info = resolveStreamInfo(yt, videoId);
-
-        List<AudioStream> audioStreams = info.getAudioStreams();
-        List<VideoStream> videoStreams = info.getVideoStreams();
-
-        String audioCandidate = pickPreferredAudioStream(audioStreams);
-        String videoCandidate = pickPlayableVideo(videoStreams);
-
-        String selected = preferVideo ? firstPlayable(videoCandidate, audioCandidate)
-                : firstPlayable(audioCandidate, videoCandidate);
-
-        if (!isLikelyPlayableUrl(selected)) {
-            throw new IllegalStateException("Extractor returned an invalid stream URL"
-                    + " [attempt=" + attempt
-                    + ", audioStreams=" + (audioStreams == null ? 0 : audioStreams.size())
-                    + ", videoStreams=" + (videoStreams == null ? 0 : videoStreams.size())
-                    + ", preferVideo=" + preferVideo + "]");
-        }
-
-        return new StreamResolution(selected, audioCandidate, videoCandidate);
-    }
-
     private void debugToast(String msg) {
         mainHandler.post(() -> {
             Log.d(PLAYER_DEBUG_TAG, msg);
             Toast.makeText(getApplicationContext(), msg, Toast.LENGTH_SHORT).show();
         });
-    }
-
-    private StreamInfo resolveStreamInfo(StreamingService yt,
-                                         String videoIdOrUrl) throws Exception {
-        try {
-            Log.d(TAG, "Extractor request: source=" + videoIdOrUrl);
-            return StreamInfo.getInfo(yt, videoIdOrUrl);
-        } catch (Throwable directFailure) {
-            String normalized = YouTubeUrlNormalizer.normalizeWatchUrl(videoIdOrUrl);
-            if (normalized.equals(videoIdOrUrl)) throw directFailure;
-            Log.w(TAG, "Retrying extractor with normalized URL: " + normalized, directFailure);
-            return StreamInfo.getInfo(yt, normalized);
-        }
-    }
-
-    private String pickPlayableVideo(List<VideoStream> videoStreams) {
-        if (videoStreams == null || videoStreams.isEmpty()) return null;
-        for (VideoStream stream : videoStreams) {
-            if (stream == null || stream.getContent() == null) continue;
-            if (isLikelyPlayableUrl(stream.getContent())) {
-                return stream.getContent();
-            }
-        }
-        return null;
-    }
-
-    private String pickPreferredAudioStream(List<AudioStream> streams) {
-        if (streams == null || streams.isEmpty()) return null;
-        for (AudioStream s : streams) {
-            if (s == null) continue;
-            if (s.getItag() == 140 && isLikelyPlayableUrl(s.getContent())) {
-                return s.getContent();
-            }
-        }
-        for (AudioStream s : streams) {
-            if (s != null && isLikelyPlayableUrl(s.getContent())) {
-                return s.getContent();
-            }
-        }
-        return null;
-    }
-
-    private String firstPlayable(@Nullable String primary,
-                                 @Nullable String fallback) {
-        if (isLikelyPlayableUrl(primary)) {
-            return primary;
-        }
-        if (isLikelyPlayableUrl(fallback)) {
-            return fallback;
-        }
-        return null;
-    }
-
-    private boolean isLikelyPlayableUrl(@Nullable String streamUrl) {
-        if (streamUrl == null || streamUrl.trim().isEmpty()) return false;
-        String url = streamUrl.trim().toLowerCase();
-        return url.startsWith("https://") || url.startsWith("http://");
     }
 
     private String safeHost(@Nullable String streamUrl) {
@@ -1245,6 +1186,22 @@ public class PlaybackService extends Service {
                 Log.w(TAG, "Could not restore queue", e);
             }
         }
+
+        if (currentVideoId == null || currentVideoId.isEmpty()) {
+            currentVideoId = resolveVideoIdFromQueueIndex();
+        }
+    }
+
+    @Nullable
+    private String resolveVideoIdFromQueueIndex() {
+        if (currentQueueIndex < 0 || currentQueueIndex >= playbackQueue.size()) {
+            return null;
+        }
+        QueueItem item = playbackQueue.get(currentQueueIndex);
+        if (item == null || item.videoId == null || item.videoId.trim().isEmpty()) {
+            return null;
+        }
+        return item.videoId;
     }
 
     // -------------------------------------------------------------------------
