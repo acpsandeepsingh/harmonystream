@@ -16,7 +16,7 @@ final class PlaybackObserver {
     interface Listener {
         void onPlaybackStateChanged(@NonNull Intent stateIntent);
         void onServiceConnected(@NonNull PlaybackService.PlaybackSnapshot snapshot);
-        void onMediaAction(@NonNull String action);
+        void onMediaAction(@NonNull Intent mediaIntent);
     }
 
     private final Context context;
@@ -46,7 +46,7 @@ final class PlaybackObserver {
             if (!PlaybackService.ACTION_MEDIA_CONTROL.equals(intent.getAction())) return;
             String action = intent.getStringExtra("action");
             if (action != null && !action.isEmpty()) {
-                listener.onMediaAction(action);
+                listener.onMediaAction(intent);
             }
         }
     };
