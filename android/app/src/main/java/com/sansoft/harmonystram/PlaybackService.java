@@ -5,6 +5,9 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
@@ -434,8 +437,18 @@ public class PlaybackService extends Service {
                 broadcastState();
 
                 Log.e(TAG, "Aborting auto-retry after repeated player errors for videoId=" + currentVideoId);
-                handleSkip(+1);
-                dispatchActionToUi(ACTION_NEXT);
+                if (handleSkip(+1)) {
+                    dispatchActionToUi(ACTION_NEXT);
+                } else {
+                    // Avoid repeated player-error loops when the current item cannot be recovered
+                    // and there is no next item to skip to.
+                    if (player != null) {
+                        player.stop();
+                    }
+                    updatePlaybackState();
+                    updateNotification();
+                    broadcastState();
+                }
             }
         });
     }
@@ -666,8 +679,10 @@ public class PlaybackService extends Service {
                 videoStreamUrl = resolution.videoStreamUrl;
 
                 Log.i(TAG, "Resolved playback stream: mode=" + (videoMode ? "video" : "audio")
-                        + " host=" + safeHost(selected) + " videoId=" + videoId);
-                debugToast("Stream URL received");
+                        + " host=" + safeHost(selected) + " videoId=" + videoId
+                        + " url=" + selected);
+                debugToast("Stream URL extracted");
+                copyExtractedUrlToClipboard(selected);
 
                 mainHandler.post(() -> {
                     if (player == null) return;
@@ -732,6 +747,22 @@ public class PlaybackService extends Service {
         mainHandler.post(() -> {
             Log.d(PLAYER_DEBUG_TAG, msg);
             Toast.makeText(getApplicationContext(), msg, Toast.LENGTH_SHORT).show();
+        });
+    }
+
+    private void copyExtractedUrlToClipboard(@Nullable String streamUrl) {
+        if (streamUrl == null || streamUrl.trim().isEmpty()) return;
+        mainHandler.post(() -> {
+            try {
+                ClipboardManager clipboardManager =
+                        (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                if (clipboardManager == null) return;
+                ClipData clip = ClipData.newPlainText("HarmonyStream extracted URL", streamUrl);
+                clipboardManager.setPrimaryClip(clip);
+                debugToast("Extracted URL copied");
+            } catch (Throwable t) {
+                Log.w(TAG, "Failed to copy extracted URL", t);
+            }
         });
     }
 
@@ -838,10 +869,10 @@ public class PlaybackService extends Service {
         resolveAndPlay(item.videoId, 0L);
     }
 
-    private void handleSkip(int direction) {
-        if (playbackQueue.isEmpty()) return;
+    private boolean handleSkip(int direction) {
+        if (playbackQueue.isEmpty()) return false;
         int newIndex = currentQueueIndex + direction;
-        if (newIndex < 0 || newIndex >= playbackQueue.size()) return;
+        if (newIndex < 0 || newIndex >= playbackQueue.size()) return false;
         currentQueueIndex   = newIndex;
         QueueItem item      = playbackQueue.get(newIndex);
         currentVideoId      = item.videoId;
@@ -852,6 +883,7 @@ public class PlaybackService extends Service {
         ensureForegroundWithCurrentState();
         broadcastState();
         resolveAndPlay(item.videoId, 0L);
+        return true;
     }
 
     private void handleAddToQueue(Intent intent) {
