@@ -64,6 +64,7 @@ public class PlaybackService extends Service {
     private static final String TAG = "PlaybackService";
     private static final String PLAYER_DEBUG_TAG = "PLAYER_DEBUG";
     private static final int STREAM_RESOLVE_MAX_ATTEMPTS = 2;
+    private static final long RESOLVED_STREAM_REUSE_WINDOW_MS = 5 * 60 * 1000L;
     private static final int MAX_CONSECUTIVE_PLAYER_ERRORS = 2;
     public static final String CHANNEL_ID = "harmonystream_playback";
     public static final int NOTIFICATION_ID = 1001;
@@ -186,6 +187,7 @@ public class PlaybackService extends Service {
     private String                currentThumbnailUrl = "";
     private String                audioStreamUrl;
     private String                currentResolvedStreamUrl;
+    private volatile long         currentResolvedStreamAtMs;
     private volatile long         resolveRequestToken;
     private int consecutivePlayerErrors;
     private int pendingQueueIndex = -1;
@@ -572,6 +574,7 @@ public class PlaybackService extends Service {
                     && !currentVideoId.isEmpty()
                     && (lastPlaybackError != null
                     || currentResolvedStreamUrl == null
+                    || isResolvedStreamStale()
                     || player == null
                     || player.getPlaybackState() == Player.STATE_IDLE
                     || player.getPlaybackState() == Player.STATE_ENDED);
@@ -646,6 +649,7 @@ public class PlaybackService extends Service {
                 Throwable lastResolveFailure = null;
                 for (int attempt = 1; attempt <= STREAM_RESOLVE_MAX_ATTEMPTS; attempt++) {
                     try {
+                        initExtractor();
                         resolution = resolveStreamUrl(videoId, attempt);
                         break;
                     } catch (Throwable t) {
@@ -684,6 +688,7 @@ public class PlaybackService extends Service {
                     player.play();
                     lastPlaybackError = null;
                     currentResolvedStreamUrl = selected;
+                    currentResolvedStreamAtMs = System.currentTimeMillis();
                     pendingPlayRequestedAtMs = 0L;
                     refreshArtworkAsync(currentThumbnailUrl);
                     updateNotification();
@@ -747,6 +752,12 @@ public class PlaybackService extends Service {
         }
         String msg = current != null ? current.getMessage() : null;
         return (msg == null || msg.trim().isEmpty()) ? "Unknown extractor error" : msg;
+    }
+
+    private boolean isResolvedStreamStale() {
+        if (currentResolvedStreamAtMs <= 0L) return true;
+        long ageMs = System.currentTimeMillis() - currentResolvedStreamAtMs;
+        return ageMs > RESOLVED_STREAM_REUSE_WINDOW_MS;
     }
 
     private static final class StreamResolution {
