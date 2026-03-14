@@ -394,21 +394,46 @@ public class PlaybackService extends Service {
 
             @Override
             public void onPlayerError(PlaybackException error) {
-                debugToast("Player error: " + error.getMessage());
-                Log.e(TAG, "Playback error", error);
-                lastPlaybackError = "Playback failed: " + rootMessage(error);
-                broadcastState();
+                String message = rootMessage(error);
+                String errorCodeName;
+                try {
+                    errorCodeName = error.getErrorCodeName();
+                } catch (Throwable ignored) {
+                    errorCodeName = "unknown";
+                }
+
+                debugToast("Player error: " + message);
+                Log.e(TAG, "Playback error (code=" + errorCodeName + ")", error);
+
+                boolean isSourceError = (message != null && message.toLowerCase().contains("source error"))
+                        || "ERROR_CODE_IO_UNSPECIFIED".equals(errorCodeName)
+                        || "ERROR_CODE_IO_BAD_HTTP_STATUS".equals(errorCodeName)
+                        || "ERROR_CODE_IO_NETWORK_CONNECTION_FAILED".equals(errorCodeName);
 
                 consecutivePlayerErrors++;
-                if (consecutivePlayerErrors > MAX_CONSECUTIVE_PLAYER_ERRORS) {
-                    Log.e(TAG, "Aborting auto-retry after repeated player errors for videoId=" + currentVideoId);
+                if (currentVideoId != null
+                        && !currentVideoId.isEmpty()
+                        && consecutivePlayerErrors <= MAX_CONSECUTIVE_PLAYER_ERRORS) {
+                    long retrySeekMs = isSourceError ? 0L : Math.max(0L, currentPositionMs);
+                    Log.w(TAG, "Attempting recovery after player error for videoId=" + currentVideoId
+                            + " attempt=" + consecutivePlayerErrors
+                            + " seekMs=" + retrySeekMs
+                            + " sourceError=" + isSourceError);
+                    lastPlaybackError = null;
+                    broadcastState();
+                    resolveAndPlay(currentVideoId, retrySeekMs);
                     return;
                 }
 
-                if (currentVideoId != null && !currentVideoId.isEmpty()) {
-                    Log.w(TAG, "Re-resolving stream after player error for videoId=" + currentVideoId);
-                    resolveAndPlay(currentVideoId, Math.max(0L, currentPositionMs));
-                }
+                String friendly = isSourceError
+                        ? "Playback source error. The stream URL may have expired or been blocked."
+                        : "Playback failed";
+                lastPlaybackError = friendly + " Details: " + message;
+                broadcastState();
+
+                Log.e(TAG, "Aborting auto-retry after repeated player errors for videoId=" + currentVideoId);
+                handleSkip(+1);
+                dispatchActionToUi(ACTION_NEXT);
             }
         });
     }
