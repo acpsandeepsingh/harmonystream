@@ -719,20 +719,28 @@ public class PlaybackService extends Service {
                         return;
                     }
 
-                    debugToast("Preparing player");
-                    MediaSource mediaSource = buildPlayerMediaSourceFactory()
-                            .createMediaSource(MediaItem.fromUri(selected));
-                    player.setMediaSource(mediaSource);
-                    player.prepare();
-                    if (seekMs > 0) player.seekTo(seekMs);
-                    player.play();
-                    lastPlaybackError = null;
-                    currentResolvedStreamUrl = selected;
-                    currentResolvedStreamAtMs = System.currentTimeMillis();
-                    pendingPlayRequestedAtMs = 0L;
-                    refreshArtworkAsync(currentThumbnailUrl);
-                    updateNotification();
-                    broadcastState();
+                    try {
+                        debugToast("Preparing player");
+                        MediaSource mediaSource = buildPlayerMediaSourceFactory()
+                                .createMediaSource(MediaItem.fromUri(selected));
+                        player.setMediaSource(mediaSource);
+                        player.prepare();
+                        if (seekMs > 0) player.seekTo(seekMs);
+                        player.play();
+                        lastPlaybackError = null;
+                        currentResolvedStreamUrl = selected;
+                        currentResolvedStreamAtMs = System.currentTimeMillis();
+                        pendingPlayRequestedAtMs = 0L;
+                        refreshArtworkAsync(currentThumbnailUrl);
+                        updateNotification();
+                        broadcastState();
+                    } catch (Throwable playbackSetupFailure) {
+                        pendingPlayRequestedAtMs = 0L;
+                        lastPlaybackError = "Playback setup failed: " + rootMessage(playbackSetupFailure);
+                        debugToast("Playback setup failed");
+                        Log.e(TAG, "Failed to prepare player after extraction", playbackSetupFailure);
+                        broadcastState();
+                    }
                 });
             } catch (Throwable t) {
                 if (requestToken == resolveRequestToken) {
