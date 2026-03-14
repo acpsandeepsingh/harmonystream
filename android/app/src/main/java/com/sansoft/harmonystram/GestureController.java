@@ -72,11 +72,11 @@ final class GestureController {
 
         webView.setOnTouchListener((v, event) -> {
             if (!callbacks.isVideoModeEnabled()) {
-                return true;
+                return false;
             }
-            if (scaleDetector != null) scaleDetector.onTouchEvent(event);
-            if (detector != null) detector.onTouchEvent(event);
-            return true;
+            boolean scaleHandled = scaleDetector != null && scaleDetector.onTouchEvent(event);
+            boolean gestureHandled = detector != null && detector.onTouchEvent(event);
+            return scaleHandled || gestureHandled;
         });
     }
 }

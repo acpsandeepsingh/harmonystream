@@ -75,6 +75,7 @@ public class WebAppActivity extends AppCompatActivity
 
         playerUiController = new PlayerUiController(this, playerContainer, this);
         playerUiController.init();
+        playerContainer.post(this::updateWebViewBottomInset);
 
         webViewManager = new WebViewManager(this, webView, this);
         webViewManager.initialize();
