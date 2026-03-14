@@ -44,7 +44,7 @@ import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Slider } from '@/components/ui/slider';
 import {
-  Play, Pause, SkipBack, SkipForward, Volume2,
+  Play, Pause, SkipBack, SkipForward,
   Video, Music as MusicIcon, Plus, ListMusic, PlusCircle,
   Heart, X, History, GripVertical, Share2,
 } from 'lucide-react';
@@ -85,6 +85,8 @@ import {
   verticalListSortingStrategy, useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { PlayerControls, VolumeToggleControl } from './player-controls';
+import { useAudioEngine } from './audio-engine';
 
 // ---------------------------------------------------------------------------
 // Global bridge typings
@@ -229,36 +231,18 @@ const PortraitPlayer = React.memo(function PortraitPlayer({
       </div>
 
       {/* Controls */}
-      <div className="w-full flex items-center justify-between px-2 pb-2">
-        <div className="w-20">
-          <Button variant="ghost" size="icon" className="h-8 w-8"
-            onClick={onTogglePlayerMode}>
-            {playerMode === 'audio'
-              ? <Video className="h-5 w-5" />
-              : <MusicIcon className="h-5 w-5" />}
-          </Button>
-        </div>
-        <div className="flex items-center">
-          <Button variant="ghost" size="icon" onClick={onPlayPrev}>
-            <SkipBack className="h-6 w-6" />
-          </Button>
-          <Button variant="ghost" size="icon" className="h-14 w-14"
-            onClick={onTogglePlayPause}>
-            {isPlaying
-              ? <Pause className="h-10 w-10" />
-              : <Play  className="h-10 w-10 ml-1" />}
-          </Button>
-          <Button variant="ghost" size="icon" onClick={onPlayNext}>
-            <SkipForward className="h-6 w-6" />
-          </Button>
-        </div>
-        <div className="flex items-center gap-1 w-20">
-          <Volume2 className="h-5 w-5 text-muted-foreground" />
-          <Slider
-            defaultValue={[volume]} max={100} step={1}
-            className="w-full" onValueChange={v => onVolumeChange(v[0])}
-          />
-        </div>
+      <div className="w-full px-2 pb-2">
+        <PlayerControls
+          mobile
+          isPlaying={isPlaying}
+          playerMode={playerMode}
+          volume={volume}
+          onTogglePlayerMode={onTogglePlayerMode}
+          onPlayPrev={onPlayPrev}
+          onPlayNext={onPlayNext}
+          onTogglePlayPause={onTogglePlayPause}
+          onVolumeChange={onVolumeChange}
+        />
       </div>
     </div>
   );
@@ -389,14 +373,7 @@ const LandscapePlayer = React.memo(function LandscapePlayer({
                 ? <Video className="h-5 w-5" />
                 : <MusicIcon className="h-5 w-5" />}
             </Button>
-            <div className="flex items-center gap-2">
-              <Volume2 className="h-5 w-5 text-muted-foreground" />
-              <Slider
-                defaultValue={[volume]} max={100} step={1}
-                className="w-24"
-                onValueChange={v => onVolumeChange(v[0])}
-              />
-            </div>
+            <VolumeToggleControl volume={volume} onVolumeChange={onVolumeChange} />
           </div>
         </div>
       </div>
@@ -560,6 +537,10 @@ export function WebMusicPlayer() {
    * iframe must NOT be rendered or polled.
    */
   const iframeIsPlayer = true;
+  const { setVolume: syncAudioEngineVolume } = useAudioEngine({
+    playerRef,
+    isAndroidAppRuntime,
+  });
 
   // ── Progress helpers ───────────────────────────────────────────────────────
   const stopProgressPolling = useCallback(() => {
@@ -899,13 +880,8 @@ export function WebMusicPlayer() {
 
   const handleVolumeChange = useCallback((value: number) => {
     setVolume(value);
-    if (playerRef.current) {
-      try { playerRef.current.setVolume(value); } catch { /* ignore */ }
-    }
-    if (isAndroidAppRuntime) {
-      window.HarmonyNative?.setVolume?.(value);
-    }
-  }, [isAndroidAppRuntime]);
+    syncAudioEngineVolume(value);
+  }, [syncAudioEngineVolume]);
 
   // ── Mode toggle ────────────────────────────────────────────────────────────
   const handleTogglePlayerMode = useCallback(() => {
