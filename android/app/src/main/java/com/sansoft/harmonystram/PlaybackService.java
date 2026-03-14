@@ -312,11 +312,9 @@ public class PlaybackService extends Service {
                 .setConnectTimeoutMs(20_000)
                 .setReadTimeoutMs(20_000);
 
-        Map<String, String> defaultHeaders = new HashMap<>();
-        defaultHeaders.put("Referer", YT_REFERER);
-        defaultHeaders.put("Origin", YT_ORIGIN);
-        defaultHeaders.put("Accept-Language", "en-US,en;q=0.9");
-        httpFactory.setDefaultRequestProperties(defaultHeaders);
+        httpFactory.getDefaultRequestProperties().set("Referer", YT_REFERER);
+        httpFactory.getDefaultRequestProperties().set("Origin", YT_ORIGIN);
+        httpFactory.getDefaultRequestProperties().set("Accept-Language", "en-US,en;q=0.9");
 
         return new DefaultDataSource.Factory(this, httpFactory);
     }
