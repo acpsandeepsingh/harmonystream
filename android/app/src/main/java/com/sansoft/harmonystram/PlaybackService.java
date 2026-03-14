@@ -540,6 +540,26 @@ public class PlaybackService extends Service {
     private void handlePlay(Intent intent) {
         String videoId = intent.getStringExtra("video_id");
         if (videoId == null || videoId.isEmpty()) {
+            String restoredVideoId = resolveVideoIdFromQueueIndex();
+            if ((currentVideoId == null || currentVideoId.isEmpty())
+                    && restoredVideoId != null
+                    && !restoredVideoId.isEmpty()) {
+                currentVideoId = restoredVideoId;
+            }
+
+            boolean needsFreshResolve = currentVideoId != null
+                    && !currentVideoId.isEmpty()
+                    && (lastPlaybackError != null
+                    || currentResolvedStreamUrl == null
+                    || player == null
+                    || player.getPlaybackState() == Player.STATE_IDLE
+                    || player.getPlaybackState() == Player.STATE_ENDED);
+
+            if (needsFreshResolve) {
+                resolveAndPlay(currentVideoId, Math.max(0L, currentPositionMs));
+                return;
+            }
+
             if (player != null) {
                 debugToast("Play pressed");
                 player.play();
@@ -1245,6 +1265,22 @@ public class PlaybackService extends Service {
                 Log.w(TAG, "Could not restore queue", e);
             }
         }
+
+        if (currentVideoId == null || currentVideoId.isEmpty()) {
+            currentVideoId = resolveVideoIdFromQueueIndex();
+        }
+    }
+
+    @Nullable
+    private String resolveVideoIdFromQueueIndex() {
+        if (currentQueueIndex < 0 || currentQueueIndex >= playbackQueue.size()) {
+            return null;
+        }
+        QueueItem item = playbackQueue.get(currentQueueIndex);
+        if (item == null || item.videoId == null || item.videoId.trim().isEmpty()) {
+            return null;
+        }
+        return item.videoId;
     }
 
     // -------------------------------------------------------------------------
