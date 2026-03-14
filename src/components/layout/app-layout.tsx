@@ -10,8 +10,9 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { Suspense } from 'react';
 
 function AppLayoutContent({ children }: { children: React.ReactNode }) {
-  const { isPlayerVisible } = usePlayer();
+  const { isPlayerVisible, playerMode } = usePlayer();
   const isMobile = useIsMobile();
+  const isVideoMode = playerMode === 'video';
 
   return (
     <>
@@ -22,7 +23,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
           <main className={cn(
               "p-4 pt-6 md:p-8 md:pt-6",
               // Add padding to bottom to prevent content from being hidden by the player bar
-              isPlayerVisible && (isMobile ? "pb-40" : "pb-28")
+              isPlayerVisible && !isVideoMode && (isMobile ? "pb-40" : "pb-28")
             )}
           >
             {children}
