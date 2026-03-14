@@ -121,6 +121,8 @@ public class WebAppActivity extends AppCompatActivity
             payload.put("video_mode", videoModeEnabled);
             payload.put("queue_index", stateIntent.getIntExtra("queue_index", -1));
             payload.put("queue_length", stateIntent.getIntExtra("queue_length", 0));
+            payload.put("last_error", stateIntent.getStringExtra("last_error"));
+            payload.put("event_ts", stateIntent.getLongExtra("event_ts", System.currentTimeMillis()));
         } catch (JSONException ignored) {
         }
         dispatchToWeb("window.dispatchEvent(new CustomEvent('nativePlaybackState', { detail: " + payload + " }));");

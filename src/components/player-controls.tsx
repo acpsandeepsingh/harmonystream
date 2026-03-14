@@ -25,6 +25,7 @@ type PlayerControlsProps = {
   onPlayNext: () => void;
   onTogglePlayPause: () => void;
   onVolumeChange: (value: number) => void;
+  showVolumeControl?: boolean;
 };
 
 function VolumeButton({ volume, onVolumeChange, mobile = false }: {
@@ -85,6 +86,7 @@ export function PlayerControls({
   onPlayNext,
   onTogglePlayPause,
   onVolumeChange,
+  showVolumeControl = true,
 }: PlayerControlsProps) {
   return (
     <div className="w-full flex items-center justify-between">
@@ -114,7 +116,9 @@ export function PlayerControls({
         </Button>
       </div>
       <div className={cn('w-20 flex justify-end', !mobile && 'w-auto')}>
-        <VolumeButton volume={volume} onVolumeChange={onVolumeChange} mobile={mobile} />
+        {showVolumeControl && (
+          <VolumeButton volume={volume} onVolumeChange={onVolumeChange} mobile={mobile} />
+        )}
       </div>
     </div>
   );
