@@ -74,6 +74,7 @@ public class PlaybackService extends Service {
     private static final int STREAM_RESOLVE_MAX_ATTEMPTS = 2;
     private static final long RESOLVED_STREAM_REUSE_WINDOW_MS = 5 * 60 * 1000L;
     private static final int MAX_CONSECUTIVE_PLAYER_ERRORS = 2;
+    private static final long DEBUG_TOAST_DEBOUNCE_MS = 1500L;
     private static final String YT_REFERER = "https://www.youtube.com/";
     private static final String YT_ORIGIN = "https://www.youtube.com";
     public static final String CHANNEL_ID = "harmonystream_playback";
@@ -207,6 +208,8 @@ public class PlaybackService extends Service {
     private boolean               progressLoopRunning;
     private volatile long         pendingPlayRequestedAtMs;
     @Nullable private String      lastPlaybackError;
+    private String                lastDebugToastMessage;
+    private long                  lastDebugToastAtMs;
 
     private final List<QueueItem> playbackQueue     = new ArrayList<>();
     private int                   currentQueueIndex = -1;
@@ -704,7 +707,7 @@ public class PlaybackService extends Service {
                 Log.i(TAG, "Resolved playback stream: mode=" + (videoMode ? "video" : "audio")
                         + " host=" + safeHost(selected) + " videoId=" + videoId
                         + " url=" + selected);
-                debugToast("Stream URL extracted");
+                Log.d(PLAYER_DEBUG_TAG, "Stream URL extracted");
                 copyExtractedUrlToClipboard(selected);
 
                 mainHandler.post(() -> {
@@ -719,27 +722,34 @@ public class PlaybackService extends Service {
                         return;
                     }
 
-                    debugToast("Preparing player");
-                    MediaSource mediaSource = buildPlayerMediaSourceFactory()
-                            .createMediaSource(MediaItem.fromUri(selected));
-                    player.setMediaSource(mediaSource);
-                    player.prepare();
-                    if (seekMs > 0) player.seekTo(seekMs);
-                    player.play();
-                    lastPlaybackError = null;
-                    currentResolvedStreamUrl = selected;
-                    currentResolvedStreamAtMs = System.currentTimeMillis();
-                    pendingPlayRequestedAtMs = 0L;
-                    refreshArtworkAsync(currentThumbnailUrl);
-                    updateNotification();
-                    broadcastState();
+                    try {
+                        Log.d(PLAYER_DEBUG_TAG, "Preparing player");
+                        MediaSource mediaSource = buildPlayerMediaSourceFactory()
+                                .createMediaSource(MediaItem.fromUri(selected));
+                        player.setMediaSource(mediaSource);
+                        player.prepare();
+                        if (seekMs > 0) player.seekTo(seekMs);
+                        player.play();
+                        lastPlaybackError = null;
+                        currentResolvedStreamUrl = selected;
+                        currentResolvedStreamAtMs = System.currentTimeMillis();
+                        pendingPlayRequestedAtMs = 0L;
+                        refreshArtworkAsync(currentThumbnailUrl);
+                        updateNotification();
+                        broadcastState();
+                    } catch (Throwable playbackSetupFailure) {
+                        pendingPlayRequestedAtMs = 0L;
+                        lastPlaybackError = "Playback setup failed: " + rootMessage(playbackSetupFailure);
+                        debugToast("Playback setup failed");
+                        Log.e(TAG, "Failed to prepare player after extraction", playbackSetupFailure);
+                        broadcastState();
+                    }
                 });
             } catch (Throwable t) {
                 if (requestToken == resolveRequestToken) {
                     pendingPlayRequestedAtMs = 0L;
                 }
                 lastPlaybackError = "Extraction failed: " + rootMessage(t);
-                debugToast("Extraction failed");
                 Log.e(TAG, "Unable to resolve stream URL", t);
                 broadcastState();
             }
@@ -747,7 +757,7 @@ public class PlaybackService extends Service {
     }
 
     private StreamResolution resolveStreamUrl(String videoId, int attempt) throws Exception {
-        debugToast("Starting extraction");
+        Log.d(PLAYER_DEBUG_TAG, "Starting extraction");
         Log.d(TAG, "Extractor request: source=" + videoId);
         YouTubeStreamExtractor.ExtractionResult extraction =
                 youTubeStreamExtractor.extract(videoId, videoMode, attempt);
@@ -771,7 +781,19 @@ public class PlaybackService extends Service {
     private void debugToast(String msg) {
         mainHandler.post(() -> {
             Log.d(PLAYER_DEBUG_TAG, msg);
-            Toast.makeText(getApplicationContext(), msg, Toast.LENGTH_SHORT).show();
+            long now = System.currentTimeMillis();
+            if (msg != null
+                    && msg.equals(lastDebugToastMessage)
+                    && (now - lastDebugToastAtMs) < DEBUG_TOAST_DEBOUNCE_MS) {
+                return;
+            }
+            lastDebugToastMessage = msg;
+            lastDebugToastAtMs = now;
+            try {
+                Toast.makeText(getApplicationContext(), msg, Toast.LENGTH_SHORT).show();
+            } catch (Throwable toastError) {
+                Log.w(TAG, "Unable to show debug toast", toastError);
+            }
         });
     }
 
@@ -784,7 +806,7 @@ public class PlaybackService extends Service {
                 if (clipboardManager == null) return;
                 ClipData clip = ClipData.newPlainText("HarmonyStream extracted URL", streamUrl);
                 clipboardManager.setPrimaryClip(clip);
-                debugToast("Extracted URL copied");
+                Log.d(PLAYER_DEBUG_TAG, "Extracted URL copied");
             } catch (Throwable t) {
                 Log.w(TAG, "Failed to copy extracted URL", t);
             }
