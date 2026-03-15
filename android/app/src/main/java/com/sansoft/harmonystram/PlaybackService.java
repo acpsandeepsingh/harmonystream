@@ -723,7 +723,7 @@ public class PlaybackService extends Service {
                     }
 
                     try {
-                        Log.d(PLAYER_DEBUG_TAG, "Preparing player");
+                        debugToast("Preparing player");
                         MediaSource mediaSource = buildPlayerMediaSourceFactory()
                                 .createMediaSource(MediaItem.fromUri(selected));
                         player.setMediaSource(mediaSource);
