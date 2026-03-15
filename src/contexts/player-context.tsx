@@ -153,7 +153,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const isAndroidNativeRuntime = () => {
     if (typeof window === 'undefined') return false;
-    return typeof (window as any).HarmonyNative !== 'undefined';
+    return typeof (window as any).NativePlayer !== 'undefined'
+      || typeof (window as any).HarmonyNative !== 'undefined';
   };
 
   const sendQueueToNative = (queue: Song[]) => {
@@ -165,6 +166,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       videoId: song.videoId,
       thumbnailUrl: song.thumbnailUrl,
     }));
+    (window as any).NativePlayer?.postMessage?.(JSON.stringify({ action: 'setQueue', tracks: payload }));
     (window as any).HarmonyNative?.setQueue?.(JSON.stringify(payload));
   };
 
@@ -183,6 +185,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
     if (isAndroidNativeRuntime()) {
       sendQueueToNative([track]);
+      (window as any).NativePlayer?.postMessage?.(JSON.stringify({ action: 'setIndex', index: 0 }));
       (window as any).HarmonyNative?.setIndex?.(0);
     }
   }, [setNewCurrentTrack]);
@@ -226,7 +229,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
       if (isAndroidNativeRuntime()) {
         sendQueueToNative(playlistToPlay);
-        (window as any).HarmonyNative?.setIndex?.(Math.max(0, selectedIndex));
+        const nativeIndex = Math.max(0, selectedIndex);
+        (window as any).NativePlayer?.postMessage?.(JSON.stringify({ action: 'setIndex', index: nativeIndex }));
+        (window as any).HarmonyNative?.setIndex?.(nativeIndex);
       }
     } else {
         // This case is unlikely if newPlaylist has items.

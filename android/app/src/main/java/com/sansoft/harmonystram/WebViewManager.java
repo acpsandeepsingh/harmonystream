@@ -18,6 +18,7 @@ import androidx.webkit.WebViewAssetLoader;
 import androidx.webkit.WebViewClientCompat;
 
 import org.json.JSONObject;
+import org.json.JSONArray;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -87,6 +88,7 @@ final class WebViewManager {
         webView.setBackgroundColor(Color.rgb(11, 18, 32));
         webView.addJavascriptInterface(new NativePlaybackBridge(), "HarmonyNative");
         webView.addJavascriptInterface(new NativePlaybackBridge(), "AndroidNative");
+        webView.addJavascriptInterface(new NativePlayerBridge(), "NativePlayer");
         webView.setWebViewClient(new AssetBackedWebViewClient());
         PlaybackService.attachWebView(webView);
     }
@@ -256,6 +258,11 @@ final class WebViewManager {
 
     private final class NativePlaybackBridge {
         @JavascriptInterface
+        public void loadMedia(String videoId, String mediaType, String title, String artist, String thumbnailUrl) {
+            play(videoId, title, artist, thumbnailUrl);
+        }
+
+        @JavascriptInterface
         public void play(String videoId, String title, String artist, String thumbnailUrl) {
             Intent intent = new Intent(activity, PlaybackService.class);
             intent.setAction(PlaybackService.ACTION_PLAY);
@@ -366,6 +373,83 @@ final class WebViewManager {
         public void requestNotificationPermission() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 // permission requested by activity startup flow
+            }
+        }
+    }
+
+    private final class NativePlayerBridge {
+        @JavascriptInterface
+        public void postMessage(String message) {
+            if (message == null || message.trim().isEmpty()) return;
+            try {
+                JSONObject payload = new JSONObject(message);
+                String action = payload.optString("action");
+                if (action == null || action.isEmpty()) return;
+
+                Intent intent = new Intent(activity, PlaybackService.class);
+                switch (action) {
+                    case "play": {
+                        intent.setAction(PlaybackService.ACTION_PLAY);
+                        JSONObject track = payload.optJSONObject("track");
+                        if (track != null) {
+                            intent.putExtra("video_id", track.optString("videoId", track.optString("id")));
+                            intent.putExtra("title", track.optString("title"));
+                            intent.putExtra("artist", track.optString("artist"));
+                            intent.putExtra("thumbnailUrl", track.optString("thumbnailUrl"));
+                        }
+                        break;
+                    }
+                    case "pause":
+                        intent.setAction(PlaybackService.ACTION_PAUSE);
+                        break;
+                    case "next":
+                        intent.setAction(PlaybackService.ACTION_NEXT);
+                        break;
+                    case "previous":
+                        intent.setAction(PlaybackService.ACTION_PREVIOUS);
+                        break;
+                    case "seek":
+                        intent.setAction(PlaybackService.ACTION_SEEK);
+                        intent.putExtra("position_ms", payload.optLong("positionMs", 0L));
+                        break;
+                    case "setIndex":
+                        intent.setAction(PlaybackService.ACTION_SET_INDEX);
+                        intent.putExtra("queue_index", payload.optInt("index", -1));
+                        break;
+                    case "addToQueue": {
+                        intent.setAction(PlaybackService.ACTION_ADD_TO_QUEUE);
+                        JSONArray tracks = payload.optJSONArray("tracks");
+                        if (tracks != null) {
+                            intent.putExtra("queue_json", tracks.toString());
+                        } else if (payload.optJSONObject("track") != null) {
+                            JSONArray arr = new JSONArray();
+                            arr.put(payload.optJSONObject("track"));
+                            intent.putExtra("queue_json", arr.toString());
+                        }
+                        break;
+                    }
+                    case "setQueue": {
+                        intent.setAction(PlaybackService.ACTION_SET_QUEUE);
+                        JSONArray tracks = payload.optJSONArray("tracks");
+                        if (tracks != null) {
+                            intent.putExtra("queue_json", tracks.toString());
+                        }
+                        break;
+                    }
+                    case "like":
+                        intent.setAction(PlaybackService.ACTION_LIKE);
+                        break;
+                    case "unlike":
+                        intent.setAction(PlaybackService.ACTION_UNLIKE);
+                        break;
+                    case "addToPlaylist":
+                        actions.dispatchToWeb("window.dispatchEvent(new CustomEvent('nativeAddToPlaylist'));");
+                        return;
+                    default:
+                        return;
+                }
+                actions.sendServiceIntent(intent);
+            } catch (Exception ignored) {
             }
         }
     }

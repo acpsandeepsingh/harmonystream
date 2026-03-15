@@ -105,6 +105,8 @@ public class PlaybackService extends Service {
     public static final String ACTION_SET_MODE                   = "com.sansoft.harmonystram.SET_MODE";
     public static final String ACTION_SEEK_RELATIVE              = "com.sansoft.harmonystram.SEEK_RELATIVE";
     public static final String ACTION_SET_VOLUME                 = "com.sansoft.harmonystram.SET_VOLUME";
+    public static final String ACTION_LIKE                       = "com.sansoft.harmonystram.LIKE";
+    public static final String ACTION_UNLIKE                     = "com.sansoft.harmonystram.UNLIKE";
     public static final String EXTRA_PENDING_MEDIA_ACTION        = "pending_media_action";
 
     private static final String PREFS_NAME        = "playback_service_state";
@@ -114,6 +116,7 @@ public class PlaybackService extends Service {
     private static final String KEY_POSITION_MS   = "position_ms";
     private static final String KEY_DURATION_MS   = "duration_ms";
     private static final String KEY_QUEUE_JSON    = "queue_json";
+    private static final String KEY_LIKED_TRACKS  = "liked_tracks";
     private static final String KEY_QUEUE_INDEX   = "queue_index";
     private static final String KEY_THUMBNAIL_URL = "thumbnail_url";
     private static final int    MAX_ARTWORK_PX    = 512;
@@ -213,6 +216,7 @@ public class PlaybackService extends Service {
 
     private final List<QueueItem> playbackQueue     = new ArrayList<>();
     private int                   currentQueueIndex = -1;
+    private final java.util.Set<String> likedTrackIds = new java.util.HashSet<>();
 
     private MediaSessionCompat          mediaSession;
     private MediaSessionConnector       mediaSessionConnector;
@@ -395,6 +399,7 @@ public class PlaybackService extends Service {
                 updatePlaybackState();
                 updateNotification();
                 broadcastState();
+                dispatchPlaybackEvent(isPlaying ? "playbackStarted" : "playbackPaused");
             }
 
             @Override
@@ -537,6 +542,12 @@ public class PlaybackService extends Service {
                     float volume = intent.getFloatExtra("volume", 1.0f);
                     player.setVolume(Math.max(0f, Math.min(1.0f, volume)));
                 }
+                break;
+            case ACTION_LIKE:
+                handleLike(true);
+                break;
+            case ACTION_UNLIKE:
+                handleLike(false);
                 break;
             case ACTION_NEXT:
                 handleSkip(+1);
@@ -887,6 +898,7 @@ public class PlaybackService extends Service {
         }
 
         broadcastState();
+        dispatchPlaybackEvent("queueUpdated");
     }
 
     private void handleSetIndex(Intent intent) {
@@ -914,6 +926,7 @@ public class PlaybackService extends Service {
         ensureForegroundWithCurrentState();
         broadcastState();
         resolveAndPlay(item.videoId, 0L);
+        dispatchPlaybackEvent("trackChanged");
     }
 
     private boolean handleSkip(int direction) {
@@ -930,6 +943,7 @@ public class PlaybackService extends Service {
         ensureForegroundWithCurrentState();
         broadcastState();
         resolveAndPlay(item.videoId, 0L);
+        dispatchPlaybackEvent("trackChanged");
         return true;
     }
 
@@ -955,6 +969,7 @@ public class PlaybackService extends Service {
                 currentQueueIndex = 0;
             }
             broadcastState();
+            dispatchPlaybackEvent("queueUpdated");
         } catch (JSONException e) {
             Log.e(TAG, "Failed to parse add-to-queue JSON", e);
         }
@@ -1099,6 +1114,7 @@ public class PlaybackService extends Service {
         intent.putExtra("video_mode",   videoMode);
         intent.putExtra("pending_play", pendingPlayRequestedAtMs > 0);
         intent.putExtra("last_error",   lastPlaybackError);
+        intent.putExtra("liked",       isCurrentTrackLiked());
         intent.putExtra("event_ts",     System.currentTimeMillis());
         sendBroadcast(intent);
 
@@ -1240,6 +1256,51 @@ public class PlaybackService extends Service {
         return "";
     }
 
+
+    private void handleLike(boolean liked) {
+        String likeId = getCurrentTrackLikeId();
+        if (likeId == null || likeId.isEmpty()) return;
+        if (liked) likedTrackIds.add(likeId); else likedTrackIds.remove(likeId);
+        broadcastState();
+        dispatchPlaybackEvent("likeUpdated");
+    }
+
+    private boolean isCurrentTrackLiked() {
+        String likeId = getCurrentTrackLikeId();
+        return likeId != null && likedTrackIds.contains(likeId);
+    }
+
+    @Nullable
+    private String getCurrentTrackLikeId() {
+        if (currentQueueIndex >= 0 && currentQueueIndex < playbackQueue.size()) {
+            QueueItem item = playbackQueue.get(currentQueueIndex);
+            if (item != null && item.id != null && !item.id.trim().isEmpty()) return item.id;
+            if (item != null && item.videoId != null && !item.videoId.trim().isEmpty()) return item.videoId;
+        }
+        if (currentVideoId != null && !currentVideoId.trim().isEmpty()) return currentVideoId;
+        return null;
+    }
+
+    private void dispatchPlaybackEvent(String action) {
+        try {
+            JSONObject detail = new JSONObject();
+            detail.put("action", action);
+            detail.put("title", currentTitle);
+            detail.put("artist", currentArtist);
+            detail.put("thumbnailUrl", currentThumbnailUrl);
+            detail.put("queue_index", currentQueueIndex);
+            detail.put("queue_length", playbackQueue.size());
+            detail.put("playing", player != null && player.isPlaying());
+            detail.put("liked", isCurrentTrackLiked());
+            detail.put("event_ts", System.currentTimeMillis());
+
+            String payload = detail.toString();
+            dispatchToLinkedWebView("window.postMessage(" + JSONObject.quote(payload) + ", '*');");
+            dispatchToLinkedWebView("window.dispatchEvent(new CustomEvent('nativePlaybackEvent', { detail: " + payload + " }));");
+        } catch (Exception ignored) {
+        }
+    }
+
     // -------------------------------------------------------------------------
     // Persistence
     // -------------------------------------------------------------------------
@@ -1272,6 +1333,11 @@ public class PlaybackService extends Service {
             }
             ed.putString(KEY_QUEUE_JSON, arr.toString());
         } catch (JSONException ignored) {}
+        try {
+            JSONArray liked = new JSONArray();
+            for (String id : likedTrackIds) liked.put(id);
+            ed.putString(KEY_LIKED_TRACKS, liked.toString());
+        } catch (JSONException ignored) {}
         ed.apply();
     }
 
@@ -1284,6 +1350,17 @@ public class PlaybackService extends Service {
         currentThumbnailUrl = p.getString(KEY_THUMBNAIL_URL, "");
         currentQueueIndex   = p.getInt(KEY_QUEUE_INDEX,      -1);
         String queueJson    = p.getString(KEY_QUEUE_JSON,    null);
+        String likedJson    = p.getString(KEY_LIKED_TRACKS, null);
+        if (likedJson != null) {
+            try {
+                JSONArray arr = new JSONArray(likedJson);
+                for (int i = 0; i < arr.length(); i++) {
+                    String id = arr.optString(i, "");
+                    if (!id.isEmpty()) likedTrackIds.add(id);
+                }
+            } catch (JSONException ignored) {}
+        }
+
         if (queueJson != null) {
             try {
                 JSONArray arr = new JSONArray(queueJson);
@@ -1338,6 +1415,21 @@ public class PlaybackService extends Service {
     // -------------------------------------------------------------------------
     @Override
     public IBinder onBind(Intent intent) { return localBinder; }
+
+    @Override
+    public void onTaskRemoved(Intent rootIntent) {
+        persistState();
+        if (player != null && player.isPlaying()) {
+            Intent restartIntent = new Intent(getApplicationContext(), PlaybackService.class);
+            restartIntent.setAction(ACTION_GET_STATE);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(restartIntent);
+            } else {
+                startService(restartIntent);
+            }
+        }
+        super.onTaskRemoved(rootIntent);
+    }
 
     @Override
     public void onDestroy() {
