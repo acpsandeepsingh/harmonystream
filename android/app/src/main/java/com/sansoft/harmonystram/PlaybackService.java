@@ -1333,11 +1333,9 @@ public class PlaybackService extends Service {
             }
             ed.putString(KEY_QUEUE_JSON, arr.toString());
         } catch (JSONException ignored) {}
-        try {
-            JSONArray liked = new JSONArray();
-            for (String id : likedTrackIds) liked.put(id);
-            ed.putString(KEY_LIKED_TRACKS, liked.toString());
-        } catch (JSONException ignored) {}
+        JSONArray liked = new JSONArray();
+        for (String id : likedTrackIds) liked.put(id);
+        ed.putString(KEY_LIKED_TRACKS, liked.toString());
         ed.apply();
     }
 
