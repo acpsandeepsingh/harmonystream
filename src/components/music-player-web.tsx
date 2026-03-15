@@ -118,6 +118,9 @@ declare global {
       ) => void;
       getState?: () => void;
     };
+    NativePlayer?: {
+      postMessage?: (message: string) => void;
+    };
     AndroidNative?: {
       play?:         (id?: string, title?: string, artist?: string,
                       durationMs?: number, thumbnailUrl?: string) => void;
@@ -560,6 +563,7 @@ export function WebMusicPlayer() {
       /Android/i.test(ua) && (
         window.location.protocol === 'file:' ||
         window.location.hostname === 'appassets.androidplatform.net' ||
+        typeof window.NativePlayer !== 'undefined' ||
         typeof window.HarmonyNative !== 'undefined'
       )
     );
@@ -571,6 +575,20 @@ export function WebMusicPlayer() {
    * iframe must NOT be rendered or polled.
    */
   const iframeIsPlayer = !isAndroidAppRuntime;
+
+  const postNativePlayerMessage = useCallback((payload: Record<string, unknown>) => {
+    if (!isAndroidAppRuntime) return;
+    try {
+      const message = JSON.stringify(payload);
+      if (window.NativePlayer?.postMessage) {
+        window.NativePlayer.postMessage(message);
+        return;
+      }
+    } catch (error) {
+      console.warn('[Player] NativePlayer bridge payload error', error);
+      return;
+    }
+  }, [isAndroidAppRuntime]);
   const { setVolume: syncAudioEngineVolume } = useAudioEngine({
     playerRef,
     isAndroidAppRuntime,
@@ -743,6 +761,34 @@ export function WebMusicPlayer() {
     window.addEventListener('nativePlaybackCommand', handler);
     return () => window.removeEventListener('nativePlaybackCommand', handler);
   }, [applyNativeCommand]);
+
+
+
+  useEffect(() => {
+    const handler = (event: MessageEvent<string>) => {
+      if (typeof event.data !== 'string') return;
+      try {
+        const detail = JSON.parse(event.data);
+        if (!detail || typeof detail !== 'object') return;
+        const action = (detail as any).action;
+        if (!action) return;
+
+        if (action === 'trackChanged' || action === 'playbackStarted' || action === 'playbackPaused') {
+          const queueIndex = (detail as any).queue_index;
+          if (typeof queueIndex === 'number' && queueIndex >= 0) {
+            syncNativeIndex(queueIndex);
+          }
+          if (action === 'playbackStarted') setGlobalIsPlaying(true);
+          if (action === 'playbackPaused') setGlobalIsPlaying(false);
+        }
+      } catch {
+        // non-bridge window messages
+      }
+    };
+
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, [setGlobalIsPlaying, syncNativeIndex]);
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -964,8 +1010,10 @@ export function WebMusicPlayer() {
 
     if (isAndroidAppRuntime) {
       if (next) {
+        postNativePlayerMessage({ action: 'play', track: currentTrack });
         window.HarmonyNative?.play?.();
       } else {
+        postNativePlayerMessage({ action: 'pause' });
         window.HarmonyNative?.pause?.();
       }
     } else if (playerRef.current) {
@@ -974,23 +1022,25 @@ export function WebMusicPlayer() {
         else      playerRef.current.pauseVideo();
       } catch { /* ignore */ }
     }
-  }, [isAndroidAppRuntime, isGlobalPlaying, setGlobalIsPlaying]);
+  }, [currentTrack, isAndroidAppRuntime, isGlobalPlaying, postNativePlayerMessage, setGlobalIsPlaying]);
 
   const handlePlayNext = useCallback(() => {
     if (isAndroidAppRuntime) {
+      postNativePlayerMessage({ action: 'next' });
       window.HarmonyNative?.next?.();
     } else {
       globalPlayNext();
     }
-  }, [isAndroidAppRuntime, globalPlayNext]);
+  }, [isAndroidAppRuntime, globalPlayNext, postNativePlayerMessage]);
 
   const handlePlayPrev = useCallback(() => {
     if (isAndroidAppRuntime) {
+      postNativePlayerMessage({ action: 'previous' });
       window.HarmonyNative?.previous?.();
     } else {
       globalPlayPrev();
     }
-  }, [isAndroidAppRuntime, globalPlayPrev]);
+  }, [isAndroidAppRuntime, globalPlayPrev, postNativePlayerMessage]);
 
   const handleSeekChange = useCallback((value: number[]) => {
     isSeekingRef.current = true;
@@ -1006,12 +1056,13 @@ export function WebMusicPlayer() {
       try { playerRef.current.seekTo(targetS, true); } catch { /* ignore */ }
     }
     if (isAndroidAppRuntime) {
+      postNativePlayerMessage({ action: 'seek', positionMs: targetMs });
       window.HarmonyNative?.seek?.(targetMs);
     }
 
     setCurrentTime(targetS);
     isSeekingRef.current = false;
-  }, [duration, iframeIsPlayer, isAndroidAppRuntime]);
+  }, [duration, iframeIsPlayer, isAndroidAppRuntime, postNativePlayerMessage]);
 
   const handleVolumeChange = useCallback((value: number) => {
     setVolume(value);
@@ -1035,14 +1086,18 @@ export function WebMusicPlayer() {
   const isLiked = currentTrack ? isSongLiked(currentTrack.id) : false;
 
   const handleToggleLike = useCallback(() => {
-    if (currentTrack) toggleLikeSong(currentTrack);
-  }, [currentTrack, toggleLikeSong]);
+    if (!currentTrack) return;
+    const nextLiked = !isSongLiked(currentTrack.id);
+    postNativePlayerMessage({ action: nextLiked ? 'like' : 'unlike', track: currentTrack });
+    toggleLikeSong(currentTrack);
+  }, [currentTrack, isSongLiked, postNativePlayerMessage, toggleLikeSong]);
 
   const handleAddToPlaylist = useCallback((playlistId: string) => {
     if (!currentTrack) return;
+    postNativePlayerMessage({ action: 'addToPlaylist', playlistId, track: currentTrack });
     addSongToPlaylist(playlistId, currentTrack);
     toast({ title: 'Added to playlist' });
-  }, [currentTrack, addSongToPlaylist, toast]);
+  }, [currentTrack, addSongToPlaylist, postNativePlayerMessage, toast]);
 
   const handleShare = useCallback(() => {
     if (!currentTrack) return;
@@ -1120,15 +1175,17 @@ export function WebMusicPlayer() {
       videoId: song.videoId,
       thumbnailUrl: song.thumbnailUrl,
     }));
+    postNativePlayerMessage({ action: 'setQueue', tracks: payload });
     window.HarmonyNative?.setQueue?.(JSON.stringify(payload));
 
     if (currentTrack) {
       const activeIndex = playlist.findIndex((song) => song.id === currentTrack.id);
       if (activeIndex >= 0) {
+        postNativePlayerMessage({ action: 'play', track: payload[activeIndex] });
         window.HarmonyNative?.setIndex?.(activeIndex);
       }
     }
-  }, [playlist, currentTrack, isAndroidAppRuntime]);
+  }, [playlist, currentTrack, isAndroidAppRuntime, postNativePlayerMessage]);
 
   // ── YouTube opts ───────────────────────────────────────────────────────────
   /**

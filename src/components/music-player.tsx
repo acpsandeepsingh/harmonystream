@@ -7,11 +7,7 @@ import { WebMusicPlayer } from './music-player-web';
 
 const detectAndroidRuntime = () => {
   if (typeof window === 'undefined') return false;
-  const ua = navigator.userAgent ?? '';
-  return /Android/i.test(ua)
-    && (typeof window.HarmonyNative !== 'undefined'
-      || window.location.protocol === 'file:'
-      || window.location.hostname === 'appassets.androidplatform.net');
+  return typeof (window as any).NativePlayer !== 'undefined';
 };
 
 function AndroidBridgePlayer() {
