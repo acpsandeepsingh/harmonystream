@@ -538,6 +538,8 @@ export function WebMusicPlayer() {
     state: -2,
     enteredAt: 0,
     lastRecoverAt: 0,
+    attempts: 0,
+    trackId: '',
   });
 
   /**
@@ -875,6 +877,13 @@ export function WebMusicPlayer() {
         attempts: 0,
         lastAttemptAt: 0,
       };
+      adStateWatchdogRef.current = {
+        state: -2,
+        enteredAt: 0,
+        lastRecoverAt: 0,
+        attempts: 0,
+        trackId: currentTrack.id,
+      };
     }
   }, [currentTrack?.id, prevTrackId]);
 
@@ -936,6 +945,7 @@ export function WebMusicPlayer() {
     switch (state) {
       case 1: // playing
         adStateWatchdogRef.current.lastRecoverAt = 0;
+        adStateWatchdogRef.current.attempts = 0;
         setGlobalIsPlaying(true);
         startProgressPolling();
         break;
@@ -957,10 +967,16 @@ export function WebMusicPlayer() {
       const sinceLastRecovery = now - adStateWatchdogRef.current.lastRecoverAt;
       if (inStateForMs > 6000 && sinceLastRecovery > 6000) {
         adStateWatchdogRef.current.lastRecoverAt = now;
-        try {
-          event.target.loadVideoById(currentVideoIdRef.current);
-        } catch {
-          // ignore; polling-based ad recovery continues as a backup
+        adStateWatchdogRef.current.attempts += 1;
+        if (adStateWatchdogRef.current.attempts > 3) {
+          adStateWatchdogRef.current.attempts = 0;
+          globalPlayNext();
+        } else {
+          try {
+            event.target.loadVideoById(currentVideoIdRef.current);
+          } catch {
+            // ignore; polling-based ad recovery continues as a backup
+          }
         }
       }
     }
