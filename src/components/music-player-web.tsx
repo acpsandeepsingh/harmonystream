@@ -529,6 +529,11 @@ export function WebMusicPlayer() {
   const pendingActionRef       = useRef<string | null>(null);
   const lastNativeStateTsRef   = useRef(0);
   const lastNativeErrorRef     = useRef<string | null>(null);
+  const adRecoveryRef          = useRef({
+    trackId: '',
+    attempts: 0,
+    lastAttemptAt: 0,
+  });
 
   /**
    * Tracks the videoId that is currently loaded in the iframe.
@@ -607,8 +612,47 @@ export function WebMusicPlayer() {
     progressIntervalRef.current = setInterval(async () => {
       if (!playerRef.current || isSeekingRef.current) return;
       try {
+        const expectedVideoId = currentVideoIdRef.current;
+        const videoData = playerRef.current.getVideoData?.();
+        const loadedVideoId = typeof videoData?.video_id === 'string'
+          ? videoData.video_id
+          : '';
+        const loadedTitle = typeof videoData?.title === 'string'
+          ? videoData.title
+          : '';
+
         const pos = await playerRef.current.getCurrentTime() as number;
         const dur = await playerRef.current.getDuration()    as number;
+
+        const loadedAdLikeTitle = /\b(ad(?:vert(?:isement)?)?|sponsored)\b/i.test(loadedTitle);
+        const iframeLooksLikeAd = (
+          (loadedVideoId && expectedVideoId && loadedVideoId !== expectedVideoId) ||
+          (loadedAdLikeTitle && pos < 45)
+        );
+
+        if (iframeLooksLikeAd && currentTrack?.id) {
+          const now = Date.now();
+          if (adRecoveryRef.current.trackId !== currentTrack.id) {
+            adRecoveryRef.current = { trackId: currentTrack.id, attempts: 0, lastAttemptAt: 0 };
+          }
+
+          const recentlyRetried = now - adRecoveryRef.current.lastAttemptAt < 3000;
+          if (!recentlyRetried) {
+            adRecoveryRef.current.lastAttemptAt = now;
+            adRecoveryRef.current.attempts += 1;
+            if (adRecoveryRef.current.attempts <= 3 && expectedVideoId) {
+              try {
+                playerRef.current.loadVideoById(expectedVideoId);
+              } catch {
+                // fall through to next-track safeguard below
+              }
+            } else {
+              globalPlayNext();
+            }
+          }
+          return;
+        }
+
         if (!isSeekingRef.current && isFinite(pos) && isFinite(dur)) {
           setCurrentTime(pos);
           setDuration(dur);
@@ -616,7 +660,7 @@ export function WebMusicPlayer() {
         }
       } catch { /* player not yet ready */ }
     }, 500);
-  }, [stopProgressPolling]);
+  }, [stopProgressPolling, currentTrack?.id, globalPlayNext]);
 
   // Expose progress updater for Java's window.updateProgress() call
   useEffect(() => {
@@ -821,6 +865,11 @@ export function WebMusicPlayer() {
       setCurrentTime(0);
       setDuration(0);
       currentVideoIdRef.current = currentTrack.videoId || currentTrack.id;
+      adRecoveryRef.current = {
+        trackId: currentTrack.id,
+        attempts: 0,
+        lastAttemptAt: 0,
+      };
     }
   }, [currentTrack?.id, prevTrackId]);
 
