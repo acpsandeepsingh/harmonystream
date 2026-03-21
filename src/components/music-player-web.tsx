@@ -534,6 +534,11 @@ export function WebMusicPlayer() {
     attempts: 0,
     lastAttemptAt: 0,
   });
+  const adStateWatchdogRef = useRef({
+    state: -2,
+    enteredAt: 0,
+    lastRecoverAt: 0,
+  });
 
   /**
    * Tracks the videoId that is currently loaded in the iframe.
@@ -576,10 +581,10 @@ export function WebMusicPlayer() {
 
   /**
    * When true the YouTube iframe is the active audio engine.
-   * When false (Android audio mode) ExoPlayer owns audio and the
-   * iframe must NOT be rendered or polled.
+   * In Android audio mode, ExoPlayer owns playback and native
+   * broadcasts drive progress/isPlaying.
    */
-  const iframeIsPlayer = !isAndroidAppRuntime;
+  const iframeIsPlayer = !isAndroidAppRuntime || playerMode === 'video';
 
   const postNativePlayerMessage = useCallback((payload: Record<string, unknown>) => {
     if (!isAndroidAppRuntime) return;
@@ -920,9 +925,17 @@ export function WebMusicPlayer() {
    */
   const onPlayerStateChange = useCallback((event: YouTubeEvent) => {
     const state = event.data as number;
+    const now = Date.now();
+
+    if (adStateWatchdogRef.current.state !== state) {
+      adStateWatchdogRef.current.state = state;
+      adStateWatchdogRef.current.enteredAt = now;
+    }
+
     // YT.PlayerState: -1=unstarted, 0=ended, 1=playing, 2=paused, 3=buffering, 5=cued
     switch (state) {
       case 1: // playing
+        adStateWatchdogRef.current.lastRecoverAt = 0;
         setGlobalIsPlaying(true);
         startProgressPolling();
         break;
@@ -937,6 +950,19 @@ export function WebMusicPlayer() {
         break;
       default:
         break;
+    }
+
+    if ((state === -1 || state === 3) && currentVideoIdRef.current) {
+      const inStateForMs = now - adStateWatchdogRef.current.enteredAt;
+      const sinceLastRecovery = now - adStateWatchdogRef.current.lastRecoverAt;
+      if (inStateForMs > 6000 && sinceLastRecovery > 6000) {
+        adStateWatchdogRef.current.lastRecoverAt = now;
+        try {
+          event.target.loadVideoById(currentVideoIdRef.current);
+        } catch {
+          // ignore; polling-based ad recovery continues as a backup
+        }
+      }
     }
   }, [
     setGlobalIsPlaying, startProgressPolling, stopProgressPolling, globalPlayNext,
@@ -1057,6 +1083,14 @@ export function WebMusicPlayer() {
     // Optimistic update — prevents 500 ms stale button appearance
     setGlobalIsPlaying(next);
 
+    if (iframeIsPlayer && playerRef.current) {
+      try {
+        if (next) playerRef.current.playVideo();
+        else      playerRef.current.pauseVideo();
+      } catch { /* ignore */ }
+      return;
+    }
+
     if (isAndroidAppRuntime) {
       if (next) {
         postNativePlayerMessage({ action: 'play', track: currentTrack });
@@ -1065,31 +1099,30 @@ export function WebMusicPlayer() {
         postNativePlayerMessage({ action: 'pause' });
         window.HarmonyNative?.pause?.();
       }
-    } else if (playerRef.current) {
-      try {
-        if (next) playerRef.current.playVideo();
-        else      playerRef.current.pauseVideo();
-      } catch { /* ignore */ }
     }
-  }, [currentTrack, isAndroidAppRuntime, isGlobalPlaying, postNativePlayerMessage, setGlobalIsPlaying]);
+  }, [currentTrack, iframeIsPlayer, isAndroidAppRuntime, isGlobalPlaying, postNativePlayerMessage, setGlobalIsPlaying]);
 
   const handlePlayNext = useCallback(() => {
+    if (iframeIsPlayer) {
+      globalPlayNext();
+      return;
+    }
     if (isAndroidAppRuntime) {
       postNativePlayerMessage({ action: 'next' });
       window.HarmonyNative?.next?.();
-    } else {
-      globalPlayNext();
     }
-  }, [isAndroidAppRuntime, globalPlayNext, postNativePlayerMessage]);
+  }, [iframeIsPlayer, isAndroidAppRuntime, globalPlayNext, postNativePlayerMessage]);
 
   const handlePlayPrev = useCallback(() => {
+    if (iframeIsPlayer) {
+      globalPlayPrev();
+      return;
+    }
     if (isAndroidAppRuntime) {
       postNativePlayerMessage({ action: 'previous' });
       window.HarmonyNative?.previous?.();
-    } else {
-      globalPlayPrev();
     }
-  }, [isAndroidAppRuntime, globalPlayPrev, postNativePlayerMessage]);
+  }, [iframeIsPlayer, isAndroidAppRuntime, globalPlayPrev, postNativePlayerMessage]);
 
   const handleSeekChange = useCallback((value: number[]) => {
     isSeekingRef.current = true;
