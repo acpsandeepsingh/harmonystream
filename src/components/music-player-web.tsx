@@ -1204,6 +1204,7 @@ export function WebMusicPlayer() {
       iv_load_policy: 3,
     },
   }), []);
+  const youtubeHost = 'https://www.youtube-nocookie.com';
 
   // ── Early exit ─────────────────────────────────────────────────────────────
   if (!currentTrack) return null;
@@ -1269,6 +1270,7 @@ export function WebMusicPlayer() {
             key={currentTrack.id}
             videoId={currentTrack.videoId || currentTrack.id}
             opts={youtubeOpts}
+            host={youtubeHost}
             onReady={onPlayerReady}
             onStateChange={onPlayerStateChange}
             onError={onPlayerError}
