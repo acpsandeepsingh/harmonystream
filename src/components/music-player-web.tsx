@@ -587,6 +587,19 @@ export function WebMusicPlayer() {
    * broadcasts drive progress/isPlaying.
    */
   const iframeIsPlayer = !isAndroidAppRuntime || playerMode === 'video';
+  /**
+   * Optional ad-bypass guard for YouTube iframe playback.
+   *
+   * IMPORTANT:
+   * - Default is OFF for safety.
+   * - Enable with NEXT_PUBLIC_YT_AD_BYPASS=1.
+   * - Optional preference flag NEXT_PUBLIC_YT_AD_PREFER_SKIP=1
+   *   skips to next track when ad-like playback persists.
+   * - This can only request video reload/seek behavior through the iframe API.
+   *   It cannot click the YouTube "Skip Ads" button directly.
+   */
+  const adBypassEnabled = process.env.NEXT_PUBLIC_YT_AD_BYPASS === '1';
+  const adPreferSkip = process.env.NEXT_PUBLIC_YT_AD_PREFER_SKIP === '1';
 
   const postNativePlayerMessage = useCallback((payload: Record<string, unknown>) => {
     if (!isAndroidAppRuntime) return;
@@ -631,33 +644,36 @@ export function WebMusicPlayer() {
         const pos = await playerRef.current.getCurrentTime() as number;
         const dur = await playerRef.current.getDuration()    as number;
 
-        const loadedAdLikeTitle = /\b(ad(?:vert(?:isement)?)?|sponsored)\b/i.test(loadedTitle);
-        const iframeLooksLikeAd = (
-          (loadedVideoId && expectedVideoId && loadedVideoId !== expectedVideoId) ||
-          (loadedAdLikeTitle && pos < 45)
-        );
+        if (adBypassEnabled) {
+          const loadedAdLikeTitle = /\b(ad(?:vert(?:isement)?)?|sponsored)\b/i.test(loadedTitle);
+          const iframeLooksLikeAd = (
+            (loadedVideoId && expectedVideoId && loadedVideoId !== expectedVideoId) ||
+            (loadedAdLikeTitle && pos < 45)
+          );
 
-        if (iframeLooksLikeAd && currentTrack?.id) {
-          const now = Date.now();
-          if (adRecoveryRef.current.trackId !== currentTrack.id) {
-            adRecoveryRef.current = { trackId: currentTrack.id, attempts: 0, lastAttemptAt: 0 };
-          }
-
-          const recentlyRetried = now - adRecoveryRef.current.lastAttemptAt < 3000;
-          if (!recentlyRetried) {
-            adRecoveryRef.current.lastAttemptAt = now;
-            adRecoveryRef.current.attempts += 1;
-            if (adRecoveryRef.current.attempts <= 3 && expectedVideoId) {
-              try {
-                playerRef.current.loadVideoById(expectedVideoId);
-              } catch {
-                // fall through to next-track safeguard below
-              }
-            } else {
-              globalPlayNext();
+          if (iframeLooksLikeAd && currentTrack?.id) {
+            const now = Date.now();
+            if (adRecoveryRef.current.trackId !== currentTrack.id) {
+              adRecoveryRef.current = { trackId: currentTrack.id, attempts: 0, lastAttemptAt: 0 };
             }
+
+            // Retry load of the target track every ~2s while ad-like content is detected.
+            const recentlyRetried = now - adRecoveryRef.current.lastAttemptAt < 2000;
+            if (!recentlyRetried) {
+              adRecoveryRef.current.lastAttemptAt = now;
+              adRecoveryRef.current.attempts += 1;
+              if (adPreferSkip && adRecoveryRef.current.attempts >= 4) {
+                globalPlayNext();
+              } else if (expectedVideoId) {
+                try {
+                  playerRef.current.loadVideoById(expectedVideoId);
+                } catch {
+                  // Ignore and keep polling.
+                }
+              }
+            }
+            return;
           }
-          return;
         }
 
         if (!isSeekingRef.current && isFinite(pos) && isFinite(dur)) {
@@ -667,7 +683,7 @@ export function WebMusicPlayer() {
         }
       } catch { /* player not yet ready */ }
     }, 500);
-  }, [stopProgressPolling, currentTrack?.id, globalPlayNext]);
+  }, [adBypassEnabled, adPreferSkip, stopProgressPolling, currentTrack?.id, globalPlayNext]);
 
   // Expose progress updater for Java's window.updateProgress() call
   useEffect(() => {
@@ -962,15 +978,15 @@ export function WebMusicPlayer() {
         break;
     }
 
-    if ((state === -1 || state === 3) && currentVideoIdRef.current) {
+    if (adBypassEnabled && (state === -1 || state === 3) && currentVideoIdRef.current) {
       const inStateForMs = now - adStateWatchdogRef.current.enteredAt;
       const sinceLastRecovery = now - adStateWatchdogRef.current.lastRecoverAt;
       if (inStateForMs > 6000 && sinceLastRecovery > 6000) {
         adStateWatchdogRef.current.lastRecoverAt = now;
         adStateWatchdogRef.current.attempts += 1;
-        if (adStateWatchdogRef.current.attempts > 3) {
-          adStateWatchdogRef.current.attempts = 0;
+        if (adPreferSkip && adStateWatchdogRef.current.attempts >= 3) {
           globalPlayNext();
+          adStateWatchdogRef.current.attempts = 0;
         } else {
           try {
             event.target.loadVideoById(currentVideoIdRef.current);
@@ -981,7 +997,7 @@ export function WebMusicPlayer() {
       }
     }
   }, [
-    setGlobalIsPlaying, startProgressPolling, stopProgressPolling, globalPlayNext,
+    adBypassEnabled, adPreferSkip, setGlobalIsPlaying, startProgressPolling, stopProgressPolling, globalPlayNext,
   ]);
 
   const onPlayerError = useCallback((event: YouTubeEvent) => {
