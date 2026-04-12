@@ -879,7 +879,7 @@ public class PlaybackService extends Service {
                         obj.optString("id"),
                         obj.optString("title"),
                         obj.optString("artist"),
-                        obj.optString("videoId"),
+                        extractQueueVideoId(obj),
                         obj.optString("thumbnailUrl")
                 ));
             }
@@ -960,7 +960,7 @@ public class PlaybackService extends Service {
                         obj.optString("id"),
                         obj.optString("title"),
                         obj.optString("artist"),
-                        obj.optString("videoId"),
+                        extractQueueVideoId(obj),
                         obj.optString("thumbnailUrl")
                 );
                 playbackQueue.add(insertIndex + i, item);
@@ -982,6 +982,20 @@ public class PlaybackService extends Service {
                 return;
             }
         }
+    }
+
+    private String extractQueueVideoId(JSONObject obj) {
+        if (obj == null) return "";
+        String videoId = obj.optString("videoId", "").trim();
+        if (!videoId.isEmpty()) return videoId;
+
+        String legacyVideoId = obj.optString("video_id", "").trim();
+        if (!legacyVideoId.isEmpty()) return legacyVideoId;
+
+        String idFallback = obj.optString("id", "").trim();
+        if (!idFallback.isEmpty()) return idFallback;
+
+        return "";
     }
 
     // -------------------------------------------------------------------------
@@ -1368,7 +1382,7 @@ public class PlaybackService extends Service {
                             obj.optString("id"),
                             obj.optString("title"),
                             obj.optString("artist"),
-                            obj.optString("videoId"),
+                            extractQueueVideoId(obj),
                             obj.optString("thumbnailUrl")
                     ));
                 }
