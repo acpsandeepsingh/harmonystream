@@ -77,6 +77,11 @@ public class PlaybackService extends Service {
     private static final long DEBUG_TOAST_DEBOUNCE_MS = 1500L;
     private static final String YT_REFERER = "https://www.youtube.com/";
     private static final String YT_ORIGIN = "https://www.youtube.com";
+    private static final String DEMO_STREAM_URL =
+            "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3";
+    private static final String DEMO_TITLE = "HarmonyStream Demo Track";
+    private static final String DEMO_ARTIST = "Built-in fallback";
+    private static final String DEMO_VIDEO_ID = "harmony_demo_track";
     public static final String CHANNEL_ID = "harmonystream_playback";
     public static final int NOTIFICATION_ID = 1001;
 
@@ -265,6 +270,7 @@ public class PlaybackService extends Service {
         initExtractor();
         initMediaSession();
         initPlayer();
+        seedDemoTrackWhenEmpty();
     }
 
 
@@ -471,6 +477,10 @@ public class PlaybackService extends Service {
                 if (handleSkip(+1)) {
                     dispatchActionToUi(ACTION_NEXT);
                 } else {
+                    if (isSourceError) {
+                        playFallbackDemoTrack();
+                        return;
+                    }
                     // Avoid repeated player-error loops when the current item cannot be recovered
                     // and there is no next item to skip to.
                     if (player != null) {
@@ -657,7 +667,7 @@ public class PlaybackService extends Service {
         if (a != null) currentArtist = a;
         currentThumbnailUrl = sanitizeThumbnailUrl(
                 intent.getStringExtra("thumbnailUrl"), videoId);
-        syncQueueIndexForVideo(videoId);
+        resetQueueToSingleSelection(videoId, currentTitle, currentArtist, currentThumbnailUrl);
         pendingPlayRequestedAtMs = System.currentTimeMillis();
         ensureForegroundWithCurrentState();
         broadcastState();
@@ -762,9 +772,67 @@ public class PlaybackService extends Service {
                 }
                 lastPlaybackError = "Extraction failed: " + rootMessage(t);
                 Log.e(TAG, "Unable to resolve stream URL", t);
+                if (!DEMO_VIDEO_ID.equals(videoId)) {
+                    playFallbackDemoTrack();
+                } else {
+                    broadcastState();
+                }
+            }
+        });
+    }
+
+    private void seedDemoTrackWhenEmpty() {
+        if (!playbackQueue.isEmpty()) return;
+        if (currentVideoId != null && !currentVideoId.trim().isEmpty()) return;
+        playbackQueue.add(new QueueItem(
+                DEMO_VIDEO_ID,
+                DEMO_TITLE,
+                DEMO_ARTIST,
+                DEMO_VIDEO_ID,
+                ""
+        ));
+        currentQueueIndex = 0;
+        currentVideoId = DEMO_VIDEO_ID;
+        currentTitle = DEMO_TITLE;
+        currentArtist = DEMO_ARTIST;
+    }
+
+    private void playFallbackDemoTrack() {
+        mainHandler.post(() -> {
+            if (player == null) return;
+            currentVideoId = DEMO_VIDEO_ID;
+            currentTitle = DEMO_TITLE;
+            currentArtist = DEMO_ARTIST;
+            currentThumbnailUrl = "";
+            resetQueueToSingleSelection(DEMO_VIDEO_ID, DEMO_TITLE, DEMO_ARTIST, "");
+            try {
+                MediaSource mediaSource = buildPlayerMediaSourceFactory()
+                        .createMediaSource(MediaItem.fromUri(DEMO_STREAM_URL));
+                player.setMediaSource(mediaSource);
+                player.prepare();
+                player.play();
+                lastPlaybackError = "YouTube stream blocked/expired; playing demo fallback track.";
+                updateNotification();
+                broadcastState();
+            } catch (Throwable fallbackError) {
+                lastPlaybackError = "Fallback playback failed: " + rootMessage(fallbackError);
+                Log.e(TAG, "Fallback demo playback failed", fallbackError);
                 broadcastState();
             }
         });
+    }
+
+    private void resetQueueToSingleSelection(String videoId, String title, String artist, String thumbnailUrl) {
+        playbackQueue.clear();
+        playbackQueue.add(new QueueItem(
+                videoId,
+                title == null ? "" : title,
+                artist == null ? "" : artist,
+                videoId,
+                thumbnailUrl == null ? "" : thumbnailUrl
+        ));
+        currentQueueIndex = 0;
+        pendingQueueIndex = -1;
     }
 
     private StreamResolution resolveStreamUrl(String videoId, int attempt) throws Exception {
