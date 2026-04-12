@@ -9,6 +9,7 @@ import org.schabi.newpipe.extractor.stream.StreamInfo;
 import org.schabi.newpipe.extractor.stream.VideoStream;
 
 import java.lang.reflect.Method;
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -35,6 +36,11 @@ final class YouTubeStreamExtractor {
     }
 
     ExtractionResult extract(String videoId, boolean preferVideo, int attempt) throws Exception {
+        if (isDirectStreamUrl(videoId)) {
+            String direct = videoId == null ? null : videoId.trim();
+            return new ExtractionResult(direct, direct, direct);
+        }
+
         StreamingService yt = ServiceList.YouTube;
         StreamInfo info = resolveStreamInfo(yt, videoId);
 
@@ -171,6 +177,24 @@ final class YouTubeStreamExtractor {
             }
         }
         return null;
+    }
+
+    private boolean isDirectStreamUrl(@Nullable String source) {
+        if (!isLikelyPlayableUrl(source)) return false;
+        String value = source.trim();
+        try {
+            URI uri = URI.create(value);
+            String host = safeLower(uri.getHost());
+            String path = safeLower(uri.getPath());
+            if (host.contains("googlevideo.com") && path.contains("videoplayback")) return true;
+            if (path.endsWith(".m3u8") || path.endsWith(".mpd") || path.endsWith(".mp4") || path.endsWith(".m4a")) {
+                return true;
+            }
+            // Non-YouTube hosts may already point to a playable media stream.
+            return !host.contains("youtube.com") && !host.contains("youtu.be");
+        } catch (Throwable ignored) {
+            return false;
+        }
     }
 
     private boolean isLikelyPlayableUrl(@Nullable String streamUrl) {
