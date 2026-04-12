@@ -4,6 +4,8 @@ import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.view.View;
+import android.view.HapticFeedbackConstants;
+import android.view.MotionEvent;
 import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.ImageView;
@@ -79,7 +81,37 @@ final class PlayerUiController {
         volumeBar = playerContainer.findViewById(R.id.volumeBar);
 
         setupControls();
+        attachTouchFeedback();
         showEmptyState();
+    }
+
+    private void attachTouchFeedback() {
+        bindTouchFeedback(play);
+        bindTouchFeedback(next);
+        bindTouchFeedback(previous);
+        bindTouchFeedback(mode);
+        bindTouchFeedback(like);
+        bindTouchFeedback(queue);
+        bindTouchFeedback(add);
+        bindTouchFeedback(share);
+    }
+
+    private void bindTouchFeedback(@Nullable View target) {
+        if (target == null) return;
+        target.setHapticFeedbackEnabled(true);
+        target.setOnTouchListener((v, event) -> {
+            if (!v.isEnabled()) return false;
+            int action = event.getActionMasked();
+            if (action == MotionEvent.ACTION_DOWN) {
+                v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
+                v.animate().scaleX(0.92f).scaleY(0.92f).setDuration(80).start();
+            } else if (action == MotionEvent.ACTION_UP
+                    || action == MotionEvent.ACTION_CANCEL
+                    || action == MotionEvent.ACTION_OUTSIDE) {
+                v.animate().scaleX(1f).scaleY(1f).setDuration(100).start();
+            }
+            return false;
+        });
     }
 
     private void setupControls() {
