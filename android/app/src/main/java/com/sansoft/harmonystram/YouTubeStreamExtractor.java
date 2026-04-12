@@ -8,6 +8,10 @@ import org.schabi.newpipe.extractor.stream.AudioStream;
 import org.schabi.newpipe.extractor.stream.StreamInfo;
 import org.schabi.newpipe.extractor.stream.VideoStream;
 
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 
 /**
@@ -39,16 +43,18 @@ final class YouTubeStreamExtractor {
 
         String audioCandidate = pickPreferredAudioStream(audioStreams);
         String videoCandidate = pickPreferredVideoStream(videoStreams);
+        String hlsCandidate = pickHlsStream(info);
 
         String selected = preferVideo
-                ? firstPlayable(videoCandidate, audioCandidate)
-                : firstPlayable(audioCandidate, videoCandidate);
+                ? firstPlayable(videoCandidate, audioCandidate, hlsCandidate)
+                : firstPlayable(audioCandidate, hlsCandidate, videoCandidate);
 
         if (!isLikelyPlayableUrl(selected)) {
             throw new IllegalStateException("Extractor returned an invalid stream URL"
                     + " [attempt=" + attempt
                     + ", audioStreams=" + (audioStreams == null ? 0 : audioStreams.size())
                     + ", videoStreams=" + (videoStreams == null ? 0 : videoStreams.size())
+                    + ", hls=" + (hlsCandidate != null)
                     + ", preferVideo=" + preferVideo + "]");
         }
 
@@ -79,7 +85,13 @@ final class YouTubeStreamExtractor {
             String url = stream.getContent();
             if (!isLikelyPlayableUrl(url)) continue;
 
-            // Prefer non-progressive/adaptive streams that avoid throttling markers when possible.
+            // Prefer progressive video+audio stream URLs for reliability with ExoPlayer.
+            if (stream.isVideoOnly()) {
+                if (fallback == null) fallback = url;
+                continue;
+            }
+
+            // Prefer non-throttled stream URLs when possible.
             if (!isPotentiallyThrottledStream(url)) {
                 nonThrottled = url;
                 break;
@@ -95,18 +107,53 @@ final class YouTubeStreamExtractor {
     @Nullable
     private String pickPreferredAudioStream(@Nullable List<AudioStream> streams) {
         if (streams == null || streams.isEmpty()) return null;
-        for (AudioStream stream : streams) {
+
+        List<AudioStream> ranked = new ArrayList<>(streams);
+        Collections.sort(ranked, Comparator.comparingInt(this::audioPreferenceScore));
+        for (AudioStream stream : ranked) {
             if (stream == null) continue;
-            if (stream.getItag() == 140 && isLikelyPlayableUrl(stream.getContent())) {
-                return stream.getContent();
-            }
-        }
-        for (AudioStream stream : streams) {
-            if (stream != null && isLikelyPlayableUrl(stream.getContent())) {
-                return stream.getContent();
-            }
+            String url = stream.getContent();
+            if (isLikelyPlayableUrl(url)) return url;
         }
         return null;
+    }
+
+    @Nullable
+    private String pickHlsStream(@Nullable StreamInfo info) {
+        if (info == null) return null;
+        try {
+            Method m = info.getClass().getMethod("getHlsUrl");
+            Object value = m.invoke(info);
+            if (value instanceof String && isLikelyPlayableUrl((String) value)) {
+                return (String) value;
+            }
+        } catch (Throwable ignored) {
+        }
+        return null;
+    }
+
+    private int audioPreferenceScore(@Nullable AudioStream stream) {
+        if (stream == null) return Integer.MAX_VALUE;
+        String url = stream.getContent();
+        if (!isLikelyPlayableUrl(url)) return Integer.MAX_VALUE - 1;
+
+        int score = 100;
+        int itag = stream.getItag();
+        if (itag == 251) score -= 30; // opus webm
+        if (itag == 140) score -= 25; // m4a fallback
+
+        String format = safeLower(stream.getFormat() != null ? stream.getFormat().name() : null);
+        if (format.contains("webm")) score -= 10;
+        if (format.contains("m4a")) score -= 8;
+
+        long bitrate = stream.getAverageBitrate();
+        if (bitrate > 0) {
+            long bitrateDelta = Math.abs(bitrate - 128_000L);
+            score += (int) Math.min(40L, bitrateDelta / 8_000L);
+        }
+
+        if (isPotentiallyThrottledStream(url)) score += 15;
+        return score;
     }
 
     private boolean isPotentiallyThrottledStream(@Nullable String streamUrl) {
@@ -116,12 +163,12 @@ final class YouTubeStreamExtractor {
     }
 
     @Nullable
-    private String firstPlayable(@Nullable String primary, @Nullable String fallback) {
-        if (isLikelyPlayableUrl(primary)) {
-            return primary;
-        }
-        if (isLikelyPlayableUrl(fallback)) {
-            return fallback;
+    private String firstPlayable(@Nullable String... candidates) {
+        if (candidates == null) return null;
+        for (String candidate : candidates) {
+            if (isLikelyPlayableUrl(candidate)) {
+                return candidate;
+            }
         }
         return null;
     }
@@ -130,5 +177,9 @@ final class YouTubeStreamExtractor {
         if (streamUrl == null || streamUrl.trim().isEmpty()) return false;
         String url = streamUrl.trim().toLowerCase();
         return url.startsWith("https://") || url.startsWith("http://");
+    }
+
+    private String safeLower(@Nullable String value) {
+        return value == null ? "" : value.toLowerCase();
     }
 }
