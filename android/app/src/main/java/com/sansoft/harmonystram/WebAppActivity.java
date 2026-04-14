@@ -105,7 +105,7 @@ public class WebAppActivity extends AppCompatActivity
     @Override
     public void onPlaybackStateChanged(@NonNull Intent stateIntent) {
         playbackActive = stateIntent.getBooleanExtra("playing", false);
-        videoModeEnabled = stateIntent.getBooleanExtra("video_mode", false) && playbackActive;
+        videoModeEnabled = stateIntent.getBooleanExtra("video_mode", false);
         playerUiController.updateFromState(stateIntent);
         applyModeUi(videoModeEnabled);
 
@@ -131,7 +131,7 @@ public class WebAppActivity extends AppCompatActivity
     @Override
     public void onServiceConnected(@NonNull PlaybackService.PlaybackSnapshot snapshot) {
         playbackActive = snapshot.playing;
-        videoModeEnabled = snapshot.videoMode && snapshot.playing;
+        videoModeEnabled = snapshot.videoMode;
         playerUiController.updateFromSnapshot(snapshot);
         applyModeUi(videoModeEnabled);
     }

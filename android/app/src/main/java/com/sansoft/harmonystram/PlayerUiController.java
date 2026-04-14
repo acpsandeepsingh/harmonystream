@@ -41,10 +41,6 @@ final class PlayerUiController {
     private ImageButton next;
     private ImageButton previous;
     private ImageButton mode;
-    private ImageButton like;
-    private ImageButton queue;
-    private ImageButton add;
-    private ImageButton share;
     private ImageButton volume;
     private SeekBar seekBar;
     private SeekBar volumeBar;
@@ -76,10 +72,6 @@ final class PlayerUiController {
         next = playerContainer.findViewById(R.id.btnNext);
         previous = playerContainer.findViewById(R.id.btnPrev);
         mode = playerContainer.findViewById(R.id.btnMode);
-        like = playerContainer.findViewById(R.id.btnLike);
-        queue = playerContainer.findViewById(R.id.btnQueue);
-        add = playerContainer.findViewById(R.id.btnAdd);
-        share = playerContainer.findViewById(R.id.btnShare);
         volume = playerContainer.findViewById(R.id.btnVolume);
         seekBar = playerContainer.findViewById(R.id.seekBar);
         volumeBar = playerContainer.findViewById(R.id.volumeBar);
@@ -95,10 +87,6 @@ final class PlayerUiController {
         bindTouchFeedback(next);
         bindTouchFeedback(previous);
         bindTouchFeedback(mode);
-        bindTouchFeedback(like);
-        bindTouchFeedback(queue);
-        bindTouchFeedback(add);
-        bindTouchFeedback(share);
         bindTouchFeedback(volume);
     }
 
@@ -144,22 +132,6 @@ final class PlayerUiController {
         }
         if (mode != null) {
             mode.setOnClickListener(v -> actions.onModeToggleRequested(!v.isSelected()));
-        }
-        if (like != null) {
-            like.setOnClickListener(v -> actions.dispatchToWeb(
-                    "window.dispatchEvent(new CustomEvent('nativeToggleLike'))"));
-        }
-        if (queue != null) {
-            queue.setOnClickListener(v -> actions.dispatchToWeb(
-                    "window.dispatchEvent(new CustomEvent('nativeOpenQueue'))"));
-        }
-        if (add != null) {
-            add.setOnClickListener(v -> actions.dispatchToWeb(
-                    "window.dispatchEvent(new CustomEvent('nativeAddToPlaylist'))"));
-        }
-        if (share != null) {
-            share.setOnClickListener(v -> actions.dispatchToWeb(
-                    "window.dispatchEvent(new CustomEvent('nativeShareTrack'))"));
         }
         if (volume != null) {
             volume.setOnClickListener(v -> {

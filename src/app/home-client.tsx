@@ -15,6 +15,12 @@ import { useToast } from '@/hooks/use-toast';
 import { usePlaylists } from '@/contexts/playlist-context';
 import { LIKED_SONGS_PLAYLIST_ID } from '@/lib/constants';
 
+function isSameLocalDate(a: Date, b: Date): boolean {
+  return a.getFullYear() === b.getFullYear()
+    && a.getMonth() === b.getMonth()
+    && a.getDate() === b.getDate();
+}
+
 export default function HomePage() {
   const [selectedGenre, setSelectedGenre] = useState<string>('New Songs');
   const [songs, setSongs] = useState<Song[]>([]);
@@ -48,10 +54,16 @@ export default function HomePage() {
 
         if (cacheSnap.exists()) {
           const cacheData = cacheSnap.data() as ApiCacheEntry;
-          // For simplicity, we'll just check if the cache exists. A real app might check a timestamp.
-          setSongs(cacheData.songs);
-          setLoading(false);
-          return;
+          const cacheTimestamp = new Date(cacheData.timestamp);
+          const now = new Date();
+          const canUseCache = !Number.isNaN(cacheTimestamp.getTime())
+            && isSameLocalDate(cacheTimestamp, now);
+
+          if (canUseCache) {
+            setSongs(cacheData.songs);
+            setLoading(false);
+            return;
+          }
         }
         
         const fetchedSongs = await searchYoutube(query, selectedGenre);
