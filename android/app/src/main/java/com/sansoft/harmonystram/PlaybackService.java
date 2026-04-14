@@ -602,7 +602,11 @@ public class PlaybackService extends Service {
             "window.dispatchEvent(new CustomEvent('nativeSetVideoMode',"
             + "{ detail: { enabled: " + enableVideo + " } }));");
 
-        if (player != null && currentVideoId != null && !currentVideoId.isEmpty()) {
+        if (enableVideo) {
+            if (player != null && player.isPlaying()) {
+                player.pause();
+            }
+        } else if (player != null && currentVideoId != null && !currentVideoId.isEmpty()) {
             long resumePositionMs = Math.max(0L, player.getCurrentPosition());
             resolveAndPlay(currentVideoId, resumePositionMs);
         }
