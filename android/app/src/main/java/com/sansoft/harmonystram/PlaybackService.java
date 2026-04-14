@@ -1080,11 +1080,11 @@ public class PlaybackService extends Service {
 
     private void updateNotification() {
         Notification n = buildNotification();
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        if (shouldRunInForeground()) {
             startForeground(NOTIFICATION_ID, n);
-        } else {
-            NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, n);
+            return;
         }
+        NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, n);
     }
 
     private Notification buildNotification() {
@@ -1109,8 +1109,10 @@ public class PlaybackService extends Service {
                 .setSmallIcon(icSmall)
                 .setContentTitle(currentTitle)
                 .setContentText(currentArtist)
+                .setSubText(buildQueuePositionText())
                 .setContentIntent(contentPi)
                 .setOnlyAlertOnce(true)
+                .setOngoing(player != null && player.isPlaying())
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                 .setStyle(new MediaStyle()
                         .setMediaSession(mediaSession.getSessionToken())
@@ -1120,6 +1122,22 @@ public class PlaybackService extends Service {
                         ? buildAction(icPause, "Pause", ACTION_PAUSE, 102)
                         : buildAction(icPlay,  "Play",  ACTION_PLAY,  102))
                 .addAction(buildAction(icNext, "Next", ACTION_NEXT, 103));
+
+        long durationMs = player != null
+                ? Math.max(0L, player.getDuration())
+                : Math.max(0L, currentDurationMs);
+        long positionMs = player != null
+                ? Math.max(0L, player.getCurrentPosition())
+                : Math.max(0L, currentPositionMs);
+        if (durationMs > 0L) {
+            int max = durationMs > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) durationMs;
+            int progress = (int) Math.min(max, positionMs);
+            builder.setProgress(max, progress, false);
+        } else if (player != null && player.isPlaying()) {
+            builder.setProgress(100, 0, true);
+        } else {
+            builder.setProgress(0, 0, false);
+        }
 
         if (currentArtworkBitmap != null) {
             builder.setLargeIcon(currentArtworkBitmap);
@@ -1138,6 +1156,19 @@ public class PlaybackService extends Service {
                    ? PendingIntent.FLAG_IMMUTABLE : 0);
         PendingIntent pi = PendingIntent.getService(this, requestCode, intent, flags);
         return new NotificationCompat.Action(icon, title, pi);
+    }
+
+    private String buildQueuePositionText() {
+        if (playbackQueue.isEmpty()) return null;
+        int queueLength = playbackQueue.size();
+        int currentIndex = Math.max(0, currentQueueIndex);
+        if (currentIndex >= queueLength) currentIndex = queueLength - 1;
+        return "Queue " + (currentIndex + 1) + " of " + queueLength;
+    }
+
+    private boolean shouldRunInForeground() {
+        if (pendingPlayRequestedAtMs > 0L) return true;
+        return player != null && (player.isPlaying() || player.getPlaybackState() == Player.STATE_BUFFERING);
     }
 
     // -------------------------------------------------------------------------
