@@ -13,6 +13,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
+import android.webkit.CookieManager;
 import android.util.Log;
 
 import okhttp3.MediaType;
@@ -96,6 +97,23 @@ public class DownloaderImpl extends Downloader {
         if (!hasHeaderIgnoreCase(headers, "Origin")) {
             builder.header("Origin", "https://www.youtube.com");
         }
+        if (!hasHeaderIgnoreCase(headers, "Accept-Language")) {
+            builder.header("Accept-Language", "en-US,en;q=0.9");
+        }
+        if (!hasHeaderIgnoreCase(headers, "Sec-Fetch-Dest")) {
+            builder.header("Sec-Fetch-Dest", "empty");
+        }
+        if (!hasHeaderIgnoreCase(headers, "Sec-Fetch-Mode")) {
+            builder.header("Sec-Fetch-Mode", "cors");
+        }
+        if (!hasHeaderIgnoreCase(headers, "Sec-Fetch-Site")) {
+            builder.header("Sec-Fetch-Site", "same-origin");
+        }
+
+        String cookieHeader = resolveYouTubeCookies(request.url());
+        if (!cookieHeader.isEmpty() && !hasHeaderIgnoreCase(headers, "Cookie")) {
+            builder.header("Cookie", cookieHeader);
+        }
 
         // 3. Attach request body if extractor supplied one
         byte[] dataToSend = request.dataToSend();
@@ -168,5 +186,29 @@ public class DownloaderImpl extends Downloader {
                 || "PATCH".equals(method)
                 || "PROPPATCH".equals(method)
                 || "REPORT".equals(method);
+    }
+
+    private static String resolveYouTubeCookies(String requestUrl) {
+        if (requestUrl == null || requestUrl.trim().isEmpty()) return "";
+        try {
+            CookieManager cookieManager = CookieManager.getInstance();
+            if (cookieManager == null) return "";
+
+            String cookies = cookieManager.getCookie(requestUrl);
+            if (cookies != null && !cookies.trim().isEmpty()) {
+                return cookies;
+            }
+
+            // googlevideo URLs can still require youtube cookies.
+            if (requestUrl.contains("googlevideo.com")) {
+                String ytCookies = cookieManager.getCookie("https://www.youtube.com/");
+                if (ytCookies != null && !ytCookies.trim().isEmpty()) {
+                    return ytCookies;
+                }
+            }
+        } catch (Throwable cookieError) {
+            Log.w(TAG, "Unable to resolve cookies for extractor request", cookieError);
+        }
+        return "";
     }
 }

@@ -22,6 +22,7 @@ import android.os.IBinder;
 import android.os.Looper;
 import android.os.PowerManager;
 import android.util.Log;
+import android.webkit.CookieManager;
 import android.webkit.WebView;
 import android.widget.Toast;
 
@@ -328,9 +329,29 @@ public class PlaybackService extends Service {
         defaultHeaders.put("Referer", YT_REFERER);
         defaultHeaders.put("Origin", YT_ORIGIN);
         defaultHeaders.put("Accept-Language", "en-US,en;q=0.9");
+        defaultHeaders.put("Sec-Fetch-Dest", "empty");
+        defaultHeaders.put("Sec-Fetch-Mode", "cors");
+        defaultHeaders.put("Sec-Fetch-Site", "cross-site");
+
+        String cookieHeader = resolveCookieHeaderForPlayback();
+        if (!cookieHeader.isEmpty()) {
+            defaultHeaders.put("Cookie", cookieHeader);
+        }
         httpFactory.setDefaultRequestProperties(defaultHeaders);
 
         return new ProgressiveMediaSource.Factory(httpFactory);
+    }
+
+    private String resolveCookieHeaderForPlayback() {
+        try {
+            CookieManager cookieManager = CookieManager.getInstance();
+            if (cookieManager == null) return "";
+            String cookies = cookieManager.getCookie(YT_REFERER);
+            return cookies == null ? "" : cookies;
+        } catch (Throwable t) {
+            Log.w(TAG, "Failed to read playback cookies", t);
+            return "";
+        }
     }
 
     private void initPlayer() {
