@@ -31,6 +31,7 @@ public class WebAppActivity extends AppCompatActivity
         WebViewManager.BridgeActions, GestureController.Callbacks {
 
     public static final String EXTRA_START_URL = "start_url";
+    private static final boolean FORCE_WEB_PLAYER_UI_FOR_TEST = true;
 
     private WebView webView;
     private FrameLayout playerContainer;
@@ -172,6 +173,7 @@ public class WebAppActivity extends AppCompatActivity
     }
 
     private void applyModeUi(boolean enabled) {
+        boolean showNativePlayerUi = !FORCE_WEB_PLAYER_UI_FOR_TEST && !enabled;
         if (enabled) {
             hideSystemBars();
             webView.setVisibility(WebView.VISIBLE);
@@ -184,7 +186,7 @@ public class WebAppActivity extends AppCompatActivity
             webView.setVisibility(WebView.VISIBLE);
             webView.setClickable(true);
             webView.setLongClickable(true);
-            playerContainer.setVisibility(FrameLayout.VISIBLE);
+            playerContainer.setVisibility(showNativePlayerUi ? FrameLayout.VISIBLE : FrameLayout.GONE);
             updateWebViewBottomInset();
         }
     }
