@@ -263,6 +263,12 @@ final class WebViewManager {
         }
 
         @JavascriptInterface
+        public void loadMedia(String videoId, String mediaType, String title, String artist,
+                              double durationMs, String thumbnailUrl) {
+            play(videoId, title, artist, durationMs, thumbnailUrl);
+        }
+
+        @JavascriptInterface
         public void play(String videoId, String title, String artist, String thumbnailUrl) {
             Intent intent = new Intent(activity, PlaybackService.class);
             intent.setAction(PlaybackService.ACTION_PLAY);
@@ -271,6 +277,11 @@ final class WebViewManager {
             intent.putExtra("artist", artist);
             intent.putExtra("thumbnailUrl", thumbnailUrl);
             actions.sendServiceIntent(intent);
+        }
+
+        @JavascriptInterface
+        public void play(String videoId, String title, String artist, double durationMs, String thumbnailUrl) {
+            play(videoId, title, artist, thumbnailUrl);
         }
 
         @JavascriptInterface
