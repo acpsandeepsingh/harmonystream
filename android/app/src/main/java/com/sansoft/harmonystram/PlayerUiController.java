@@ -11,6 +11,7 @@ import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.SeekBar;
 import android.widget.TextView;
+import android.widget.LinearLayout;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -44,8 +45,10 @@ final class PlayerUiController {
     private ImageButton queue;
     private ImageButton add;
     private ImageButton share;
+    private ImageButton volume;
     private SeekBar seekBar;
     private SeekBar volumeBar;
+    private LinearLayout volumePopupContainer;
 
     private boolean isSeeking;
     private int artworkRequestId;
@@ -77,8 +80,10 @@ final class PlayerUiController {
         queue = playerContainer.findViewById(R.id.btnQueue);
         add = playerContainer.findViewById(R.id.btnAdd);
         share = playerContainer.findViewById(R.id.btnShare);
+        volume = playerContainer.findViewById(R.id.btnVolume);
         seekBar = playerContainer.findViewById(R.id.seekBar);
         volumeBar = playerContainer.findViewById(R.id.volumeBar);
+        volumePopupContainer = playerContainer.findViewById(R.id.volumePopupContainer);
 
         setupControls();
         attachTouchFeedback();
@@ -94,6 +99,7 @@ final class PlayerUiController {
         bindTouchFeedback(queue);
         bindTouchFeedback(add);
         bindTouchFeedback(share);
+        bindTouchFeedback(volume);
     }
 
     private void bindTouchFeedback(@Nullable View target) {
@@ -155,6 +161,18 @@ final class PlayerUiController {
             share.setOnClickListener(v -> actions.dispatchToWeb(
                     "window.dispatchEvent(new CustomEvent('nativeShareTrack'))"));
         }
+        if (volume != null) {
+            volume.setOnClickListener(v -> {
+                if (volumePopupContainer == null) return;
+                int nextVisibility = volumePopupContainer.getVisibility() == View.VISIBLE
+                        ? View.GONE : View.VISIBLE;
+                volumePopupContainer.setVisibility(nextVisibility);
+                volume.setSelected(nextVisibility == View.VISIBLE);
+                volume.setBackgroundResource(nextVisibility == View.VISIBLE
+                        ? R.drawable.player_button_bg_active
+                        : R.drawable.player_button_bg);
+            });
+        }
 
         if (seekBar != null) {
             seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
@@ -195,7 +213,16 @@ final class PlayerUiController {
                 }
 
                 @Override public void onStartTrackingTouch(SeekBar seekBar) {}
-                @Override public void onStopTrackingTouch(SeekBar seekBar) {}
+                @Override
+                public void onStopTrackingTouch(SeekBar seekBar) {
+                    if (volumePopupContainer != null) {
+                        volumePopupContainer.setVisibility(View.GONE);
+                    }
+                    if (volume != null) {
+                        volume.setSelected(false);
+                        volume.setBackgroundResource(R.drawable.player_button_bg);
+                    }
+                }
             });
         }
     }
