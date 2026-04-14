@@ -21,6 +21,19 @@ function isSameLocalDate(a: Date, b: Date): boolean {
     && a.getDate() === b.getDate();
 }
 
+function isValidSong(value: unknown): value is Song {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Song;
+  return typeof candidate.id === 'string'
+    && candidate.id.length > 0
+    && typeof candidate.title === 'string'
+    && candidate.title.length > 0
+    && typeof candidate.artist === 'string'
+    && typeof candidate.videoId === 'string'
+    && candidate.videoId.length > 0
+    && typeof candidate.thumbnailUrl === 'string';
+}
+
 export default function HomePage() {
   const [selectedGenre, setSelectedGenre] = useState<string>('New Songs');
   const [songs, setSongs] = useState<Song[]>([]);
@@ -60,7 +73,8 @@ export default function HomePage() {
             && isSameLocalDate(cacheTimestamp, now);
 
           if (canUseCache) {
-            setSongs(cacheData.songs);
+            const safeSongs = Array.isArray(cacheData.songs) ? cacheData.songs.filter(isValidSong) : [];
+            setSongs(safeSongs);
             setLoading(false);
             return;
           }
