@@ -183,4 +183,55 @@
             android:tint="#FFFFFF" />
     </LinearLayout>
 
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:paddingTop="8dp">
+
+        <ImageButton
+            android:id="@+id/btnLike"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:layout_marginHorizontal="6dp"
+            android:background="@drawable/player_button_bg"
+            android:contentDescription="Like"
+            android:padding="8dp"
+            android:src="@drawable/ic_favorite_border"
+            android:tint="#FFFFFF" />
+
+        <ImageButton
+            android:id="@+id/btnQueue"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:layout_marginHorizontal="6dp"
+            android:background="@drawable/player_button_bg"
+            android:contentDescription="Queue"
+            android:padding="8dp"
+            android:src="@drawable/ic_queue_music"
+            android:tint="#FFFFFF" />
+
+        <ImageButton
+            android:id="@+id/btnAdd"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:layout_marginHorizontal="6dp"
+            android:background="@drawable/player_button_bg"
+            android:contentDescription="Add"
+            android:padding="8dp"
+            android:src="@drawable/ic_add"
+            android:tint="#FFFFFF" />
+
+        <ImageButton
+            android:id="@+id/btnShare"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:layout_marginHorizontal="6dp"
+            android:background="@drawable/player_button_bg"
+            android:contentDescription="Share"
+            android:padding="8dp"
+            android:src="@drawable/ic_share"
+            android:tint="#FFFFFF" />
+    </LinearLayout>
+
 </LinearLayout>
