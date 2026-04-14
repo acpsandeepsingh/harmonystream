@@ -581,12 +581,8 @@ export function WebMusicPlayer() {
     );
   }, []);
 
-  /**
-   * When true the YouTube iframe is the active audio engine.
-   * In Android audio mode, ExoPlayer owns playback and native
-   * broadcasts drive progress/isPlaying.
-   */
-  const iframeIsPlayer = !isAndroidAppRuntime || playerMode === 'video';
+  // Always use the embedded web player as the playback engine.
+  const iframeIsPlayer = true;
   /**
    * Optional ad-bypass guard for YouTube iframe playback.
    *
@@ -736,8 +732,8 @@ export function WebMusicPlayer() {
         lastNativeErrorRef.current = null;
       }
 
-      // ── SYNC #3: iframe is the player for playback/progress in both modes ─
-      // Native state still drives queue index sync only.
+      // Web iframe is the playback engine; native events are only used for
+      // optional queue index synchronization.
       if (iframeIsPlayer) return;
 
       // AUDIO MODE: trust the native broadcast completely
@@ -1123,15 +1119,7 @@ export function WebMusicPlayer() {
       return;
     }
 
-    if (isAndroidAppRuntime) {
-      if (next) {
-        postNativePlayerMessage({ action: 'play', track: currentTrack });
-        window.HarmonyNative?.play?.();
-      } else {
-        postNativePlayerMessage({ action: 'pause' });
-        window.HarmonyNative?.pause?.();
-      }
-    }
+    if (isAndroidAppRuntime) return;
   }, [currentTrack, iframeIsPlayer, isAndroidAppRuntime, isGlobalPlaying, postNativePlayerMessage, setGlobalIsPlaying]);
 
   const handlePlayNext = useCallback(() => {
@@ -1139,10 +1127,7 @@ export function WebMusicPlayer() {
       globalPlayNext();
       return;
     }
-    if (isAndroidAppRuntime) {
-      postNativePlayerMessage({ action: 'next' });
-      window.HarmonyNative?.next?.();
-    }
+    if (isAndroidAppRuntime) return;
   }, [iframeIsPlayer, isAndroidAppRuntime, globalPlayNext, postNativePlayerMessage]);
 
   const handlePlayPrev = useCallback(() => {
@@ -1150,10 +1135,7 @@ export function WebMusicPlayer() {
       globalPlayPrev();
       return;
     }
-    if (isAndroidAppRuntime) {
-      postNativePlayerMessage({ action: 'previous' });
-      window.HarmonyNative?.previous?.();
-    }
+    if (isAndroidAppRuntime) return;
   }, [iframeIsPlayer, isAndroidAppRuntime, globalPlayPrev, postNativePlayerMessage]);
 
   const handleSeekChange = useCallback((value: number[]) => {
@@ -1169,10 +1151,7 @@ export function WebMusicPlayer() {
     if (iframeIsPlayer && playerRef.current) {
       try { playerRef.current.seekTo(targetS, true); } catch { /* ignore */ }
     }
-    if (isAndroidAppRuntime) {
-      postNativePlayerMessage({ action: 'seek', positionMs: targetMs });
-      window.HarmonyNative?.seek?.(targetMs);
-    }
+    if (isAndroidAppRuntime) return;
 
     setCurrentTime(targetS);
     isSeekingRef.current = false;
@@ -1277,29 +1256,6 @@ export function WebMusicPlayer() {
 
   // ── Mount ──────────────────────────────────────────────────────────────────
   useEffect(() => { setContainer(document.body); }, []);
-
-  useEffect(() => {
-    if (!isAndroidAppRuntime) return;
-    if (playlist.length === 0) return;
-
-    const payload = playlist.map((song) => ({
-      id: song.id,
-      title: song.title,
-      artist: song.artist,
-      videoId: song.videoId,
-      thumbnailUrl: song.thumbnailUrl,
-    }));
-    postNativePlayerMessage({ action: 'setQueue', tracks: payload });
-    window.HarmonyNative?.setQueue?.(JSON.stringify(payload));
-
-    if (currentTrack) {
-      const activeIndex = playlist.findIndex((song) => song.id === currentTrack.id);
-      if (activeIndex >= 0) {
-        postNativePlayerMessage({ action: 'play', track: payload[activeIndex] });
-        window.HarmonyNative?.setIndex?.(activeIndex);
-      }
-    }
-  }, [playlist, currentTrack, isAndroidAppRuntime, postNativePlayerMessage]);
 
   // ── YouTube opts ───────────────────────────────────────────────────────────
   /**
@@ -1445,14 +1401,9 @@ export function WebMusicPlayer() {
                         onPlay={() => {
                           const idx = playlist.findIndex(s => s.id === song.id);
                           if (idx === -1) return;
-                          if (isAndroidAppRuntime) {
-                            window.HarmonyNative?.setIndex?.(idx);
-                            window.HarmonyNative?.play?.();
-                          } else {
-                            syncNativeIndex(idx);
-                            setGlobalIsPlaying(true);
-                            try { playerRef.current?.playVideo(); } catch { /* ignore */ }
-                          }
+                          syncNativeIndex(idx);
+                          setGlobalIsPlaying(true);
+                          try { playerRef.current?.playVideo(); } catch { /* ignore */ }
                         }}
                         onRemove={() => removeSongFromQueue(song.id)}
                       />
