@@ -102,11 +102,23 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const isSong = (value: unknown): value is Song => {
     if (!value || typeof value !== 'object') return false;
     const candidate = value as Song;
-    return typeof candidate.id === 'string' && typeof candidate.title === 'string';
+    return typeof candidate.id === 'string'
+      && candidate.id.length > 0
+      && typeof candidate.title === 'string'
+      && candidate.title.length > 0
+      && typeof candidate.artist === 'string'
+      && typeof candidate.videoId === 'string'
+      && candidate.videoId.length > 0
+      && typeof candidate.thumbnailUrl === 'string';
   };
 
   const isSongArray = (value: unknown): value is Song[] =>
     Array.isArray(value) && value.every(isSong);
+
+  const sanitizeSongArray = useCallback((value: unknown): Song[] => {
+    if (!Array.isArray(value)) return [];
+    return value.filter(isSong);
+  }, []);
 
   useEffect(() => {
     setIsMounted(true);
@@ -151,25 +163,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
   }, [currentTrack, playlist, history, isMounted]);
 
-  const isAndroidNativeRuntime = () => {
-    if (typeof window === 'undefined') return false;
-    return typeof (window as any).NativePlayer !== 'undefined'
-      || typeof (window as any).HarmonyNative !== 'undefined';
-  };
-
-  const sendQueueToNative = (queue: Song[]) => {
-    if (!isAndroidNativeRuntime()) return;
-    const payload = queue.map((song) => ({
-      id: song.id,
-      title: song.title,
-      artist: song.artist,
-      videoId: song.videoId,
-      thumbnailUrl: song.thumbnailUrl,
-    }));
-    (window as any).NativePlayer?.postMessage?.(JSON.stringify({ action: 'setQueue', tracks: payload }));
-    (window as any).HarmonyNative?.setQueue?.(JSON.stringify(payload));
-  };
-
   const setNewCurrentTrack = useCallback((track: Song | null) => {
     if (track) {
       // Add to history, ensuring no duplicates and maintaining a max size
@@ -179,21 +172,24 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const playTrack = useCallback((track: Song) => {
+    if (!isSong(track)) return;
+
     setPlaylist([track]);
     setNewCurrentTrack(track);
     setIsPlaying(true);
 
-    if (isAndroidNativeRuntime()) {
-      sendQueueToNative([track]);
-      (window as any).NativePlayer?.postMessage?.(JSON.stringify({ action: 'setIndex', index: 0 }));
-      (window as any).HarmonyNative?.setIndex?.(0);
-    }
   }, [setNewCurrentTrack]);
   
   const playPlaylist = useCallback((newPlaylist: Song[], startingTrackId?: string) => {
-    if (newPlaylist.length === 0) return;
+    const cleanedPlaylist = sanitizeSongArray(newPlaylist);
+    if (cleanedPlaylist.length === 0) {
+      setCurrentTrack(null);
+      setIsPlaying(false);
+      setPlaylist([]);
+      return;
+    }
     
-    let playlistToPlay = [...newPlaylist];
+    let playlistToPlay = [...cleanedPlaylist];
     let trackToStart: Song | undefined;
 
     if (startingTrackId) {
@@ -227,18 +223,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         setIsPlaying(true);
       }
 
-      if (isAndroidNativeRuntime()) {
-        sendQueueToNative(playlistToPlay);
-        const nativeIndex = Math.max(0, selectedIndex);
-        (window as any).NativePlayer?.postMessage?.(JSON.stringify({ action: 'setIndex', index: nativeIndex }));
-        (window as any).HarmonyNative?.setIndex?.(nativeIndex);
-      }
     } else {
         // This case is unlikely if newPlaylist has items.
       setCurrentTrack(null);
       setIsPlaying(false);
     }
-  }, [currentTrack, setNewCurrentTrack]);
+  }, [currentTrack, sanitizeSongArray, setNewCurrentTrack]);
 
   const togglePlayPause = useCallback(() => {
     if (currentTrack) {
