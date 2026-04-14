@@ -77,8 +77,6 @@ public class PlaybackService extends Service {
     private static final long DEBUG_TOAST_DEBOUNCE_MS = 1500L;
     private static final String YT_REFERER = "https://www.youtube.com/";
     private static final String YT_ORIGIN = "https://www.youtube.com";
-    private static final String DEMO_STREAM_URL =
-            "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3";
     private static final String DEMO_TITLE = "HarmonyStream Demo Track";
     private static final String DEMO_ARTIST = "Built-in fallback";
     private static final String DEMO_VIDEO_ID = "harmony_demo_track";
@@ -124,6 +122,7 @@ public class PlaybackService extends Service {
     private static final String KEY_LIKED_TRACKS  = "liked_tracks";
     private static final String KEY_QUEUE_INDEX   = "queue_index";
     private static final String KEY_THUMBNAIL_URL = "thumbnail_url";
+    private static final String KEY_DEMO_SEEDED_ON_FIRST_LAUNCH = "demo_seeded_on_first_launch";
     private static final int    MAX_ARTWORK_PX    = 512;
 
     private static volatile WebView linkedWebView;
@@ -477,10 +476,6 @@ public class PlaybackService extends Service {
                 if (handleSkip(+1)) {
                     dispatchActionToUi(ACTION_NEXT);
                 } else {
-                    if (isSourceError) {
-                        playFallbackDemoTrack();
-                        return;
-                    }
                     // Avoid repeated player-error loops when the current item cannot be recovered
                     // and there is no next item to skip to.
                     if (player != null) {
@@ -772,16 +767,14 @@ public class PlaybackService extends Service {
                 }
                 lastPlaybackError = "Extraction failed: " + rootMessage(t);
                 Log.e(TAG, "Unable to resolve stream URL", t);
-                if (!DEMO_VIDEO_ID.equals(videoId)) {
-                    playFallbackDemoTrack();
-                } else {
-                    broadcastState();
-                }
+                broadcastState();
             }
         });
     }
 
     private void seedDemoTrackWhenEmpty() {
+        SharedPreferences preferences = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        if (preferences.getBoolean(KEY_DEMO_SEEDED_ON_FIRST_LAUNCH, false)) return;
         if (!playbackQueue.isEmpty()) return;
         if (currentVideoId != null && !currentVideoId.trim().isEmpty()) return;
         playbackQueue.add(new QueueItem(
@@ -795,31 +788,7 @@ public class PlaybackService extends Service {
         currentVideoId = DEMO_VIDEO_ID;
         currentTitle = DEMO_TITLE;
         currentArtist = DEMO_ARTIST;
-    }
-
-    private void playFallbackDemoTrack() {
-        mainHandler.post(() -> {
-            if (player == null) return;
-            currentVideoId = DEMO_VIDEO_ID;
-            currentTitle = DEMO_TITLE;
-            currentArtist = DEMO_ARTIST;
-            currentThumbnailUrl = "";
-            resetQueueToSingleSelection(DEMO_VIDEO_ID, DEMO_TITLE, DEMO_ARTIST, "");
-            try {
-                MediaSource mediaSource = buildPlayerMediaSourceFactory()
-                        .createMediaSource(MediaItem.fromUri(DEMO_STREAM_URL));
-                player.setMediaSource(mediaSource);
-                player.prepare();
-                player.play();
-                lastPlaybackError = "YouTube stream blocked/expired; playing demo fallback track.";
-                updateNotification();
-                broadcastState();
-            } catch (Throwable fallbackError) {
-                lastPlaybackError = "Fallback playback failed: " + rootMessage(fallbackError);
-                Log.e(TAG, "Fallback demo playback failed", fallbackError);
-                broadcastState();
-            }
-        });
+        preferences.edit().putBoolean(KEY_DEMO_SEEDED_ON_FIRST_LAUNCH, true).apply();
     }
 
     private void resetQueueToSingleSelection(String videoId, String title, String artist, String thumbnailUrl) {

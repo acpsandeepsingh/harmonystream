@@ -186,7 +186,11 @@ final class YouTubeStreamExtractor {
             URI uri = URI.create(value);
             String host = safeLower(uri.getHost());
             String path = safeLower(uri.getPath());
-            if (host.contains("googlevideo.com") && path.contains("videoplayback")) return true;
+            if (host.contains("googlevideo.com") && path.contains("videoplayback")) {
+                // Signed googlevideo playback URLs are short-lived and frequently return 403.
+                // Treat them as non-canonical sources so callers pass a YouTube id/watch URL.
+                return false;
+            }
             if (path.endsWith(".m3u8") || path.endsWith(".mpd") || path.endsWith(".mp4") || path.endsWith(".m4a")) {
                 return true;
             }

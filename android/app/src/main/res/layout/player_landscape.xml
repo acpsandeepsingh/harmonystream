@@ -130,49 +130,41 @@
             android:layout_weight="1"
             android:gravity="end|center_vertical">
 
-            <ImageButton
-                android:id="@+id/btnLike"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:layout_marginHorizontal="2dp"
-                android:background="@drawable/player_button_bg"
-                android:contentDescription="Like"
-                android:padding="9dp"
-                android:src="@drawable/ic_favorite_border"
-                android:tint="#FFFFFF" />
+            <FrameLayout
+                android:layout_width="58dp"
+                android:layout_height="108dp"
+                android:layout_gravity="center_vertical"
+                android:layout_marginEnd="8dp">
 
-            <ImageButton
-                android:id="@+id/btnQueue"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:layout_marginHorizontal="2dp"
-                android:background="@drawable/player_button_bg"
-                android:contentDescription="Queue"
-                android:padding="9dp"
-                android:src="@drawable/ic_queue_music"
-                android:tint="#FFFFFF" />
+                <LinearLayout
+                    android:id="@+id/volumePopupContainer"
+                    android:layout_width="40dp"
+                    android:layout_height="84dp"
+                    android:layout_gravity="top|center_horizontal"
+                    android:gravity="center"
+                    android:orientation="vertical"
+                    android:visibility="gone">
 
-            <ImageButton
-                android:id="@+id/btnAdd"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:layout_marginHorizontal="2dp"
-                android:background="@drawable/player_button_bg"
-                android:contentDescription="Add"
-                android:padding="9dp"
-                android:src="@drawable/ic_add"
-                android:tint="#FFFFFF" />
+                    <SeekBar
+                        android:id="@+id/volumeBar"
+                        android:layout_width="82dp"
+                        android:layout_height="wrap_content"
+                        android:progressDrawable="@drawable/seek_progress"
+                        android:rotation="-90"
+                        android:thumb="@drawable/seek_thumb_glow" />
+                </LinearLayout>
 
-            <ImageButton
-                android:id="@+id/btnShare"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:layout_marginHorizontal="2dp"
-                android:background="@drawable/player_button_bg"
-                android:contentDescription="Share"
-                android:padding="9dp"
-                android:src="@drawable/ic_share"
-                android:tint="#FFFFFF" />
+                <ImageButton
+                    android:id="@+id/btnVolume"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:layout_gravity="bottom|center_horizontal"
+                    android:background="@drawable/player_button_bg"
+                    android:contentDescription="Volume"
+                    android:padding="9dp"
+                    android:src="@drawable/ic_volume_up"
+                    android:tint="#FFFFFF" />
+            </FrameLayout>
 
             <ImageButton
                 android:id="@+id/btnMode"
@@ -184,14 +176,6 @@
                 android:padding="9dp"
                 android:src="@drawable/ic_videocam"
                 android:tint="#FFFFFF" />
-
-            <SeekBar
-                android:id="@+id/volumeBar"
-                android:layout_width="88dp"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="4dp"
-                android:progressDrawable="@drawable/seek_progress"
-                android:thumb="@drawable/seek_thumb_glow" />
         </LinearLayout>
 
     </LinearLayout>
