@@ -269,6 +269,8 @@ public class WebAppActivity extends AppCompatActivity
     public void onConfigurationChanged(@NonNull Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
         playerUiController.init();
+        applyModeUi(videoModeEnabled);
+        updateWebViewBottomInset();
         requestInitialPlaybackState();
     }
 
