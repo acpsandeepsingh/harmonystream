@@ -94,7 +94,8 @@ import { useAudioEngine } from './audio-engine';
 declare global {
   interface Window {
     HarmonyNative?: {
-      play?:         ()                   => void;
+      play?:         (id?: string, title?: string, artist?: string,
+                      thumbnailUrl?: string) => void;
       pause?:        ()                   => void;
       next?:         ()                   => void;
       previous?:     ()                   => void;
@@ -127,6 +128,8 @@ declare global {
       pause?:        ()                   => void;
       resume?:       ()                   => void;
       seekTo?:       (positionMs: number) => void;
+      setQueue?:     (queueJson: string)  => void;
+      setIndex?:     (index: number)      => void;
       loadMedia?:    (
         mediaUrl: string,
         mediaType: string,
@@ -529,6 +532,7 @@ export function WebMusicPlayer() {
   const pendingActionRef       = useRef<string | null>(null);
   const lastNativeStateTsRef   = useRef(0);
   const lastNativeErrorRef     = useRef<string | null>(null);
+  const lastNativeErrorTrackRef = useRef<string | null>(null);
   const adRecoveryRef          = useRef({
     trackId: '',
     attempts: 0,
@@ -581,8 +585,9 @@ export function WebMusicPlayer() {
     );
   }, []);
 
-  // Always use the embedded web player as the playback engine.
-  const iframeIsPlayer = true;
+  // Android audio mode uses native extraction + ExoPlayer.
+  // Video mode (and non-Android web) uses the iframe player.
+  const iframeIsPlayer = !isAndroidAppRuntime || playerMode === 'video';
   /**
    * Optional ad-bypass guard for YouTube iframe playback.
    *
@@ -728,6 +733,17 @@ export function WebMusicPlayer() {
           description: nativeError,
           variant: 'destructive',
         });
+
+        if (!iframeIsPlayer
+          && currentTrack?.id
+          && lastNativeErrorTrackRef.current !== currentTrack.id) {
+          lastNativeErrorTrackRef.current = currentTrack.id;
+          setPlayerMode('video');
+          toast({
+            title: 'Switched to video fallback',
+            description: 'Audio extraction failed, continuing with video playback.',
+          });
+        }
       } else if (!nativeError) {
         lastNativeErrorRef.current = null;
       }
@@ -755,12 +771,53 @@ export function WebMusicPlayer() {
 
     window.addEventListener('nativePlaybackState', handler);
     return () => window.removeEventListener('nativePlaybackState', handler);
-  }, [syncNativeIndex, setGlobalIsPlaying, iframeIsPlayer, toast]);
+  }, [syncNativeIndex, setGlobalIsPlaying, iframeIsPlayer, toast, currentTrack?.id, setPlayerMode]);
 
   useEffect(() => {
     if (!isAndroidAppRuntime) return;
     window.HarmonyNative?.getState?.();
   }, [isAndroidAppRuntime, currentTrack?.id, playerMode]);
+
+  useEffect(() => {
+    if (iframeIsPlayer || !isAndroidAppRuntime || playlist.length === 0) return;
+    const nativeQueue = playlist.map((song) => ({
+      id: song.id,
+      videoId: song.videoId || song.id,
+      title: song.title,
+      artist: song.artist,
+      thumbnailUrl: song.thumbnailUrl,
+    }));
+
+    try {
+      window.HarmonyNative?.setQueue?.(JSON.stringify(nativeQueue));
+    } catch (error) {
+      console.warn('[Player] Failed to sync native queue', error);
+    }
+  }, [iframeIsPlayer, isAndroidAppRuntime, playlist]);
+
+  useEffect(() => {
+    if (iframeIsPlayer || !isAndroidAppRuntime || !currentTrack) return;
+    const queueIndex = playlist.findIndex((song) => song.id === currentTrack.id);
+    if (queueIndex >= 0) {
+      window.HarmonyNative?.setIndex?.(queueIndex);
+    }
+  }, [iframeIsPlayer, isAndroidAppRuntime, playlist, currentTrack]);
+
+  useEffect(() => {
+    if (iframeIsPlayer || !isAndroidAppRuntime || !currentTrack) return;
+
+    if (isGlobalPlaying) {
+      window.HarmonyNative?.play?.(
+        currentTrack.videoId || currentTrack.id,
+        currentTrack.title,
+        currentTrack.artist,
+        currentTrack.thumbnailUrl,
+      ) ?? window.AndroidNative?.resume?.();
+      return;
+    }
+
+    window.HarmonyNative?.pause?.() ?? window.AndroidNative?.pause?.();
+  }, [iframeIsPlayer, isAndroidAppRuntime, currentTrack, isGlobalPlaying]);
 
   // ── SYNC: nativeSetVideoMode — service tells JS to switch mode ─────────────
   useEffect(() => {
@@ -785,6 +842,16 @@ export function WebMusicPlayer() {
     }
 
     switch (action) {
+      case 'com.sansoft.harmonystram.PLAY_PAUSE':
+        if (iframeIsPlayer && playerRef.current) {
+          try {
+            if (isGlobalPlaying) playerRef.current.pauseVideo();
+            else playerRef.current.playVideo();
+          } catch { /* ignore */ }
+        } else {
+          setGlobalIsPlaying(!isGlobalPlaying);
+        }
+        break;
       case 'com.sansoft.harmonystram.PLAY':
         if (iframeIsPlayer && playerRef.current) {
           try { playerRef.current.playVideo(); } catch { /* ignore */ }
@@ -808,7 +875,7 @@ export function WebMusicPlayer() {
       default:
         break;
     }
-  }, [iframeIsPlayer, setGlobalIsPlaying, globalPlayNext, globalPlayPrev, syncNativeIndex]);
+  }, [iframeIsPlayer, isGlobalPlaying, setGlobalIsPlaying, globalPlayNext, globalPlayPrev, syncNativeIndex]);
 
   useEffect(() => {
     window.__harmonyNativeApplyCommand = applyNativeCommand;
@@ -1119,7 +1186,19 @@ export function WebMusicPlayer() {
       return;
     }
 
-    if (isAndroidAppRuntime) return;
+    if (isAndroidAppRuntime) {
+      if (next) {
+        window.HarmonyNative?.play?.(
+          currentTrack?.videoId || currentTrack?.id || '',
+          currentTrack?.title || '',
+          currentTrack?.artist || '',
+          currentTrack?.thumbnailUrl || '',
+        ) ?? window.AndroidNative?.resume?.();
+      } else {
+        window.HarmonyNative?.pause?.() ?? window.AndroidNative?.pause?.();
+      }
+      return;
+    }
   }, [currentTrack, iframeIsPlayer, isAndroidAppRuntime, isGlobalPlaying, postNativePlayerMessage, setGlobalIsPlaying]);
 
   const handlePlayNext = useCallback(() => {
@@ -1127,7 +1206,10 @@ export function WebMusicPlayer() {
       globalPlayNext();
       return;
     }
-    if (isAndroidAppRuntime) return;
+    if (isAndroidAppRuntime) {
+      window.HarmonyNative?.next?.();
+      return;
+    }
   }, [iframeIsPlayer, isAndroidAppRuntime, globalPlayNext, postNativePlayerMessage]);
 
   const handlePlayPrev = useCallback(() => {
@@ -1135,7 +1217,10 @@ export function WebMusicPlayer() {
       globalPlayPrev();
       return;
     }
-    if (isAndroidAppRuntime) return;
+    if (isAndroidAppRuntime) {
+      window.HarmonyNative?.previous?.();
+      return;
+    }
   }, [iframeIsPlayer, isAndroidAppRuntime, globalPlayPrev, postNativePlayerMessage]);
 
   const handleSeekChange = useCallback((value: number[]) => {
@@ -1151,7 +1236,11 @@ export function WebMusicPlayer() {
     if (iframeIsPlayer && playerRef.current) {
       try { playerRef.current.seekTo(targetS, true); } catch { /* ignore */ }
     }
-    if (isAndroidAppRuntime) return;
+    if (isAndroidAppRuntime) {
+      window.HarmonyNative?.seek?.(targetMs) ?? window.AndroidNative?.seekTo?.(targetMs);
+      isSeekingRef.current = false;
+      return;
+    }
 
     setCurrentTime(targetS);
     isSeekingRef.current = false;
