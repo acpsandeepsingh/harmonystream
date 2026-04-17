@@ -545,6 +545,8 @@ export function WebMusicPlayer() {
     attempts: 0,
     trackId: '',
   });
+  const injectedQueueSignatureRef = useRef<string>('');
+  const injectedQueueIndexRef = useRef<number>(-1);
 
   /**
    * Tracks the videoId that is currently loaded in the iframe.
@@ -588,6 +590,16 @@ export function WebMusicPlayer() {
   // Android audio mode uses native extraction + ExoPlayer.
   // Video mode (and non-Android web) uses the iframe player.
   const iframeIsPlayer = !isAndroidAppRuntime || playerMode === 'video';
+  const queueVideoIds = useMemo(
+    () => playlist.map((song) => song.videoId || song.id).filter(Boolean),
+    [playlist],
+  );
+  const queueIndex = useMemo(() => {
+    if (!currentTrack) return 0;
+    const idx = playlist.findIndex((song) => song.id === currentTrack.id);
+    return idx >= 0 ? idx : 0;
+  }, [playlist, currentTrack]);
+
   /**
    * Optional ad-bypass guard for YouTube iframe playback.
    *
@@ -969,10 +981,9 @@ export function WebMusicPlayer() {
   // ── YouTube iframe events ──────────────────────────────────────────────────
 
   /**
-   * SYNC #4 & #7: onPlayerReady is called after every remount
-   * (guaranteed by key={currentTrack.id}).
-   * Guard with currentVideoIdRef so a stale callback from a
-   * previous track never starts playing the wrong video.
+   * SYNC #4 & #7: onPlayerReady hydrates the iframe and injects the full queue.
+   * Guard with currentVideoIdRef so a stale callback from a previous track never
+   * starts playing the wrong video.
    */
   const onPlayerReady = useCallback((event: YouTubeEvent) => {
     const expectedId = currentVideoIdRef.current;
@@ -1002,10 +1013,20 @@ export function WebMusicPlayer() {
       return;
     }
 
+    if (queueVideoIds.length > 0) {
+      try {
+        event.target.loadPlaylist(queueVideoIds, queueIndex, 0);
+        injectedQueueSignatureRef.current = queueVideoIds.join(',');
+        injectedQueueIndexRef.current = queueIndex;
+      } catch {
+        // Ignore and continue with single-video fallback behavior.
+      }
+    }
+
     if (isGlobalPlaying) {
       try { event.target.playVideo(); } catch { /* ignore */ }
     }
-  }, [volume, applyNativeCommand, isGlobalPlaying]);
+  }, [volume, applyNativeCommand, isGlobalPlaying, queueVideoIds, queueIndex]);
 
   /**
    * SYNC #3 & #6: iframe state changes are the source of truth in
@@ -1077,6 +1098,30 @@ export function WebMusicPlayer() {
     });
     if (currentTrack) handleTrackError(currentTrack.id);
   }, [currentTrack, handleTrackError, toast]);
+
+  useEffect(() => {
+    if (!iframeIsPlayer || !playerRef.current || queueVideoIds.length === 0) return;
+
+    const nextSignature = queueVideoIds.join(',');
+    const queueChanged = injectedQueueSignatureRef.current !== nextSignature;
+    const indexChanged = injectedQueueIndexRef.current !== queueIndex;
+
+    try {
+      if (queueChanged) {
+        playerRef.current.loadPlaylist(queueVideoIds, queueIndex, 0);
+        injectedQueueSignatureRef.current = nextSignature;
+        injectedQueueIndexRef.current = queueIndex;
+        return;
+      }
+
+      if (indexChanged) {
+        playerRef.current.playVideoAt(queueIndex);
+        injectedQueueIndexRef.current = queueIndex;
+      }
+    } catch {
+      // Player may not be ready yet; onReady path will re-sync queue.
+    }
+  }, [iframeIsPlayer, queueVideoIds, queueIndex]);
 
   // ── Video mode immersive/fullscreen + zoom persistence ───────────────────
   useEffect(() => {
@@ -1361,8 +1406,10 @@ export function WebMusicPlayer() {
       modestbranding: 1,
       rel:            0,
       iv_load_policy: 3,
+      loop:           queueVideoIds.length > 1 ? 1 : 0,
+      playlist:       queueVideoIds.join(','),
     },
-  }), []);
+  }), [queueVideoIds]);
   const youtubeHost = 'https://www.youtube-nocookie.com';
 
   // ── Early exit ─────────────────────────────────────────────────────────────
@@ -1426,7 +1473,6 @@ export function WebMusicPlayer() {
             style={{ transform: `scale(${videoZoom / 100})`, transformOrigin: 'center center' }}
           >
             <YouTube
-            key={currentTrack.id}
             videoId={currentTrack.videoId || currentTrack.id}
             opts={youtubeOpts}
             host={youtubeHost}
