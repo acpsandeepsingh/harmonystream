@@ -600,6 +600,19 @@ export function WebMusicPlayer() {
     return idx >= 0 ? idx : 0;
   }, [playlist, currentTrack]);
 
+  const syncTrackFromIframeQueue = useCallback(() => {
+    if (!playerRef.current || playlist.length === 0) return false;
+    try {
+      const iframeIndex = playerRef.current.getPlaylistIndex?.();
+      if (typeof iframeIndex !== 'number' || iframeIndex < 0) return false;
+      injectedQueueIndexRef.current = iframeIndex;
+      syncNativeIndex(iframeIndex);
+      return true;
+    } catch {
+      return false;
+    }
+  }, [playlist.length, syncNativeIndex]);
+
   /**
    * Optional ad-bypass guard for YouTube iframe playback.
    *
@@ -879,15 +892,44 @@ export function WebMusicPlayer() {
         }
         break;
       case 'com.sansoft.harmonystram.NEXT':
+        if (iframeIsPlayer && playerRef.current && queueVideoIds.length > 1) {
+          try {
+            playerRef.current.nextVideo();
+            setGlobalIsPlaying(true);
+            syncTrackFromIframeQueue();
+            break;
+          } catch {
+            // Fall through to context fallback.
+          }
+        }
         globalPlayNext();
         break;
       case 'com.sansoft.harmonystram.PREVIOUS':
+        if (iframeIsPlayer && playerRef.current && queueVideoIds.length > 1) {
+          try {
+            playerRef.current.previousVideo();
+            setGlobalIsPlaying(true);
+            syncTrackFromIframeQueue();
+            break;
+          } catch {
+            // Fall through to context fallback.
+          }
+        }
         globalPlayPrev();
         break;
       default:
         break;
     }
-  }, [iframeIsPlayer, isGlobalPlaying, setGlobalIsPlaying, globalPlayNext, globalPlayPrev, syncNativeIndex]);
+  }, [
+    iframeIsPlayer,
+    isGlobalPlaying,
+    setGlobalIsPlaying,
+    globalPlayNext,
+    globalPlayPrev,
+    syncNativeIndex,
+    queueVideoIds.length,
+    syncTrackFromIframeQueue,
+  ]);
 
   useEffect(() => {
     window.__harmonyNativeApplyCommand = applyNativeCommand;
@@ -1056,7 +1098,9 @@ export function WebMusicPlayer() {
       case 0: // ended
         setGlobalIsPlaying(false);
         stopProgressPolling();
-        globalPlayNext();
+        if (!syncTrackFromIframeQueue()) {
+          globalPlayNext();
+        }
         break;
       default:
         break;
@@ -1081,7 +1125,13 @@ export function WebMusicPlayer() {
       }
     }
   }, [
-    adBypassEnabled, adPreferSkip, setGlobalIsPlaying, startProgressPolling, stopProgressPolling, globalPlayNext,
+    adBypassEnabled,
+    adPreferSkip,
+    setGlobalIsPlaying,
+    startProgressPolling,
+    stopProgressPolling,
+    globalPlayNext,
+    syncTrackFromIframeQueue,
   ]);
 
   const onPlayerError = useCallback((event: YouTubeEvent) => {
@@ -1248,6 +1298,16 @@ export function WebMusicPlayer() {
 
   const handlePlayNext = useCallback(() => {
     if (iframeIsPlayer) {
+      if (playerRef.current && queueVideoIds.length > 1) {
+        try {
+          playerRef.current.nextVideo();
+          setGlobalIsPlaying(true);
+          syncTrackFromIframeQueue();
+          return;
+        } catch {
+          // Fall back to context-based queue navigation.
+        }
+      }
       globalPlayNext();
       return;
     }
@@ -1255,10 +1315,20 @@ export function WebMusicPlayer() {
       window.HarmonyNative?.next?.();
       return;
     }
-  }, [iframeIsPlayer, isAndroidAppRuntime, globalPlayNext, postNativePlayerMessage]);
+  }, [iframeIsPlayer, isAndroidAppRuntime, globalPlayNext, postNativePlayerMessage, queueVideoIds.length, setGlobalIsPlaying, syncTrackFromIframeQueue]);
 
   const handlePlayPrev = useCallback(() => {
     if (iframeIsPlayer) {
+      if (playerRef.current && queueVideoIds.length > 1) {
+        try {
+          playerRef.current.previousVideo();
+          setGlobalIsPlaying(true);
+          syncTrackFromIframeQueue();
+          return;
+        } catch {
+          // Fall back to context-based queue navigation.
+        }
+      }
       globalPlayPrev();
       return;
     }
@@ -1266,7 +1336,7 @@ export function WebMusicPlayer() {
       window.HarmonyNative?.previous?.();
       return;
     }
-  }, [iframeIsPlayer, isAndroidAppRuntime, globalPlayPrev, postNativePlayerMessage]);
+  }, [iframeIsPlayer, isAndroidAppRuntime, globalPlayPrev, postNativePlayerMessage, queueVideoIds.length, setGlobalIsPlaying, syncTrackFromIframeQueue]);
 
   const handleSeekChange = useCallback((value: number[]) => {
     isSeekingRef.current = true;
@@ -1407,7 +1477,8 @@ export function WebMusicPlayer() {
       rel:            0,
       iv_load_policy: 3,
       loop:           queueVideoIds.length > 1 ? 1 : 0,
-      playlist:       queueVideoIds.join(','),
+      // Keep initial iframe URL short; full queue is injected via loadPlaylist().
+      playlist:       queueVideoIds.slice(0, 1).join(','),
     },
   }), [queueVideoIds]);
   const youtubeHost = 'https://www.youtube-nocookie.com';
