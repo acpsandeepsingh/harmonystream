@@ -308,6 +308,14 @@ public class PlaybackService extends Service {
         mediaSession.setCallback(new MediaSessionCompat.Callback() {
             @Override public void onPlay()  { if (player != null) player.play(); }
             @Override public void onPause() { if (player != null) player.pause(); }
+            @Override public void onSkipToNext() {
+                handleSkip(+1);
+                dispatchActionToUi(ACTION_NEXT);
+            }
+            @Override public void onSkipToPrevious() {
+                handleSkip(-1);
+                dispatchActionToUi(ACTION_PREVIOUS);
+            }
             @Override public void onSeekTo(long pos) {
                 if (player != null) player.seekTo(Math.max(0L, pos));
             }
@@ -1181,9 +1189,24 @@ public class PlaybackService extends Service {
         int state = (player != null && player.isPlaying())
                 ? PlaybackStateCompat.STATE_PLAYING
                 : PlaybackStateCompat.STATE_PAUSED;
+        boolean hasPrevious = currentQueueIndex > 0;
+        boolean hasNext = currentQueueIndex >= 0
+                && currentQueueIndex < (playbackQueue.size() - 1);
+
+        long actions = PlaybackStateCompat.ACTION_PLAY
+                | PlaybackStateCompat.ACTION_PAUSE
+                | PlaybackStateCompat.ACTION_PLAY_PAUSE
+                | PlaybackStateCompat.ACTION_SEEK_TO;
+        if (hasNext) {
+            actions |= PlaybackStateCompat.ACTION_SKIP_TO_NEXT;
+        }
+        if (hasPrevious) {
+            actions |= PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS;
+        }
 
         playbackStateBuilder.setState(state, pos, 1.0f)
-                .setActions(ENABLED_PLAYBACK_ACTIONS);
+                .setActions(actions)
+                .setActiveQueueItemId(Math.max(0, currentQueueIndex));
         mediaSession.setPlaybackState(playbackStateBuilder.build());
 
         MediaMetadataCompat.Builder meta = new MediaMetadataCompat.Builder()
