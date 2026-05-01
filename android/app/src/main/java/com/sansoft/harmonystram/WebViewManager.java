@@ -117,10 +117,14 @@ final class WebViewManager {
     void dispatchPendingMediaAction(@NonNull Intent mediaIntent) {
         String action = mediaIntent.getStringExtra("action");
         if (action == null || action.isEmpty()) return;
+        String normalizedAction = normalizeMediaAction(action);
+        if (normalizedAction == null || normalizedAction.isEmpty()) {
+            normalizedAction = action;
+        }
 
         JSONObject detail = new JSONObject();
         try {
-            detail.put("action", action);
+            detail.put("action", normalizedAction);
             detail.put("queue_index", mediaIntent.getIntExtra("queue_index", -1));
             detail.put("queue_length", mediaIntent.getIntExtra("queue_length", 0));
             detail.put("title", mediaIntent.getStringExtra("title"));
@@ -137,7 +141,18 @@ final class WebViewManager {
                 + detail
                 + " }));");
         actions.dispatchToWeb("window.__harmonyNativeApplyCommand&&window.__harmonyNativeApplyCommand("
-                + JSONObject.quote(action) + "," + detail + ");");
+                + JSONObject.quote(normalizedAction) + "," + detail + ");");
+    }
+
+    private static String normalizeMediaAction(String action) {
+        if (PlaybackService.ACTION_NEXT.equals(action)) return "next";
+        if (PlaybackService.ACTION_PREVIOUS.equals(action)) return "previous";
+        if (PlaybackService.ACTION_PLAY.equals(action)) return "play";
+        if (PlaybackService.ACTION_PAUSE.equals(action)) return "pause";
+        if (PlaybackService.ACTION_SET_QUEUE.equals(action)) return "setQueue";
+        if (PlaybackService.ACTION_SET_INDEX.equals(action)) return "setIndex";
+        if (PlaybackService.ACTION_ADD_TO_QUEUE.equals(action)) return "addToQueue";
+        return action;
     }
 
     private final class AssetBackedWebViewClient extends WebViewClientCompat {

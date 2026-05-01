@@ -876,6 +876,7 @@ export function WebMusicPlayer() {
         }
         break;
       case 'com.sansoft.harmonystram.PLAY':
+      case 'play':
         if (iframeIsPlayer && playerRef.current) {
           try { playerRef.current.playVideo(); } catch { /* ignore */ }
         } else {
@@ -883,6 +884,7 @@ export function WebMusicPlayer() {
         }
         break;
       case 'com.sansoft.harmonystram.PAUSE':
+      case 'pause':
         if (iframeIsPlayer && playerRef.current) {
           try { playerRef.current.pauseVideo(); } catch { /* ignore */ }
         } else {
@@ -890,6 +892,7 @@ export function WebMusicPlayer() {
         }
         break;
       case 'com.sansoft.harmonystram.NEXT':
+      case 'next':
         if (iframeIsPlayer && playerRef.current && queueVideoIds.length > 1) {
           try {
             playerRef.current.nextVideo();
@@ -903,6 +906,7 @@ export function WebMusicPlayer() {
         globalPlayNext();
         break;
       case 'com.sansoft.harmonystram.PREVIOUS':
+      case 'previous':
         if (iframeIsPlayer && playerRef.current && queueVideoIds.length > 1) {
           try {
             playerRef.current.previousVideo();
