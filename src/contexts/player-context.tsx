@@ -173,8 +173,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const playTrack = useCallback((track: Song) => {
     if (!isSong(track)) return;
-
-    setPlaylist([track]);
+    setPlaylist((prev) => {
+      if (prev.length === 0) return [track];
+      const alreadyQueued = prev.some((queuedTrack) => queuedTrack.id === track.id);
+      if (alreadyQueued) return prev;
+      return [...prev, track];
+    });
     setNewCurrentTrack(track);
     setIsPlaying(true);
 

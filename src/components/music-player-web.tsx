@@ -1396,6 +1396,22 @@ export function WebMusicPlayer() {
     // Keep the same iframe alive across both modes.
   }, [playerMode, setPlayerMode, isAndroidAppRuntime]);
 
+  useEffect(() => {
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      if (playerMode !== 'video') return;
+      event.preventDefault();
+      setPlayerMode('audio');
+      if (isAndroidAppRuntime) {
+        window.HarmonyNative?.setVideoMode?.(false) ??
+          window.AndroidNative?.setVideoMode?.(false);
+      }
+    };
+
+    window.addEventListener('keydown', onEscape);
+    return () => window.removeEventListener('keydown', onEscape);
+  }, [playerMode, setPlayerMode, isAndroidAppRuntime]);
+
   // ── Like / playlist / share ────────────────────────────────────────────────
   const isLiked = currentTrack ? isSongLiked(currentTrack.id) : false;
 
