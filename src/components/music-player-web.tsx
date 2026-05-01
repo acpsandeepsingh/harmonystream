@@ -1282,15 +1282,20 @@ export function WebMusicPlayer() {
     }
 
     if (isAndroidAppRuntime) {
+      const nativePlay = window.HarmonyNative?.play ?? window.AndroidNative?.resume;
+      const nativePause = window.HarmonyNative?.pause ?? window.AndroidNative?.pause;
+
       if (next) {
-        window.HarmonyNative?.play?.(
-          currentTrack?.videoId || currentTrack?.id || '',
-          currentTrack?.title || '',
-          currentTrack?.artist || '',
-          currentTrack?.thumbnailUrl || '',
-        ) ?? window.AndroidNative?.resume?.();
-      } else {
-        window.HarmonyNative?.pause?.() ?? window.AndroidNative?.pause?.();
+        if (nativePlay) {
+          nativePlay(
+            currentTrack?.videoId || currentTrack?.id || '',
+            currentTrack?.title || '',
+            currentTrack?.artist || '',
+            currentTrack?.thumbnailUrl || '',
+          );
+        }
+      } else if (nativePause) {
+        nativePause();
       }
       return;
     }
@@ -1312,7 +1317,12 @@ export function WebMusicPlayer() {
       return;
     }
     if (isAndroidAppRuntime) {
-      window.HarmonyNative?.next?.();
+      const nativeNext = (window.HarmonyNative as any)?.next ?? (window.AndroidNative as any)?.next;
+      if (nativeNext) {
+        nativeNext();
+        return;
+      }
+      globalPlayNext();
       return;
     }
   }, [iframeIsPlayer, isAndroidAppRuntime, globalPlayNext, postNativePlayerMessage, queueVideoIds.length, setGlobalIsPlaying, syncTrackFromIframeQueue]);
@@ -1333,7 +1343,12 @@ export function WebMusicPlayer() {
       return;
     }
     if (isAndroidAppRuntime) {
-      window.HarmonyNative?.previous?.();
+      const nativePrev = (window.HarmonyNative as any)?.previous ?? (window.AndroidNative as any)?.previous;
+      if (nativePrev) {
+        nativePrev();
+        return;
+      }
+      globalPlayPrev();
       return;
     }
   }, [iframeIsPlayer, isAndroidAppRuntime, globalPlayPrev, postNativePlayerMessage, queueVideoIds.length, setGlobalIsPlaying, syncTrackFromIframeQueue]);
