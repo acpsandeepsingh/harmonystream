@@ -253,7 +253,7 @@ const PortraitPlayer = React.memo(function PortraitPlayer({
           onPlayNext={onPlayNext}
           onTogglePlayPause={onTogglePlayPause}
           onVolumeChange={onVolumeChange}
-          showVolumeControl={isAndroidAppRuntime}
+          showVolumeControl
         />
       </div>
     </div>
@@ -409,9 +409,7 @@ const LandscapePlayer = React.memo(function LandscapePlayer({
                 ? <Video className="h-5 w-5" />
                 : <MusicIcon className="h-5 w-5" />}
             </Button>
-            {isAndroidAppRuntime && (
-              <VolumeToggleControl volume={volume} onVolumeChange={onVolumeChange} />
-            )}
+            <VolumeToggleControl volume={volume} onVolumeChange={onVolumeChange} />
           </div>
         </div>
       </div>
